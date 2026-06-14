@@ -148,7 +148,7 @@ async function loadSeekers() {
     const phase = r.seeker["フェーズ"] || "-";
     const sid   = r.id.replace(/'/g, "\\'");
     return `<tr>
-      <td><code>${r.id}</code></td>
+      <td><a href="/profile/${encodeURIComponent(r.id)}" style="font-family:monospace;font-size:13px">${r.id}</a></td>
       <td>${will}</td>
       <td>${phase}</td>
       <td>
@@ -186,14 +186,20 @@ async function runMatch(seekerId) {
   const rankRows = data.ranking.map(r => {
     const cid = r.id.replace(/'/g, "\\'");
     const via = (r.comp_via || "").replace(/'/g, "\\'");
+    const myId = getMyId();
+    const dmBtn = myId
+      ? `<button class="sm" onclick="location.href='/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(r.id)}'" style="margin-left:4px">DM</button>`
+      : "";
     return `<tr>
       <td class="center">${r.rank}</td>
-      <td><code>${r.id}</code></td>
+      <td><a href="/profile/${encodeURIComponent(r.id)}" style="font-family:monospace;font-size:13px">${r.id}</a></td>
       <td class="center">${r.score}</td>
       <td class="center">${r.comp}</td>
       <td class="center">${r.sim}</td>
       <td class="reason">${r.reason}</td>
-      <td class="center"><button class="sm" onclick="runApprove('${cid}','${via}')">承認する</button></td>
+      <td class="center">
+        <button class="sm" onclick="runApprove('${cid}','${via}')">承認する</button>${dmBtn}
+      </td>
     </tr>`;
   }).join("");
 

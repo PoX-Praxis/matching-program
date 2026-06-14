@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pox.example/schemas/connection_ledger.schema.json",
+  "title": "PoX 接続成否ログ (Connection Ledger)",
+  "description": "PoXマッチング・エンジンの接続成否ラベルを記録する台帳。記録単位は『器(コミュニティ)への一参加』。新規参加者⇄器の二方向承認で接続が成立し(弱い正解)、結果を見て次の選択肢を合意した時に行動変化が確証される(強い正解)。仕様 v0.5 の 12章-5(成否ラベル取得)・12章-1(ログスキーマ確定)・7.1(接続イベントの型)・8章(二段構造) に対応。",
+  "type": "object",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 (例 2026-06-14T09:30:00Z)"
+    },
+    "actorId": {
+      "type": "string",
+      "description": "人またはコミュニティの安定した内部ID。外部の特定個人は名指ししない(仕様4.7)。",
+      "minLength": 1
+    },
+    "approval": {
+      "type": "object",
+      "description": "有向の承認1件。誰が誰(器)に対して承認を出したか。二者・多者・引き込みを同じ型で表す。",
+      "additionalProperties": false,
+      "required": ["from", "to", "at"],
+      "properties": {
+        "from": { "$ref": "#/$defs/actorId", "description": "承認を出した主体(人 または 器を代表する既存メンバー)" },
+        "to":   { "$ref": "#/$defs/actorId", "description": "承認の宛先(器 または 新規参加者)" },
+        "at":   { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "contribution": {
+      "type": "object",
+      "description": "この接続への貢献の帰属。成否分析に使う観測情報であり、将来トークン分配を載せる接続点でもある(分配ロジックは本スキーマでは扱わない)。",
+      "additionalProperties": false,
+      "required": ["actor", "role"],
+      "properties": {
+        "actor": { "$ref": "#/$defs/actorId" },
+        "role": {
+          "type": "string",
+          "description": "貢献の種類。",
+          "enum": ["introduced", "invited", "approved", "founded"]
+        },
+        "note": { "type": "string", "description": "任意の自由記述" }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "vessel_id", "schema_version", "created_at", "founder",
+    "membership_count", "joins"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "スキーマ版。後から形式を変えると過去データが死ぬため(仕様8章)、版を固定して移行を追えるようにする。"
+    },
+    "vessel_id": {
+      "type": "string",
+      "description": "器(コミュニティ)のID。一人でも作れる器そのもの。",
+      "minLength": 1
+    },
+    "created_at": { "$ref": "#/$defs/timestamp", "description": "器が生成された時刻。" },
+    "founder": { "$ref": "#/$defs/actorId", "description": "器を最初に立ち上げた主体。" },
+    "phase_at_creation": {
+      "type": ["string", "null"],
+      "description": "器生成時のフェーズ(仕様7章 ①〜⑤)。判定方法は別課題(12章-2)のため null 許容。",
+      "enum": ["idea", "mvp", "early_validation", "scale", "fundraising", null]
+    },
+    "membership_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "現在の器のメンバー数。1 なら待機状態(接続ラベルは立たない)。2 以上で器が意志を持つ。"
+    },
+    "is_connected": {
+      "type": "boolean",
+      "description": "接続が成立したか。joins に成立済み(established)の参加が1件以上あれば true。membership_count>=2 と整合する。",
+      "default": false
+    },
+    "joins": {
+      "type": "array",
+      "description": "器への参加イベントの列。各要素が記録単位=『器への一参加』。一人で作った段階では空配列でよい(待機)。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["join_id", "joiner", "opened_at", "terminal_state"],
+        "properties": {
+          "join_id": { "type": "string", "minLength": 1 },
+          "joiner": { "$ref": "#/$defs/actorId", "description": "器に加わろうとする新規参加者。" },
+
+          "candidate_source": {
+            "type": ["object", "null"],
+            "description": "この参加候補がどこから来たか。マッチングエンジンの出力に紐づける(任意)。",
+            "additionalProperties": false,
+            "properties": {
+              "match_run_id": { "type": "string", "description": "マッチング実行のID" },
+              "channel": {
+                "type": "string",
+                "enum": ["complementary", "similarity", "mixed", "human_referral", "external_inbound"],
+                "description": "どのチャネル由来か。相補/類似(仕様4.5)、人手紹介、外部からの流入(4.7)。"
+              },
+              "predicted_role": { "type": "string", "description": "(3)系列予測層が出した必要像の役割記述(3.5翻訳層の出力)。" }
+            }
+          },
+
+          "opened_at": { "$ref": "#/$defs/timestamp", "description": "★1つ目の起点。参加プロセスが開いた時刻。" },
+
+          "approvals": {
+            "type": "array",
+            "description": "この参加に関わる有向承認の集合。最小成立条件は『器→新規』『新規→器』の二方向。",
+            "items": { "$ref": "#/$defs/approval" },
+            "default": []
+          },
+
+          "established_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "★1つ目(弱い正解): 二方向承認が揃い接続が成立した時刻。未成立なら null。"
+          },
+
+          "action": {
+            "type": ["object", "null"],
+            "description": "『選択肢を合意して行動する』段の記録。何を選び動いたか。",
+            "additionalProperties": false,
+            "properties": {
+              "agreed_at": { "$ref": "#/$defs/timestamp" },
+              "chosen_option": { "type": "string", "description": "合意して選んだ選択肢" },
+              "description": { "type": "string" }
+            }
+          },
+
+          "advanced_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "★2つ目(強い正解 / PoX本来の成功): 結果を見て次の選択肢を合意し、フェーズが前進した時刻。未到達なら null。"
+          },
+          "phase_after": {
+            "type": ["string", "null"],
+            "description": "前進後のフェーズ。advanced_at と対。",
+            "enum": ["idea", "mvp", "early_validation", "scale", "fundraising", null]
+          },
+
+          "terminal_state": {
+            "type": "string",
+            "description": "この参加レコードの終端状態。active/advanced のみ現状で運用。dissolved/left は値を予約するだけで検知ロジックは後実装(失敗データを後から死なせないため箱だけ用意)。",
+            "enum": ["active", "advanced", "dissolved", "left"],
+            "default": "active"
+          },
+          "closed_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "レコードが閉じた時刻(advanced/dissolved/left のいずれかが確定した時)。active の間は null=開いたまま。"
+          },
+
+          "contributions": {
+            "type": "array",
+            "description": "この接続への貢献の帰属。将来のトークン分配の接続点。分配ロジックは本スキーマでは扱わない。",
+            "items": { "$ref": "#/$defs/contribution" },
+            "default": []
+          }
+        }
+      }
+    }
+  }
+}

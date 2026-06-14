@@ -1,0 +1,53 @@
+[
+  {
+    "_label": "待機状態(一人で器を作っただけ。接続ラベルは立たない)",
+    "schema_version": "1.0",
+    "vessel_id": "v_001",
+    "created_at": "2026-06-10T08:00:00Z",
+    "founder": "user_alice",
+    "phase_at_creation": "idea",
+    "membership_count": 1,
+    "is_connected": false,
+    "joins": []
+  },
+  {
+    "_label": "接続成立→行動→前進(弱い正解と強い正解が両方立った一周)",
+    "schema_version": "1.0",
+    "vessel_id": "v_002",
+    "created_at": "2026-06-11T09:00:00Z",
+    "founder": "user_alice",
+    "phase_at_creation": "mvp",
+    "membership_count": 2,
+    "is_connected": true,
+    "joins": [
+      {
+        "join_id": "j_001",
+        "joiner": "user_bob",
+        "candidate_source": {
+          "match_run_id": "run_42",
+          "channel": "complementary",
+          "predicted_role": "実装力のあるエンジニア"
+        },
+        "opened_at": "2026-06-11T09:05:00Z",
+        "approvals": [
+          { "from": "user_alice", "to": "user_bob", "at": "2026-06-11T09:06:00Z" },
+          { "from": "user_bob", "to": "v_002", "at": "2026-06-11T09:10:00Z" }
+        ],
+        "established_at": "2026-06-11T09:10:00Z",
+        "action": {
+          "agreed_at": "2026-06-12T10:00:00Z",
+          "chosen_option": "試作アプリを2週間で作る",
+          "description": "MVPの実装に着手"
+        },
+        "advanced_at": "2026-06-26T15:00:00Z",
+        "phase_after": "early_validation",
+        "terminal_state": "advanced",
+        "closed_at": "2026-06-26T15:00:00Z",
+        "contributions": [
+          { "actor": "user_alice", "role": "founded" },
+          { "actor": "user_bob", "role": "approved", "note": "実装を担い前進に寄与" }
+        ]
+      }
+    ]
+  }
+]

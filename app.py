@@ -50,7 +50,7 @@ def post_match():
     """
     {"seeker_id": "...", "want": "complement"} を受け取り、
     他の全員を候補プールにして run_matching を呼ぶ。
-    ANTHROPIC_API_KEY が必要（未設定なら 503）。
+    ANTHROPIC_API_KEY があれば実 Claude、無ければデモ採点（固定ロジック）。
     """
     body = request.get_json(force=True, silent=True)
     if body is None:
@@ -71,13 +71,49 @@ def post_match():
     if not candidate_pool:
         return jsonify({"error": "候補が0人です。seekerをもう1人以上登録してください。"}), 400
 
+    # API キーが無ければデモ採点へフォールバック（背骨の動作確認用）
+    demo_mode = not bool(os.environ.get("ANTHROPIC_API_KEY"))
+    judge = _demo_judge if demo_mode else None
+
     try:
-        result = run_matching(target["seeker"], candidate_pool, want=want)
+        result = run_matching(target["seeker"], candidate_pool, want=want, judge_fn=judge)
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 503
 
     result["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
+    result["demo_mode"] = demo_mode
     return jsonify(result)
+
+
+# ── デモ採点（APIキー無しで背骨を動かすための固定ロジック。実LLMの代用ではない） ──
+# 注意: 仕様8.5節の通り、文字一致は意味照合の代用にならない。これはあくまで
+# 「投稿→マッチング→承認→台帳」の動線を API 無しで確認するためのデモ用。
+_IMPL_KEYWORDS = [
+    "実装", "開発", "エンジニア", "SaaS", "バックエンド", "フロント", "API",
+    "DB", "データベース", "コード", "プログラ", "作れる", "プロダクト", "アプリ", "技術",
+]
+
+
+def _bigrams(s: str) -> set:
+    s = (s or "").replace(" ", "").replace("　", "")
+    return {s[i:i + 2] for i in range(len(s) - 1)}
+
+
+def _jaccard(a: str, b: str) -> float:
+    A, B = _bigrams(a), _bigrams(b)
+    if not A or not B:
+        return 0.0
+    return len(A & B) / len(A | B)
+
+
+def _demo_judge(seeker, cand, roles):
+    """comp=実装系キーワードの当たり具合 / sim=意志の文字bigram重なり。"""
+    profile = cand.get("profile", "")
+    hits = sum(1 for k in _IMPL_KEYWORDS if k in profile)
+    comp = round(min(1.0, hits / 3.0), 2)          # 3語以上ヒットで 1.0
+    comp_via = roles[0]["role"] if roles else None
+    sim = round(min(1.0, _jaccard(seeker.get("意志", ""), profile) * 2), 2)
+    return {"comp": comp, "comp_via": comp_via, "sim": sim}
 
 
 @app.post("/approve")

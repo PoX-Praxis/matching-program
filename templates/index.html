@@ -82,12 +82,31 @@ function getMyId() {
   return document.getElementById("myId").value;
 }
 
+/* ── JSON 書式清掃: // と /* * / コメント・末尾カンマを除去（文字列内は保護） ── */
+function stripJsonComments(text) {
+  let out = "", inStr = false, i = 0;
+  while (i < text.length) {
+    const c = text[i], n = text[i + 1];
+    if (inStr) {
+      out += c;
+      if (c === "\\") { out += (n ?? ""); i += 2; continue; }  // エスケープはそのまま
+      if (c === '"') inStr = false;
+      i++; continue;
+    }
+    if (c === '"') { inStr = true; out += c; i++; continue; }
+    if (c === "/" && n === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (c === "/" && n === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++; i += 2; continue; }
+    out += c; i++;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");  // 末尾カンマ除去
+}
+
 /* ── 投稿 ── */
 async function postSeeker() {
   const el = document.getElementById("postMsg");
   el.className = ""; el.textContent = "";
   let body;
-  try { body = JSON.parse(document.getElementById("seekerJson").value); }
+  try { body = JSON.parse(stripJsonComments(document.getElementById("seekerJson").value)); }
   catch (e) { el.className = "err"; el.textContent = "JSON パース失敗: " + e.message; return; }
   const res = await fetch("/seekers", {
     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
@@ -171,12 +190,17 @@ async function runMatch(seekerId) {
     </tr>`;
   }).join("");
 
-  el.innerHTML = `
+  const demoBanner = data.demo_mode
+    ? `<div style="background:#fff3cd;color:#856404;padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0">
+         ⚠️ デモモード（ANTHROPIC_API_KEY 未設定）。スコアは固定ロジックの仮値です。実LLM判定にはキーを設定してください。
+       </div>` : "";
+
+  el.innerHTML = demoBanner + `
     <p style="font-size:13px;margin:4px 0">
       <strong>seeker:</strong> ${seekerId} &nbsp;
       <strong>want:</strong> ${data.want} &nbsp;
       <strong>必要像:</strong> ${needed || "-"}
-    </p>
+    </p>`+ `
     <table>
       <thead>
         <tr><th>順</th><th>候補 id</th><th>総合</th><th>相補</th><th>類似</th><th>根拠</th><th>承認</th></tr>

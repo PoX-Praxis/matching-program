@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>プロフィール編集 — PoX</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
+  label { display: block; margin-top: 16px; font-weight: bold; font-size: 13px; }
+  input[type=text], textarea, select {
+    width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 13px;
+    border: 1px solid #ccc; border-radius: 4px; margin-top: 4px;
+  }
+  textarea { height: 100px; font-family: monospace; }
+  textarea#otherJson { height: 180px; }
+  button { padding: 8px 24px; cursor: pointer; background: #1a3a5c; color: white;
+           border: none; border-radius: 4px; font-size: 14px; margin-top: 20px; }
+  #notice { margin-top: 8px; font-size: 13px; }
+  .ok  { color: #1a8a1a; font-weight: bold; }
+  .err { color: #c00; }
+  #loading { color: #888; margin-top: 40px; }
+</style>
+</head>
+<body>
+{% include "_nav.html" %}
+<a href="/" style="font-size:13px;color:#555;text-decoration:none">← トップに戻る</a>
+<h1>プロフィール編集</h1>
+<div id="loading">読み込み中...</div>
+<div id="form" style="display:none">
+  <p style="font-size:13px;color:#555">ID: <code id="editId"></code></p>
+
+  <h2>主要フィールド</h2>
+  <label>意志</label>
+  <textarea id="f_will" placeholder="止まっているものを接続で動かし直したい"></textarea>
+
+  <label>求めている</label>
+  <textarea id="f_want"></textarea>
+
+  <label>能力</label>
+  <textarea id="f_ability"></textarea>
+
+  <label>フェーズ</label>
+  <select id="f_phase">
+    <option value="">-- 選択 --</option>
+    <option value="idea">idea</option>
+    <option value="mvp">mvp</option>
+    <option value="early_validation">early_validation</option>
+    <option value="scale">scale</option>
+    <option value="fundraising">fundraising</option>
+  </select>
+
+  <h2>その他フィールド（JSON）</h2>
+  <p style="font-size:12px;color:#666">上記4項目以外のフィールドを JSON オブジェクトとして編集します。</p>
+  <textarea id="otherJson"></textarea>
+
+  <br>
+  <button onclick="save()">保存する</button>
+  <div id="notice"></div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const myId = params.get("id");
+const MAIN_KEYS = ["意志", "求めている", "能力", "フェーズ"];
+
+if (!myId) {
+  document.getElementById("loading").innerHTML =
+    '<span style="color:#c00">URL に ?id= が指定されていません。</span>';
+}
+
+async function init() {
+  if (!myId) return;
+  const res = await fetch(`/seekers/${encodeURIComponent(myId)}`);
+  if (!res.ok) {
+    document.getElementById("loading").innerHTML =
+      `<span style="color:#c00">seeker "${myId}" が見つかりません。</span>`;
+    return;
+  }
+  const { seeker } = await res.json();
+
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("form").style.display = "block";
+  document.getElementById("editId").textContent = myId;
+
+  document.getElementById("f_will").value    = seeker["意志"] || "";
+  document.getElementById("f_want").value    = seeker["求めている"] || "";
+  document.getElementById("f_ability").value = seeker["能力"] || "";
+  document.getElementById("f_phase").value   = seeker["フェーズ"] || "";
+
+  const others = {};
+  for (const [k, v] of Object.entries(seeker)) {
+    if (!MAIN_KEYS.includes(k)) others[k] = v;
+  }
+  document.getElementById("otherJson").value = JSON.stringify(others, null, 2);
+}
+
+async function save() {
+  const notice = document.getElementById("notice");
+  notice.textContent = "";
+
+  let others = {};
+  try {
+    const raw = document.getElementById("otherJson").value.trim();
+    if (raw) others = JSON.parse(raw);
+  } catch (e) {
+    notice.className = "err"; notice.textContent = "その他フィールドの JSON が不正です: " + e.message; return;
+  }
+
+  const body = {
+    id: myId,
+    "意志": document.getElementById("f_will").value,
+    "求めている": document.getElementById("f_want").value,
+    "能力": document.getElementById("f_ability").value,
+    "フェーズ": document.getElementById("f_phase").value,
+    ...others,
+  };
+
+  const res = await fetch("/seekers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (res.ok) {
+    notice.className = "ok"; notice.textContent = "保存しました！";
+  } else {
+    notice.className = "err"; notice.textContent = "エラー: " + JSON.stringify(data);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

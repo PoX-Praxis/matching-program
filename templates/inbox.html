@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>インボックス — PoX</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
+  th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; white-space: nowrap; }
+  .badge-action { background: #f8d7da; color: #721c24; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  .badge-unread { background: #cce5ff; color: #004085; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  a { color: #1a3a5c; }
+  #loading { color: #888; margin-top: 40px; }
+</style>
+</head>
+<body>
+{% include "_nav.html" %}
+<h1>インボックス</h1>
+<div id="loading">読み込み中...</div>
+<div id="main" style="display:none">
+
+  <h2>承認が必要な案件</h2>
+  <table>
+    <thead><tr><th>相手</th><th>vessel</th><th>状態</th><th>アクション</th></tr></thead>
+    <tbody id="approvalRows"><tr><td colspan="4">なし</td></tr></tbody>
+  </table>
+
+  <h2>未読メッセージ</h2>
+  <table>
+    <thead><tr><th>相手</th><th>最新メッセージ</th><th>未読数</th><th></th></tr></thead>
+    <tbody id="msgRows"><tr><td colspan="4">なし</td></tr></tbody>
+  </table>
+
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const myId = params.get("id");
+
+if (!myId) {
+  document.getElementById("loading").innerHTML =
+    '<span style="color:#c00">URL に ?id= が指定されていません。</span>';
+}
+
+async function init() {
+  if (!myId) return;
+
+  const [ledgerRes, inboxRes] = await Promise.all([
+    fetch("/ledger"),
+    fetch(`/api/inbox?id=${encodeURIComponent(myId)}`),
+  ]);
+
+  const vessels = await ledgerRes.json();
+  const inbox   = await inboxRes.json();
+
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("main").style.display = "block";
+
+  renderApprovals(vessels, myId);
+  renderMessages(inbox.conversations || []);
+}
+
+function renderApprovals(vessels, myId) {
+  const needAction = vessels.filter(v => {
+    const j = (v.joins || [])[0] || {};
+    if (v.is_connected) return false;
+    const approvers = new Set((j.approvals || []).map(a => a.from));
+    const other = v.founder === myId ? (j.joiner || "") : v.founder;
+    return other && approvers.has(other) && !approvers.has(myId) &&
+           (v.founder === myId || j.joiner === myId);
+  });
+
+  const tbody = document.getElementById("approvalRows");
+  if (!needAction.length) {
+    tbody.innerHTML = "<tr><td colspan='4'>承認待ち案件はありません</td></tr>"; return;
+  }
+  tbody.innerHTML = needAction.map(v => {
+    const j = (v.joins || [])[0] || {};
+    const other = v.founder === myId ? (j.joiner || "-") : v.founder;
+    const oid = encodeURIComponent(other);
+    return `<tr>
+      <td><a href="/profile/${oid}">${escHtml(other)}</a></td>
+      <td><code style="font-size:11px">${escHtml(v.vessel_id)}</code></td>
+      <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
+      <td><button onclick="doApprove('${escHtml(other)}')">承認する</button></td>
+    </tr>`;
+  }).join("");
+}
+
+function renderMessages(convs) {
+  const tbody = document.getElementById("msgRows");
+  if (!convs.length) {
+    tbody.innerHTML = "<tr><td colspan='4'>未読メッセージはありません</td></tr>"; return;
+  }
+  tbody.innerHTML = convs.map(c => {
+    const unread = c.unread > 0
+      ? `<span class="badge-unread">${c.unread}</span>` : "0";
+    const href = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(c.other_id)}`;
+    return `<tr>
+      <td><a href="/profile/${encodeURIComponent(c.other_id)}">${escHtml(c.other_id)}</a></td>
+      <td>${escHtml((c.last_body || "").slice(0, 60))}${c.last_body && c.last_body.length > 60 ? "…" : ""}</td>
+      <td>${unread}</td>
+      <td><a href="${href}">会話を開く</a></td>
+    </tr>`;
+  }).join("");
+}
+
+async function doApprove(otherId) {
+  const res = await fetch("/approve", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_id: myId, to_id: otherId }),
+  });
+  const data = await res.json();
+  if (data.established) {
+    alert(`接続成立！ vessel: ${data.vessel_id}`);
+  } else {
+    alert(`承認しました（vessel: ${data.vessel_id}）`);
+  }
+  init();
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+init();
+</script>
+</body>
+</html>

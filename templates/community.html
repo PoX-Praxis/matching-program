@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>コミュニティ詳細 — PoX</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
+  th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; }
+  th { background: #f5f5f5; white-space: nowrap; }
+  .btn { padding: 6px 16px; cursor: pointer; border: none; border-radius: 4px; font-size: 13px; }
+  .btn-primary { background: #1a3a5c; color: white; }
+  .btn-sm { padding: 3px 10px; font-size: 12px; cursor: pointer; background: #1a3a5c; color: white; border: none; border-radius: 3px; }
+  .badge-founder { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 1px 6px; font-size: 11px; }
+  #chatBox {
+    border: 1px solid #ddd; border-radius: 6px; height: 350px;
+    overflow-y: auto; padding: 12px; background: #fafafa; margin: 12px 0;
+  }
+  .bubble { max-width: 70%; margin: 6px 0; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+  .bubble.mine   { background: #1a3a5c; color: white; margin-left: auto; border-bottom-right-radius: 4px; }
+  .bubble.theirs { background: #e8e8e8; color: #222; border-bottom-left-radius: 4px; }
+  .bubble .meta  { font-size: 10px; opacity: 0.7; margin-top: 2px; }
+  .input-row { display: flex; gap: 8px; }
+  .input-row textarea { flex:1; padding:8px; border:1px solid #ccc; border-radius:4px; font-size:13px; resize:none; height:60px; }
+  #notice { font-size: 13px; margin-top: 6px; color: #c00; }
+  .pending-badge { background:#fff3cd; color:#856404; border-radius:3px; padding:2px 8px; font-size:11px; }
+</style>
+</head>
+<body>
+{% include "_nav.html" %}
+<a href="/communities" style="font-size:13px;color:#555;text-decoration:none">← コミュニティ一覧</a>
+
+<div id="loading" style="color:#888;margin-top:40px">読み込み中...</div>
+<div id="main" style="display:none">
+  <h1 id="cName"></h1>
+  <p id="cDesc" style="color:#555;margin:4px 0"></p>
+  <p style="font-size:12px;color:#888">メンバー数: <span id="memberCount">0</span>人 &nbsp; founder: <span id="cFounder"></span></p>
+
+  <div id="joinSection" style="margin:16px 0"></div>
+
+  <!-- founder向け: 参加申請者 -->
+  <div id="pendingSection" style="display:none">
+    <h2>参加申請者</h2>
+    <table>
+      <thead><tr><th>ID</th><th>申請日時</th><th>操作</th></tr></thead>
+      <tbody id="pendingRows"><tr><td colspan="3">なし</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- メンバー一覧 -->
+  <h2>メンバー</h2>
+  <table>
+    <thead><tr><th>ID</th><th>役割</th><th></th></tr></thead>
+    <tbody id="memberRows"><tr><td colspan="3">なし</td></tr></tbody>
+  </table>
+
+  <!-- チャット -->
+  <h2>コミュニティチャット</h2>
+  <div id="chatBox"></div>
+  <div class="input-row" id="chatInput" style="display:none">
+    <textarea id="msgInput" placeholder="メッセージを入力..." onkeydown="handleKey(event)"></textarea>
+    <button class="btn btn-primary" onclick="sendMsg()">送信</button>
+  </div>
+  <p id="chatNotice" style="font-size:13px;color:#888;display:none">チャットに参加するにはメンバーになってください。</p>
+  <div id="notice"></div>
+</div>
+
+<script>
+const pathParts = location.pathname.split("/");
+const communityId = decodeURIComponent(pathParts[pathParts.length - 1]);
+const myId = localStorage.getItem("pox_my_id");
+let communityData = null;
+
+async function init() {
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}`);
+  if (!res.ok) {
+    document.getElementById("loading").textContent = "コミュニティが見つかりません。";
+    return;
+  }
+  communityData = await res.json();
+
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("main").style.display    = "block";
+
+  document.getElementById("cName").textContent    = communityData.name;
+  document.getElementById("cDesc").textContent    = communityData.description || "";
+  document.getElementById("cFounder").textContent = communityData.founder;
+  document.getElementById("memberCount").textContent = communityData.members.length;
+
+  renderJoinSection();
+  renderMembers();
+  renderChat();
+
+  const isFounder = myId && communityData.founder === myId;
+  if (isFounder) {
+    document.getElementById("pendingSection").style.display = "block";
+    renderPending();
+  }
+}
+
+function renderJoinSection() {
+  const el = document.getElementById("joinSection");
+  if (!myId) { el.innerHTML = ""; return; }
+
+  const member = communityData.members.find(m => m.member_id === myId);
+  const pending = (communityData.pending || []).find(m => m.member_id === myId);
+  const isFounder = communityData.founder === myId;
+
+  if (isFounder) {
+    el.innerHTML = '<span style="font-size:13px;color:#1a8a1a">あなたはこのコミュニティの founder です</span>';
+  } else if (member) {
+    el.innerHTML = '<span style="font-size:13px;color:#1a8a1a">参加中のコミュニティです</span>';
+  } else if (pending) {
+    el.innerHTML = '<span class="pending-badge">参加申請中（承認待ち）</span>';
+  } else {
+    el.innerHTML = '<button class="btn btn-primary" onclick="joinCommunity()">参加を申請する</button>';
+  }
+}
+
+function renderMembers() {
+  const tbody = document.getElementById("memberRows");
+  tbody.innerHTML = communityData.members.map(m => {
+    const isFounder = m.member_id === communityData.founder;
+    return `<tr>
+      <td><a href="/profile/${encodeURIComponent(m.member_id)}">${escHtml(m.member_id)}</a></td>
+      <td>${isFounder ? '<span class="badge-founder">founder</span>' : "メンバー"}</td>
+      <td>${myId && myId !== m.member_id ? `<a href="/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(m.member_id)}" style="font-size:12px">DM</a>` : ""}</td>
+    </tr>`;
+  }).join("") || "<tr><td colspan='3'>メンバーなし</td></tr>";
+}
+
+function renderPending() {
+  const tbody = document.getElementById("pendingRows");
+  const pending = communityData.pending || [];
+  if (!pending.length) {
+    tbody.innerHTML = "<tr><td colspan='3'>申請者なし</td></tr>"; return;
+  }
+  tbody.innerHTML = pending.map(m => `<tr>
+    <td>${escHtml(m.member_id)}</td>
+    <td>${(m.joined_at || "").slice(0, 10)}</td>
+    <td><button class="btn-sm" onclick="approveMember('${escHtml(m.member_id)}')">承認</button></td>
+  </tr>`).join("");
+}
+
+function renderChat() {
+  const msgs = communityData.messages || [];
+  const box = document.getElementById("chatBox");
+  box.innerHTML = msgs.map(m => {
+    const isMine = m.from_id === myId;
+    const time = (m.created_at || "").slice(11, 16);
+    return `<div style="display:flex;justify-content:${isMine ? "flex-end" : "flex-start"}">
+      <div class="bubble ${isMine ? "mine" : "theirs"}">
+        ${escHtml(m.body)}
+        <div class="meta">${escHtml(m.from_id)} ${time}</div>
+      </div>
+    </div>`;
+  }).join("") || '<p style="color:#aaa;text-align:center;margin-top:40px">まだメッセージがありません</p>';
+
+  box.scrollTop = box.scrollHeight;
+
+  const member = communityData.members.find(m => m.member_id === myId);
+  const isFounder = myId && communityData.founder === myId;
+  if (member || isFounder) {
+    document.getElementById("chatInput").style.display = "flex";
+    document.getElementById("chatNotice").style.display = "none";
+  } else if (myId) {
+    document.getElementById("chatInput").style.display = "none";
+    document.getElementById("chatNotice").style.display = "block";
+  }
+}
+
+async function joinCommunity() {
+  if (!myId) { alert("マイページでIDを設定してください"); return; }
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/join`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ member_id: myId }),
+  });
+  if (res.ok) { await init(); }
+}
+
+async function approveMember(memberId) {
+  if (!myId) return;
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/approve`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ member_id: memberId, approver_id: myId }),
+  });
+  if (res.ok) { await init(); }
+}
+
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+}
+
+async function sendMsg() {
+  const input = document.getElementById("msgInput");
+  const body = input.value.trim();
+  if (!body || !myId) return;
+  input.value = "";
+
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/message`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_id: myId, body }),
+  });
+  if (!res.ok) {
+    document.getElementById("notice").textContent = "送信エラー";
+    return;
+  }
+  await reloadChat();
+}
+
+async function reloadChat() {
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}`);
+  if (!res.ok) return;
+  communityData = await res.json();
+  renderChat();
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+init();
+setInterval(reloadChat, 3000);
+</script>
+</body>
+</html>

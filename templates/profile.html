@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>プロフィール — PoX</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.3rem; margin: 12px 0 4px; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
+  th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; width: 160px; white-space: nowrap; }
+  pre { margin: 0; white-space: pre-wrap; font-size: 11px; background: #f9f9f9; padding: 6px; border-radius: 3px; }
+  details > summary { cursor: pointer; color: #555; font-size: 12px; }
+  .phase-tag { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  .btn { padding: 8px 20px; cursor: pointer; border: none; border-radius: 4px; font-size: 14px; }
+  .btn-primary { background: #1a3a5c; color: white; }
+  .btn-success { background: #1a8a1a; color: white; }
+  #notice { margin-top: 8px; font-size: 13px; }
+  .ok  { color: #1a8a1a; font-weight: bold; }
+  .err { color: #c00; }
+  #loading { color: #888; margin-top: 40px; }
+</style>
+</head>
+<body>
+{% include "_nav.html" %}
+<a href="/" style="font-size:13px;color:#555;text-decoration:none">← トップに戻る</a>
+<div id="loading">読み込み中...</div>
+<div id="main" style="display:none">
+  <h1 id="pageTitle"></h1>
+  <span id="phaseTag" class="phase-tag"></span>
+
+  <h2>プロフィール</h2>
+  <table id="profileTable"></table>
+
+  <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap" id="actions">
+    <button class="btn btn-primary" id="btnMsg" onclick="sendMsg()">メッセージを送る</button>
+    <button class="btn btn-success" id="btnApprove" style="display:none" onclick="doApprove()">承認する</button>
+  </div>
+  <div id="notice"></div>
+</div>
+
+<script>
+const MAIN_KEYS = ["意志", "求めている", "能力", "フェーズ"];
+const pathParts = location.pathname.split("/");
+const seekerId = decodeURIComponent(pathParts[pathParts.length - 1]);
+const myId = localStorage.getItem("pox_my_id");
+
+if (myId && myId === seekerId) {
+  location.replace(`/mypage?id=${encodeURIComponent(myId)}`);
+}
+
+async function init() {
+  const res = await fetch(`/seekers/${encodeURIComponent(seekerId)}`);
+  if (!res.ok) {
+    document.getElementById("loading").innerHTML =
+      `<span style="color:#c00">seeker "${seekerId}" が見つかりません。</span>`;
+    return;
+  }
+  const { seeker } = await res.json();
+
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("main").style.display = "block";
+  document.getElementById("pageTitle").textContent = seekerId;
+
+  const phase = seeker["フェーズ"] || seeker["phase"];
+  if (phase) document.getElementById("phaseTag").textContent = phase;
+
+  renderProfile(seeker);
+
+  if (myId && myId !== seekerId) {
+    document.getElementById("btnApprove").style.display = "inline-block";
+  }
+}
+
+function renderProfile(seeker) {
+  const otherKeys = Object.keys(seeker).filter(k => !MAIN_KEYS.includes(k));
+  let rows = "";
+  for (const k of MAIN_KEYS) {
+    if (seeker[k] === undefined) continue;
+    rows += `<tr><th>${k}</th><td>${escHtml(seeker[k])}</td></tr>`;
+  }
+  for (const k of otherKeys) {
+    const v = seeker[k];
+    if (v === null || v === undefined) continue;
+    const cell = (typeof v === "string" || typeof v === "number")
+      ? escHtml(String(v))
+      : `<details><summary>展開</summary><pre>${escHtml(JSON.stringify(v, null, 2))}</pre></details>`;
+    rows += `<tr><th>${escHtml(k)}</th><td>${cell}</td></tr>`;
+  }
+  document.getElementById("profileTable").innerHTML = rows || "<tr><td>データなし</td></tr>";
+}
+
+function sendMsg() {
+  if (!myId) { alert("マイページでIDを設定してください"); return; }
+  location.href = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(seekerId)}`;
+}
+
+async function doApprove() {
+  if (!myId) { alert("マイページでIDを設定してください"); return; }
+  const notice = document.getElementById("notice");
+  const res = await fetch("/approve", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_id: myId, to_id: seekerId }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    notice.className = "err"; notice.textContent = "エラー: " + JSON.stringify(data); return;
+  }
+  if (data.established) {
+    notice.className = "ok"; notice.textContent = `接続成立！ vessel: ${data.vessel_id}`;
+  } else {
+    notice.className = ""; notice.textContent = `承認を記録しました（vessel: ${data.vessel_id}）。相手の承認待ちです。`;
+  }
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+init();
+</script>
+</body>
+</html>

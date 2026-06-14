@@ -154,6 +154,21 @@ def get_ledger():
     return jsonify(load_all_vessels(db_path=DB))
 
 
+@app.get("/seekers/<seeker_id>")
+def get_seeker(seeker_id):
+    """単一 seeker を返す。マイページ用。"""
+    rows = load_all_seekers(db_path=DB)
+    target = next((r for r in rows if r["id"] == seeker_id), None)
+    if target is None:
+        abort(404, f"seeker_id={seeker_id!r} が見つかりません")
+    return jsonify(target)
+
+
+@app.get("/mypage")
+def mypage():
+    return render_template("mypage.html")
+
+
 def _to_profile(seeker: dict) -> str:
     return "。".join(seeker[k] for k in ("意志", "求めている", "能力") if seeker.get(k))
 

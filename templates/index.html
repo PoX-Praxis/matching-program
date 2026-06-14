@@ -32,7 +32,8 @@
   <select id="myId" onchange="saveMyId()">
     <option value="">-- 選択してください --</option>
   </select>
-  <span style="color:#888;margin-left:6px">（承認ボタンを使う前に選択してください）</span>
+  <button onclick="openMyPage()" style="margin-left:10px;padding:4px 14px;font-size:13px">マイページ →</button>
+  <span style="color:#888;margin-left:10px;font-size:12px">（承認ボタンを使う前に選択してください）</span>
 </div>
 
 <!-- ── 1. 投稿 ── -->
@@ -80,6 +81,11 @@ function saveMyId() {
 }
 function getMyId() {
   return document.getElementById("myId").value;
+}
+function openMyPage() {
+  const id = getMyId();
+  if (!id) { alert("先に「あなたの seeker ID」を選択してください"); return; }
+  window.open(`/mypage?id=${encodeURIComponent(id)}`, "_blank");
 }
 
 /* ── JSON 書式清掃: // と /* * / コメント・末尾カンマを除去（文字列内は保護） ── */

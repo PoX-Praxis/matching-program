@@ -1,0 +1,27 @@
+# --- 秘密情報（絶対にコミットしない / README 7章・仕様 7.2節） ---
+.env
+.env.*
+*.key
+secrets.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- 生成物（実行時に作られるもの） ---
+# github_transition_builder.py の出力（本番でテーブルを実データ化したもの）
+transition_table.json
+
+# --- OS / エディタ ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

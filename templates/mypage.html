@@ -12,7 +12,6 @@
   table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
   th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; }
   th { background: #f5f5f5; width: 160px; white-space: nowrap; }
-  pre { margin: 0; white-space: pre-wrap; font-size: 11px; background: #f9f9f9; padding: 6px; border-radius: 3px; }
   details > summary { cursor: pointer; color: #555; font-size: 12px; }
   button.sm { padding: 3px 12px; font-size: 12px; cursor: pointer; }
   .badge-ok     { background: #d4edda; color: #155724; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
@@ -21,8 +20,32 @@
   #notice { margin-top: 6px; font-size: 13px; }
   .ok  { color: #1a8a1a; font-weight: bold; }
   .err { color: #c00; }
+
+  /* profile_view blocks */
+  .headline-text { font-size: 1.05rem; line-height: 1.7; color: #333; margin: 12px 0 8px; }
+  .phase-badge { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; }
   .phase-tag { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  .phase-unconfirmed { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 6px; font-size: 11px; }
+  .triangle-block { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .tri-item { background: #f7f9fc; border-radius: 6px; padding: 14px 16px; }
+  .tri-label { font-size: 11px; font-weight: bold; color: #1a56bb; display: block; margin-bottom: 6px; }
+  .tri-text { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
+  details.detail-block { margin: 14px 0; border: 1px solid #e0e0e0; border-radius: 6px; }
+  details.detail-block > summary { padding: 10px 14px; font-size: 13px; color: #555; user-select: none; }
+  details.detail-block > summary:hover { background: #f7f7f7; border-radius: 6px; }
+  .detail-inner { padding: 12px 16px 16px; }
+  .keys-label, .traj-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; }
+  .key-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .key-tag { background: #f0f4ff; border: 1px solid #c5d3f0; color: #1a3a8c; border-radius: 20px; padding: 3px 12px; font-size: 12px; }
+  .traj-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+  .traj-from { background: #f5f5f5; border-radius: 4px; padding: 4px 10px; color: #444; flex: 1; }
+  .traj-arrow { color: #aaa; flex-shrink: 0; padding-top: 4px; }
+  .traj-to { background: #eaf4ea; border-radius: 4px; padding: 4px 10px; color: #1a5c1a; flex: 1; }
+
   #loading { color: #888; margin-top: 40px; }
+  @media (max-width: 600px) {
+    .triangle-block { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -32,11 +55,48 @@
 <div id="main" style="display:none">
 
   <h1 id="pageTitle"></h1>
-  <span id="phaseTag" class="phase-tag"></span>
 
-  <!-- プロフィール -->
+  <!-- プロフィール (profile_view) -->
   <h2>プロフィール</h2>
-  <table id="profileTable"></table>
+
+  <!-- Block 1: headline + phase -->
+  <p class="headline-text" id="headline" style="display:none"></p>
+  <div class="phase-badge">
+    <span id="phaseTag" class="phase-tag" style="display:none"></span>
+    <span id="phaseUnconfirmed" class="phase-unconfirmed" style="display:none">AI推定・未確定</span>
+  </div>
+
+  <!-- Block 2: triangle -->
+  <div class="triangle-block">
+    <div class="tri-item">
+      <span class="tri-label">意志</span>
+      <p class="tri-text" id="pursuing"></p>
+    </div>
+    <div class="tri-item">
+      <span class="tri-label">求めている</span>
+      <p class="tri-text" id="needs"></p>
+    </div>
+    <div class="tri-item">
+      <span class="tri-label">能力</span>
+      <p class="tri-text" id="offering"></p>
+    </div>
+  </div>
+
+  <!-- Block 3: keys + trajectory (accordion) -->
+  <details class="detail-block" id="detailBlock" style="display:none">
+    <summary>注目ポイント・軌跡を見る</summary>
+    <div class="detail-inner">
+      <div id="keysSection" style="display:none">
+        <div class="keys-label">注目ポイント</div>
+        <div class="key-tags" id="keyTags"></div>
+      </div>
+      <div id="trajSection" style="display:none">
+        <div class="traj-label">現在の軌跡</div>
+        <div id="trajItems"></div>
+      </div>
+    </div>
+  </details>
+
   <div style="margin-top:12px">
     <a id="editLink" href="#" style="display:inline-block;padding:6px 18px;background:#f0f0f0;border:1px solid #ccc;color:#333;border-radius:4px;text-decoration:none;font-size:13px">プロフィールを編集する</a>
   </div>
@@ -54,9 +114,6 @@
 </div>
 
 <script>
-const MAIN_KEYS = ["意志", "求めている", "能力", "フェーズ"];
-
-/* URL から id を取る */
 const params = new URLSearchParams(location.search);
 const myId = params.get("id");
 if (!myId) {
@@ -67,73 +124,73 @@ if (!myId) {
 async function init() {
   if (!myId) return;
 
-  const [seekerRes, ledgerRes] = await Promise.all([
-    fetch(`/seekers/${encodeURIComponent(myId)}`),
+  const [profileRes, ledgerRes] = await Promise.all([
+    fetch(`/api/profile/${encodeURIComponent(myId)}`),
     fetch("/ledger"),
   ]);
-  if (!seekerRes.ok) {
+
+  if (!profileRes.ok) {
     document.getElementById("loading").innerHTML =
-      `<span style="color:#c00">seeker "${myId}" が見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
+      `<span style="color:#c00">プロフィール "${myId}" が見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
     return;
   }
 
-  const { seeker } = await seekerRes.json();
-  const vessels   = await ledgerRes.json();
+  const pv      = await profileRes.json();
+  const vessels = await ledgerRes.json();
 
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display    = "block";
 
-  /* タイトル */
   document.getElementById("pageTitle").textContent = myId;
-  const phase = seeker["フェーズ"] || seeker["phase"];
-  if (phase) document.getElementById("phaseTag").textContent = phase;
-
-  /* プロフィール表 */
-  renderProfile(seeker);
   document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
 
-  /* 接続状況 */
+  renderProfileView(pv);
   renderConnections(vessels, myId);
 }
 
-function renderValue(v, depth) {
-  depth = depth || 0;
-  if (v === null || v === undefined) return "<span style='color:#aaa'>—</span>";
-  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-    return `<span style="line-height:1.6">${escHtml(String(v))}</span>`;
+function renderProfileView(pv) {
+  /* Block 1: headline + phase */
+  if (pv.headline) {
+    const h = document.getElementById("headline");
+    h.textContent = pv.headline;
+    h.style.display = "block";
   }
-  if (Array.isArray(v)) {
-    if (!v.length) return "<span style='color:#aaa'>（空）</span>";
-    return `<ul style="margin:2px 0;padding-left:18px">${v.map(item => `<li>${renderValue(item, depth + 1)}</li>`).join("")}</ul>`;
+  const badge = pv.phase_badge || {};
+  if (badge.value) {
+    const t = document.getElementById("phaseTag");
+    t.textContent = badge.value;
+    t.style.display = "inline";
   }
-  if (typeof v === "object") {
-    const entries = Object.entries(v);
-    if (!entries.length) return "<span style='color:#aaa'>（空）</span>";
-    const rows = entries.map(([k, val]) =>
-      `<tr>
-        <td style="color:#666;padding:3px 10px 3px ${depth ? 0 : 4}px;white-space:nowrap;vertical-align:top;font-size:12px;border:none">${escHtml(k)}</td>
-        <td style="padding:3px 4px;vertical-align:top;border:none">${renderValue(val, depth + 1)}</td>
-      </tr>`
+  if (badge.unconfirmed) {
+    document.getElementById("phaseUnconfirmed").style.display = "inline";
+  }
+
+  /* Block 2: triangle */
+  document.getElementById("pursuing").textContent = pv.pursuing || "—";
+  document.getElementById("needs").textContent    = pv.needs    || "—";
+  document.getElementById("offering").textContent = pv.offering  || "—";
+
+  /* Block 3: keys + trajectory */
+  let hasDetail = false;
+  if (pv.keys && pv.keys.length) {
+    hasDetail = true;
+    document.getElementById("keysSection").style.display = "block";
+    document.getElementById("keyTags").innerHTML = pv.keys.map(k =>
+      `<span class="key-tag">${escHtml(k)}</span>`
     ).join("");
-    return `<table style="border-collapse:collapse;width:100%;font-size:13px">${rows}</table>`;
   }
-  return escHtml(String(v));
-}
-
-function renderProfile(seeker) {
-  const otherKeys = Object.keys(seeker).filter(k => !MAIN_KEYS.includes(k));
-  let rows = "";
-
-  for (const k of MAIN_KEYS) {
-    if (seeker[k] === undefined) continue;
-    rows += `<tr><th>${k}</th><td>${renderValue(seeker[k])}</td></tr>`;
+  if (pv.trajectory && pv.trajectory.length) {
+    hasDetail = true;
+    document.getElementById("trajSection").style.display = "block";
+    document.getElementById("trajItems").innerHTML = pv.trajectory.map(t =>
+      `<div class="traj-item">
+        <span class="traj-from">${escHtml(t.from)}</span>
+        <span class="traj-arrow">→</span>
+        <span class="traj-to">${escHtml(t.to)}</span>
+      </div>`
+    ).join("");
   }
-  for (const k of otherKeys) {
-    const v = seeker[k];
-    if (v === null || v === undefined) continue;
-    rows += `<tr><th>${escHtml(k)}</th><td>${renderValue(v)}</td></tr>`;
-  }
-  document.getElementById("profileTable").innerHTML = rows || "<tr><td>データなし</td></tr>";
+  if (hasDetail) document.getElementById("detailBlock").style.display = "block";
 }
 
 function renderConnections(vessels, myId) {

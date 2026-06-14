@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for
 from werkzeug.utils import secure_filename
-from db import save_seeker, load_all_seekers
+from db import save_seeker, load_all_seekers, save_profile, get_profile_view, get_seeker, list_candidate_pool
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
 from messages import send_message, get_conversation, get_inbox_summary, get_unread_count
@@ -49,12 +49,12 @@ def index():
 
 @app.post("/seekers")
 def post_seeker():
-    """v3 JSON を受け取り DB に保存。id が無ければ自動採番。"""
+    """v3 JSON を受け取り seekers + profiles の両テーブルに保存。id が無ければ自動採番。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         abort(400, "JSON が読めません")
     seeker_id = body.pop("id", None) or f"u_{uuid.uuid4().hex[:8]}"
-    save_seeker(seeker_id, body, db_path=DB)
+    save_profile(seeker_id, body, db_path=DB)   # seeker + profile_view を同時保存
     return jsonify({"id": seeker_id}), 201
 
 
@@ -65,22 +65,22 @@ def get_seekers():
 
 @app.post("/match")
 def post_match():
+    """
+    seeker_id の seeker（非公開）を使ってマッチング。ranking のみ返す。
+    seeker 原文はレスポンスに含まれない。
+    """
     body = request.get_json(force=True, silent=True)
     if body is None:
         abort(400, "JSON が読めません")
 
     seeker_id = body.get("seeker_id")
-    want = body.get("want", "balanced")
+    want      = body.get("want", "balanced")
 
-    rows = load_all_seekers(db_path=DB)
-    target = next((r for r in rows if r["id"] == seeker_id), None)
-    if target is None:
+    target_seeker = get_seeker(seeker_id, db_path=DB)
+    if target_seeker is None:
         abort(404, f"seeker_id={seeker_id!r} が見つかりません")
 
-    candidate_pool = [
-        {"id": r["id"], "profile": _to_profile(r["seeker"])}
-        for r in rows if r["id"] != seeker_id
-    ]
+    candidate_pool = list_candidate_pool(seeker_id, db_path=DB)
     if not candidate_pool:
         return jsonify({"error": "候補が0人です。seekerをもう1人以上登録してください。"}), 400
 
@@ -88,7 +88,7 @@ def post_match():
     judge = _demo_judge if demo_mode else None
 
     try:
-        result = run_matching(target["seeker"], candidate_pool, want=want, judge_fn=judge)
+        result = run_matching(target_seeker, candidate_pool, want=want, judge_fn=judge)
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 503
 
@@ -158,12 +158,21 @@ def get_ledger():
 
 
 @app.get("/seekers/<seeker_id>")
-def get_seeker(seeker_id):
+def route_seeker_by_id(seeker_id):
     rows = load_all_seekers(db_path=DB)
     target = next((r for r in rows if r["id"] == seeker_id), None)
     if target is None:
         abort(404, f"seeker_id={seeker_id!r} が見つかりません")
     return jsonify(target)
+
+
+@app.get("/api/profile/<user_id>")
+def api_profile(user_id):
+    """profile_view のみ返す。seeker は絶対に返さない。"""
+    pv = get_profile_view(user_id, db_path=DB)
+    if pv is None:
+        return jsonify({"error": "プロフィールが見つかりません"}), 404
+    return jsonify(pv)
 
 
 @app.get("/mypage")

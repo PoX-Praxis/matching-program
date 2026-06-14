@@ -22,6 +22,11 @@ transition_table.json
 pox.db
 *.db
 
+# --- Node.js ---
+node_modules/
+package-lock.json
+package.json
+
 # --- OS / エディタ ---
 .DS_Store
 Thumbs.db

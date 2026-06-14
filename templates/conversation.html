@@ -34,9 +34,17 @@
 
 <div id="chatBox"></div>
 
-<div class="input-row">
-  <textarea id="msgInput" placeholder="メッセージを入力..." onkeydown="handleKey(event)"></textarea>
-  <button onclick="sendMsg()">送信</button>
+<div>
+  <div id="attachPreview" style="display:none;margin-bottom:8px;padding:8px;background:#f0f4ff;border-radius:6px;font-size:12px;align-items:center;gap:8px">
+    <span id="attachName" style="flex:1"></span>
+    <button onclick="clearAttach()" style="border:none;background:none;cursor:pointer;color:#c00;font-size:16px">✕</button>
+  </div>
+  <div class="input-row">
+    <label for="fileInput" style="cursor:pointer;padding:8px 12px;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;display:flex;align-items:center;font-size:18px;white-space:nowrap" title="ファイルを添付">📎</label>
+    <input type="file" id="fileInput" style="display:none" accept="image/*,.pdf,.txt,.csv,.zip" onchange="handleFile(event)">
+    <textarea id="msgInput" placeholder="メッセージを入力... (Shift+Enterで改行)" onkeydown="handleKey(event)"></textarea>
+    <button onclick="sendMsg()">送信</button>
+  </div>
 </div>
 <div id="notice"></div>
 
@@ -66,7 +74,8 @@ async function loadConversation() {
     const time = (m.created_at || "").slice(11, 16);
     return `<div style="display:flex;justify-content:${isMine ? "flex-end" : "flex-start"}">
       <div class="bubble ${isMine ? "mine" : "theirs"}">
-        ${escHtml(m.body)}
+        ${m.body ? escHtml(m.body) : ""}
+        ${renderAttachment(m.attachment_url)}
         <div class="meta">${isMine ? "あなた" : escHtml(m.from_id)} ${time}</div>
       </div>
     </div>`;
@@ -84,13 +93,16 @@ function handleKey(e) {
 async function sendMsg() {
   const input = document.getElementById("msgInput");
   const body = input.value.trim();
-  if (!body) return;
+  if (!body && !pendingAttachUrl) return;
   if (!myId || !otherId) return;
 
   input.value = "";
+  const payload = { from_id: myId, to_id: otherId, body: body || "" };
+  if (pendingAttachUrl) { payload.attachment_url = pendingAttachUrl; clearAttach(); }
+
   const res = await fetch("/messages", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from_id: myId, to_id: otherId, body }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const data = await res.json();
@@ -100,6 +112,39 @@ async function sendMsg() {
   await loadConversation();
   const box = document.getElementById("chatBox");
   box.scrollTop = box.scrollHeight;
+}
+
+/* ── 添付ファイル ── */
+let pendingAttachUrl = null;
+
+async function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: fd });
+  if (!res.ok) { alert("アップロード失敗"); return; }
+  const data = await res.json();
+  pendingAttachUrl = data.url;
+  const prev = document.getElementById("attachPreview");
+  prev.style.display = "flex";
+  document.getElementById("attachName").textContent = "📎 " + file.name;
+}
+
+function clearAttach() {
+  pendingAttachUrl = null;
+  document.getElementById("attachPreview").style.display = "none";
+  document.getElementById("fileInput").value = "";
+}
+
+function renderAttachment(url) {
+  if (!url) return "";
+  const ext = url.split(".").pop().toLowerCase();
+  if (["jpg","jpeg","png","gif","webp"].includes(ext)) {
+    return `<img src="${escHtml(url)}" style="max-width:220px;max-height:180px;border-radius:6px;display:block;margin-top:6px">`;
+  }
+  const fname = url.split("/").pop();
+  return `<a href="${escHtml(url)}" download style="display:block;margin-top:6px;font-size:12px;color:#adf">📎 ${escHtml(fname)}</a>`;
 }
 
 function escHtml(s) {

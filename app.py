@@ -16,17 +16,28 @@ import sys, os, uuid
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for
+from werkzeug.utils import secure_filename
 from db import save_seeker, load_all_seekers
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
 from messages import send_message, get_conversation, get_inbox_summary, get_unread_count
 from community import (create_community, get_community, get_all_communities,
                        request_join, approve_member, get_members, is_member,
-                       is_founder, get_pending_requests)
+                       is_founder, get_pending_requests, update_community)
 from messages import get_community_messages
 
 app = Flask(__name__)
 DB = os.environ.get("POX_DB", "pox.db")
+
+# ── 添付ファイルのアップロード設定 ──────────────────────────────
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "static", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp", "pdf", "txt", "csv", "zip"}
+
+
+def _allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 # ── 既存ルート ────────────────────────────────────────────────
@@ -211,10 +222,11 @@ def post_message():
         return jsonify({"error": "JSON が読めません"}), 400
     from_id = body.get("from_id")
     to_id   = body.get("to_id")
-    msg_body = body.get("body", "").strip()
-    if not from_id or not to_id or not msg_body:
-        return jsonify({"error": "from_id, to_id, body が必要です"}), 400
-    msg = send_message(from_id, to_id, msg_body, db_path=DB)
+    msg_body = (body.get("body") or "").strip()
+    attachment_url = body.get("attachment_url")
+    if not from_id or not to_id or (not msg_body and not attachment_url):
+        return jsonify({"error": "from_id, to_id, body か attachment_url が必要です"}), 400
+    msg = send_message(from_id, to_id, msg_body, attachment_url=attachment_url, db_path=DB)
     return jsonify(msg), 201
 
 
@@ -226,6 +238,20 @@ def api_conversation():
         return jsonify({"error": "me と with が必要です"}), 400
     msgs = get_conversation(me, other, db_path=DB)
     return jsonify(msgs)
+
+
+# ── ファイルアップロード API ──────────────────────────────────
+@app.post("/api/upload")
+def api_upload():
+    if "file" not in request.files:
+        return jsonify({"error": "ファイルがありません"}), 400
+    f = request.files["file"]
+    if not f.filename or not _allowed_file(f.filename):
+        return jsonify({"error": "許可されていないファイル形式です"}), 400
+    ext = secure_filename(f.filename).rsplit(".", 1)[1].lower()
+    unique_name = f"{uuid.uuid4().hex[:12]}.{ext}"
+    f.save(os.path.join(UPLOAD_DIR, unique_name))
+    return jsonify({"url": f"/static/uploads/{unique_name}"}), 201
 
 
 # ── インボックス API ──────────────────────────────────────────
@@ -318,12 +344,30 @@ def api_community_message(community_id):
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
-    from_id  = body.get("from_id", "").strip()
-    msg_body = body.get("body", "").strip()
-    if not from_id or not msg_body:
-        return jsonify({"error": "from_id と body が必要です"}), 400
-    msg = send_message(from_id, community_id, msg_body, db_path=DB)
+    from_id  = (body.get("from_id") or "").strip()
+    msg_body = (body.get("body") or "").strip()
+    attachment_url = body.get("attachment_url")
+    if not from_id or (not msg_body and not attachment_url):
+        return jsonify({"error": "from_id と body か attachment_url が必要です"}), 400
+    if not is_member(community_id, from_id, db_path=DB) and not is_founder(community_id, from_id, db_path=DB):
+        return jsonify({"error": "メンバーではありません"}), 403
+    msg = send_message(from_id, community_id, msg_body, attachment_url=attachment_url, db_path=DB)
     return jsonify(msg), 201
+
+
+@app.patch("/api/community/<community_id>")
+def api_community_update(community_id):
+    body = request.get_json(force=True, silent=True)
+    if body is None:
+        return jsonify({"error": "JSON が読めません"}), 400
+    requester_id = body.get("requester_id")
+    name = (body.get("name") or "").strip()
+    if not requester_id or not name:
+        return jsonify({"error": "requester_id と name が必要です"}), 400
+    result = update_community(community_id, name, body.get("description", ""), requester_id, db_path=DB)
+    if result is None:
+        return jsonify({"error": "見つからないか権限がありません"}), 403
+    return jsonify(result)
 
 
 def _to_profile(seeker: dict) -> str:

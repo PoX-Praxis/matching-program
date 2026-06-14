@@ -21,6 +21,9 @@ transition_table.json
 # アプリの SQLite DB（本番は別管理）
 pox.db
 *.db
+# ユーザーがアップロードした添付ファイル（ディレクトリだけ追跡）
+static/uploads/*
+!static/uploads/.gitkeep
 
 # --- Node.js ---
 node_modules/

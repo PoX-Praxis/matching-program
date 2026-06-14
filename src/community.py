@@ -140,3 +140,16 @@ def get_pending_requests(community_id: str, db_path: str = "pox.db") -> list:
             (community_id,),
         ).fetchall()
     return [{"member_id": r[0], "joined_at": r[1]} for r in rows]
+
+
+def update_community(community_id: str, name: str, description: str, requester_id: str, db_path: str = "pox.db") -> dict | None:
+    """Founder only. Returns updated community or None if not found / not authorized."""
+    with _connect(db_path) as con:
+        row = con.execute("SELECT founder FROM communities WHERE id=?", (community_id,)).fetchone()
+        if row is None or row[0] != requester_id:
+            return None
+        con.execute(
+            "UPDATE communities SET name=?, description=? WHERE id=?",
+            (name.strip(), (description or "").strip(), community_id),
+        )
+    return get_community(community_id, db_path)

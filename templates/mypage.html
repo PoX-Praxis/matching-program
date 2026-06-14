@@ -37,6 +37,9 @@
   <!-- プロフィール -->
   <h2>プロフィール</h2>
   <table id="profileTable"></table>
+  <div style="margin-top:12px">
+    <a id="editLink" href="#" style="display:inline-block;padding:6px 18px;background:#f0f0f0;border:1px solid #ccc;color:#333;border-radius:4px;text-decoration:none;font-size:13px">プロフィールを編集する</a>
+  </div>
 
   <!-- 接続状況 -->
   <h2>接続状況</h2>
@@ -87,6 +90,7 @@ async function init() {
 
   /* プロフィール表 */
   renderProfile(seeker);
+  document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
 
   /* 接続状況 */
   renderConnections(vessels, myId);

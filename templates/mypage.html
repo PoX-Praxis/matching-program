@@ -92,21 +92,42 @@ async function init() {
   renderConnections(vessels, myId);
 }
 
+function renderValue(v, depth) {
+  depth = depth || 0;
+  if (v === null || v === undefined) return "<span style='color:#aaa'>—</span>";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+    return `<span style="line-height:1.6">${escHtml(String(v))}</span>`;
+  }
+  if (Array.isArray(v)) {
+    if (!v.length) return "<span style='color:#aaa'>（空）</span>";
+    return `<ul style="margin:2px 0;padding-left:18px">${v.map(item => `<li>${renderValue(item, depth + 1)}</li>`).join("")}</ul>`;
+  }
+  if (typeof v === "object") {
+    const entries = Object.entries(v);
+    if (!entries.length) return "<span style='color:#aaa'>（空）</span>";
+    const rows = entries.map(([k, val]) =>
+      `<tr>
+        <td style="color:#666;padding:3px 10px 3px ${depth ? 0 : 4}px;white-space:nowrap;vertical-align:top;font-size:12px;border:none">${escHtml(k)}</td>
+        <td style="padding:3px 4px;vertical-align:top;border:none">${renderValue(val, depth + 1)}</td>
+      </tr>`
+    ).join("");
+    return `<table style="border-collapse:collapse;width:100%;font-size:13px">${rows}</table>`;
+  }
+  return escHtml(String(v));
+}
+
 function renderProfile(seeker) {
   const otherKeys = Object.keys(seeker).filter(k => !MAIN_KEYS.includes(k));
   let rows = "";
 
   for (const k of MAIN_KEYS) {
     if (seeker[k] === undefined) continue;
-    rows += `<tr><th>${k}</th><td>${escHtml(seeker[k])}</td></tr>`;
+    rows += `<tr><th>${k}</th><td>${renderValue(seeker[k])}</td></tr>`;
   }
   for (const k of otherKeys) {
     const v = seeker[k];
     if (v === null || v === undefined) continue;
-    const cell = (typeof v === "string" || typeof v === "number")
-      ? escHtml(String(v))
-      : `<details><summary>展開</summary><pre>${escHtml(JSON.stringify(v, null, 2))}</pre></details>`;
-    rows += `<tr><th>${escHtml(k)}</th><td>${cell}</td></tr>`;
+    rows += `<tr><th>${escHtml(k)}</th><td>${renderValue(v)}</td></tr>`;
   }
   document.getElementById("profileTable").innerHTML = rows || "<tr><td>データなし</td></tr>";
 }

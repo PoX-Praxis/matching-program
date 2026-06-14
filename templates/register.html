@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>プロフィール登録 — PoX</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 36px; }
+  p  { line-height: 1.7; font-size: 14px; }
+  .why-box {
+    background: #f0f4ff; border-left: 4px solid #1a3a5c;
+    padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 20px 0;
+    font-size: 14px; line-height: 1.7;
+  }
+  .prompt-wrap {
+    position: relative; background: #f8f9fa; border: 1px solid #ddd;
+    border-radius: 6px; padding: 16px; margin-top: 10px;
+  }
+  .prompt-wrap pre {
+    margin: 0; font-size: 12px; white-space: pre-wrap; line-height: 1.6;
+    font-family: 'Courier New', monospace; color: #333;
+  }
+  .copy-btn {
+    position: absolute; top: 10px; right: 10px;
+    padding: 4px 14px; font-size: 12px; cursor: pointer;
+    background: #1a3a5c; color: white; border: none; border-radius: 4px;
+  }
+  .copy-btn:hover { background: #2a5a8c; }
+  textarea {
+    width: 100%; height: 220px; font-family: monospace; font-size: 12px;
+    box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; padding: 8px;
+  }
+  .submit-btn {
+    padding: 8px 28px; font-size: 14px; cursor: pointer;
+    background: #1a3a5c; color: white; border: none; border-radius: 4px; margin-top: 8px;
+  }
+  .submit-btn:hover { background: #2a5a8c; }
+  #msg { min-height: 1.4em; margin-top: 8px; font-size: 13px; }
+  .ok  { color: #1a8a1a; font-weight: bold; }
+  .err { color: #c00; }
+  .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #1a3a5c; color: white; border-radius: 50%;
+    width: 22px; height: 22px; font-size: 12px; font-weight: bold;
+    margin-right: 6px; flex-shrink: 0;
+  }
+  .step { display: flex; align-items: baseline; margin: 8px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+{% include "_nav.html" %}
+
+<h1>プロフィール登録</h1>
+
+<div class="why-box">
+  <strong>なぜ AI で自己構造化するのか？</strong><br>
+  PoX のマッチングは「意志・求めている・能力・フェーズ」の4軸で行われます。
+  この4軸を自分の言葉で正確に言語化するのは難しいため、まずあなたの普段使っている AI（ChatGPT・Claude など）に
+  インタビューしてもらい、構造化された JSON を生成してもらいます。
+  その JSON をそのまま下の欄に貼り付けるだけで登録完了です。<br>
+  <a href="/about" style="font-size:13px;color:#1a3a5c">PoX の仕組みをもっと知る →</a>
+</div>
+
+<h2>STEP 1 ── AI に自分を構造化してもらう</h2>
+
+<p>下のプロンプトをコピーして、ChatGPT・Claude・Gemini などに貼り付けてください。<br>
+AI があなたにインタビューして JSON を生成します。</p>
+
+<div class="prompt-wrap">
+  <button class="copy-btn" onclick="copyPrompt()">コピー</button>
+  <pre id="promptText">あなたは PoX（Proof of Connection）というマッチングプラットフォームの
+プロフィール構造化アシスタントです。
+
+私にインタビューして、以下の4軸でプロフィールを作成してください：
+
+・意志　── なぜ動くのか、何を実現したいのか（1〜3文）
+・求めている ── どんな人・スキル・関係性が欲しいか
+・能力　── 今あなたが提供できるもの・強み
+・フェーズ ── 現在のステージ（例: idea / mvp / growth / 事業化前 など）
+
+インタビュー後、以下の JSON 形式で出力してください
+（コメントなし、そのままコピーできる形式で）：
+
+{
+  "id": "英数字のハンドルネーム（例: alice_2025）",
+  "意志": "...",
+  "求めている": "...",
+  "能力": "...",
+  "フェーズ": "..."
+}</pre>
+</div>
+<div id="copyMsg" style="font-size:12px;color:#1a8a1a;height:1.2em;margin-top:4px"></div>
+
+<h2>STEP 2 ── 生成された JSON を貼り付けて登録</h2>
+
+<p>AI が出力した JSON をそのまま貼り付けてください。<code>// コメント</code> が含まれていても自動で除去します。</p>
+
+<textarea id="seekerJson" placeholder='{
+  "id": "alice_2025",
+  "意志": "止まっているものを接続で動かし直したい",
+  "求めている": "最初に試してくれる実証パートナー",
+  "能力": "抽象概念を運用可能な構造へ落とす設計",
+  "フェーズ": "mvp"
+}'></textarea>
+<br>
+<button class="submit-btn" onclick="register()">登録する</button>
+<div id="msg"></div>
+
+<script>
+function copyPrompt() {
+  const text = document.getElementById("promptText").textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const m = document.getElementById("copyMsg");
+    m.textContent = "✅ コピーしました";
+    setTimeout(() => m.textContent = "", 2500);
+  });
+}
+
+function stripJsonComments(text) {
+  let out = "", inStr = false, i = 0;
+  while (i < text.length) {
+    const c = text[i], n = text[i + 1];
+    if (inStr) {
+      out += c;
+      if (c === "\\") { out += (n ?? ""); i += 2; continue; }
+      if (c === '"') inStr = false;
+      i++; continue;
+    }
+    if (c === '"') { inStr = true; out += c; i++; continue; }
+    if (c === "/" && n === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (c === "/" && n === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++; i += 2; continue; }
+    out += c; i++;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
+async function register() {
+  const el = document.getElementById("msg");
+  el.className = ""; el.textContent = "";
+  let body;
+  try { body = JSON.parse(stripJsonComments(document.getElementById("seekerJson").value)); }
+  catch (e) { el.className = "err"; el.textContent = "JSON パース失敗: " + e.message; return; }
+
+  const res = await fetch("/seekers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (res.ok) {
+    localStorage.setItem("pox_my_id", data.id);
+    el.className = "ok";
+    el.innerHTML = `✅ 登録完了！ ID: <strong>${data.id}</strong>
+      &nbsp; <a href="/mypage?id=${encodeURIComponent(data.id)}">マイページを開く →</a>
+      &nbsp; <a href="/">マッチングへ →</a>`;
+  } else {
+    el.className = "err"; el.textContent = "エラー: " + JSON.stringify(data);
+  }
+}
+</script>
+</body>
+</html>

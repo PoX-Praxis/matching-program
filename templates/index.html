@@ -37,18 +37,12 @@
   <span style="color:#888;margin-left:10px;font-size:12px">（承認ボタンを使う前に選択してください）</span>
 </div>
 
-<!-- ── 1. 投稿 ── -->
-<h2>1. seeker を登録</h2>
-<p style="margin:4px 0 6px;font-size:13px;">v3 が出力した JSON をそのまま貼り付けて送信（<code>id</code> は省略可）</p>
-<textarea id="seekerJson" placeholder='{
-  "id": "user_alice",
-  "意志": "止まっているものを接続で動かし直したい",
-  "求めている": "最初に試してくれる実証パートナー",
-  "能力": "抽象概念を運用可能な構造へ落とす設計",
-  "フェーズ": "mvp"
-}'></textarea><br>
-<button onclick="postSeeker()">登録</button>
-<div id="postMsg"></div>
+<!-- ── 1. 登録 ── -->
+<h2>1. プロフィール登録</h2>
+<p style="margin:4px 0 10px;font-size:14px;">
+  はじめての方は AI にインタビューしてもらい、プロフィールを構造化して登録できます。
+</p>
+<a href="/register" style="display:inline-block;padding:8px 22px;background:#1a3a5c;color:white;border-radius:4px;text-decoration:none;font-size:14px">プロフィールを登録する →</a>
 
 <!-- ── 2. 一覧 ── -->
 <h2>2. 登録済み seeker 一覧</h2>

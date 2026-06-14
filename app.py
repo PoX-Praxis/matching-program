@@ -167,6 +167,11 @@ def about():
     return render_template("about.html")
 
 
+@app.get("/register")
+def register():
+    return render_template("register.html")
+
+
 @app.get("/profile/<seeker_id>")
 def profile(seeker_id):
     return render_template("profile.html")

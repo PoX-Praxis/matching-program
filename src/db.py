@@ -3,12 +3,13 @@
 PoX DB層 — seeker（非公開原本）と profile_view（公開表示）の二層保存。
 
 seekers テーブル : 既存互換。load_all_seekers / save_seeker はそのまま残す。
-profiles テーブル: save_profile で両カラムを同一トランザクションで書く。
+profiles テーブル: save_profile で両カラムを同一トランザクションで書く（UPSERT）。
                    閲覧系は get_profile_view のみ使う（seeker は外に出ない）。
+                   view_overrides は表示専用設定（§5）。閲覧時に profile_view へ重ねる。
 """
 import json, sqlite3
 from datetime import datetime, timezone
-from profile_view import build_profile_view
+from profile_view import build_profile_view, apply_overrides
 
 
 def _now() -> str:
@@ -23,15 +24,27 @@ def _connect(db_path: str) -> sqlite3.Connection:
     )
     con.execute("""
         CREATE TABLE IF NOT EXISTS profiles (
-            user_id      TEXT PRIMARY KEY,
-            seeker       TEXT NOT NULL,
-            profile_view TEXT NOT NULL,
-            visibility   TEXT NOT NULL DEFAULT 'public',
-            updated_at   TEXT NOT NULL
+            user_id        TEXT PRIMARY KEY,
+            seeker         TEXT NOT NULL,
+            profile_view   TEXT NOT NULL,
+            visibility     TEXT NOT NULL DEFAULT 'public',
+            view_overrides TEXT NOT NULL DEFAULT '{}',
+            created_at     TEXT,
+            updated_at     TEXT NOT NULL
         )
     """)
+    _migrate(con)
     con.commit()
     return con
+
+
+def _migrate(con: sqlite3.Connection) -> None:
+    """既存DBに不足カラムを足す（CREATE TABLE IF NOT EXISTS では追加されないため）。"""
+    cols = {row[1] for row in con.execute("PRAGMA table_info(profiles)").fetchall()}
+    if "view_overrides" not in cols:
+        con.execute("ALTER TABLE profiles ADD COLUMN view_overrides TEXT NOT NULL DEFAULT '{}'")
+    if "created_at" not in cols:
+        con.execute("ALTER TABLE profiles ADD COLUMN created_at TEXT")
 
 
 # ── 既存 API（後方互換・マッチング内部用） ─────────────────────
@@ -52,13 +65,14 @@ def load_all_seekers(db_path: str = "pox.db") -> list[dict]:
     return [{"id": row[0], "seeker": json.loads(row[1])} for row in rows]
 
 
-# ── 二層保存（メイン保存口）────────────────────────────────────
+# ── 二層保存（メイン保存口・UPSERT §4）─────────────────────────
 
 def save_profile(user_id: str, seeker: dict, db_path: str = "pox.db") -> None:
     """
-    seeker を保存し、同一トランザクションで profile_view を必ず再生成する。
-    seekers テーブルも同時更新（後方互換を保つ）。
-    この関数が唯一の保存入口。
+    seeker を保存し、同一トランザクションで profile_view を必ず再生成する（UPSERT）。
+    既存 user_id は上書き（新アカウントを増やさない §4）。
+    created_at は新規時のみ・view_overrides は更新時に保持（表示の手直しが消えない §5.1）。
+    seekers テーブルも同時更新（後方互換）。この関数が唯一の seeker 保存入口。
     """
     pv  = build_profile_view(seeker)
     now = _now()
@@ -70,10 +84,16 @@ def save_profile(user_id: str, seeker: dict, db_path: str = "pox.db") -> None:
             (user_id, seeker_json),
         )
         con.execute(
-            "INSERT OR REPLACE INTO profiles "
-            "(user_id, seeker, profile_view, visibility, updated_at) "
-            "VALUES (?, ?, ?, 'public', ?)",
-            (user_id, seeker_json, pv_json, now),
+            """
+            INSERT INTO profiles
+                (user_id, seeker, profile_view, visibility, view_overrides, created_at, updated_at)
+            VALUES (?, ?, ?, 'public', '{}', ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                seeker       = excluded.seeker,
+                profile_view = excluded.profile_view,
+                updated_at   = excluded.updated_at
+            """,
+            (user_id, seeker_json, pv_json, now, now),
         )
 
 
@@ -81,16 +101,17 @@ def save_profile(user_id: str, seeker: dict, db_path: str = "pox.db") -> None:
 
 def get_profile_view(user_id: str, db_path: str = "pox.db") -> dict | None:
     """
-    profile_view のみ返す。閲覧API・マイページ専用。seeker は絶対に返さない。
-    profiles テーブルに無い場合は seekers テーブルから自動生成（後方互換）。
+    公開表示用 profile_view を返す（view_overrides を重ねた結果）。seeker は絶対に返さない。
+    profiles に無い場合は seekers から自動生成（後方互換）。
     """
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT profile_view FROM profiles WHERE user_id=?", (user_id,)
+            "SELECT profile_view, view_overrides FROM profiles WHERE user_id=?", (user_id,)
         ).fetchone()
         if row:
-            return json.loads(row[0])
-        # 後方互換フォールバック: seekers テーブルから生成
+            pv = json.loads(row[0])
+            overrides = json.loads(row[1] or "{}")
+            return apply_overrides(pv, overrides)
         seeker_row = con.execute(
             "SELECT seeker_json FROM seekers WHERE id=?", (user_id,)
         ).fetchone()
@@ -99,9 +120,76 @@ def get_profile_view(user_id: str, db_path: str = "pox.db") -> dict | None:
     return None
 
 
+def get_profile_edit_data(user_id: str, db_path: str = "pox.db") -> dict | None:
+    """
+    「見せ方を編集」用。オーバーレイ前の base profile_view と現在の overrides を返す。
+    （所有者の編集用。seeker 原文は返さない。）
+    """
+    with _connect(db_path) as con:
+        row = con.execute(
+            "SELECT profile_view, view_overrides FROM profiles WHERE user_id=?", (user_id,)
+        ).fetchone()
+        if row:
+            return {"base": json.loads(row[0]), "overrides": json.loads(row[1] or "{}")}
+        seeker_row = con.execute(
+            "SELECT seeker_json FROM seekers WHERE id=?", (user_id,)
+        ).fetchone()
+        if seeker_row:
+            return {"base": build_profile_view(json.loads(seeker_row[0])), "overrides": {}}
+    return None
+
+
+def save_view_overrides(user_id: str, overrides: dict, db_path: str = "pox.db") -> bool:
+    """
+    view_overrides のみ更新（表示専用・profile_view 再生成なし §5.1）。
+    profiles 行が無い旧アカウントは seekers から実体化してから設定する。
+    """
+    ov_json = json.dumps(overrides, ensure_ascii=False)
+    now = _now()
+    with _connect(db_path) as con:
+        cur = con.execute(
+            "UPDATE profiles SET view_overrides=?, updated_at=? WHERE user_id=?",
+            (ov_json, now, user_id),
+        )
+        if cur.rowcount:
+            return True
+        # 後方互換: profiles 未作成なら seekers から実体化
+        seeker_row = con.execute(
+            "SELECT seeker_json FROM seekers WHERE id=?", (user_id,)
+        ).fetchone()
+        if seeker_row is None:
+            return False
+        seeker = json.loads(seeker_row[0])
+        pv_json = json.dumps(build_profile_view(seeker), ensure_ascii=False)
+        con.execute(
+            """
+            INSERT INTO profiles
+                (user_id, seeker, profile_view, visibility, view_overrides, created_at, updated_at)
+            VALUES (?, ?, ?, 'public', ?, ?, ?)
+            """,
+            (user_id, seeker_row[0], pv_json, ov_json, now, now),
+        )
+    return True
+
+
+def update_seeker_core(user_id: str, fields: dict, db_path: str = "pox.db") -> bool:
+    """
+    「中身を編集」用。4軸（意志/求めている/能力/フェーズ）のみ更新し supporting_material は保持。
+    save_profile 経由で profile_view を再生成する（§5.1）。
+    """
+    seeker = get_seeker(user_id, db_path=db_path)
+    if seeker is None:
+        return False
+    for k in ("意志", "求めている", "能力", "フェーズ"):
+        if k in fields:
+            seeker[k] = fields[k]
+    save_profile(user_id, seeker, db_path=db_path)
+    return True
+
+
 def get_seeker(user_id: str, db_path: str = "pox.db") -> dict | None:
     """
-    seeker のみ返す。マッチングAPI専用。閲覧系から呼ばない。
+    seeker のみ返す。マッチングAPI・内部更新専用。閲覧系から呼ばない。
     profiles → seekers の順でフォールバック。
     """
     with _connect(db_path) as con:

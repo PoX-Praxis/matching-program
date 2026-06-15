@@ -17,7 +17,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for
 from werkzeug.utils import secure_filename
-from db import save_seeker, load_all_seekers, save_profile, get_profile_view, get_seeker, list_candidate_pool
+from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
+                get_seeker, list_candidate_pool, get_profile_edit_data,
+                save_view_overrides, update_seeker_core)
+from profile_view import parse_registration_text, normalize_to_seeker
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
 from messages import send_message, get_conversation, get_inbox_summary, get_unread_count
@@ -49,13 +52,35 @@ def index():
 
 @app.post("/seekers")
 def post_seeker():
-    """v3 JSON を受け取り seekers + profiles の両テーブルに保存。id が無ければ自動採番。"""
+    """
+    登録の受け口（修正指示書 v3.1 §3・§4）。
+      raw_text があれば strip_code_fence → parse → normalize_to_seeker を通す。
+      なければ body 自体を素JSONとみなして normalize する（後方互換）。
+    user_id を渡されれば上書き（再登録で重複を作らない §4）。新規のみ UUID 採番。
+    """
     body = request.get_json(force=True, silent=True)
-    if body is None:
-        abort(400, "JSON が読めません")
-    seeker_id = body.pop("id", None) or f"u_{uuid.uuid4().hex[:8]}"
-    save_profile(seeker_id, body, db_path=DB)   # seeker + profile_view を同時保存
-    return jsonify({"id": seeker_id}), 201
+    if not isinstance(body, dict):
+        return jsonify({"error": "JSON が読めません"}), 400
+
+    raw_text = body.get("raw_text")
+    user_id  = body.get("user_id")
+
+    if raw_text is not None:
+        try:
+            raw = parse_registration_text(raw_text)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+    else:
+        # 後方互換: すでにパース済みの素JSONが直接来た場合
+        raw = {k: v for k, v in body.items() if k != "user_id"}
+
+    seeker = normalize_to_seeker(raw)
+
+    if not user_id:
+        user_id = f"u_{uuid.uuid4().hex[:8]}"   # UUID由来・連番ではない（不変条件4）
+
+    save_profile(user_id, seeker, db_path=DB)   # seeker + profile_view を同時保存（UPSERT）
+    return jsonify({"id": user_id, "handle": seeker.get("id")}), 201
 
 
 @app.get("/seekers")
@@ -168,11 +193,40 @@ def route_seeker_by_id(seeker_id):
 
 @app.get("/api/profile/<user_id>")
 def api_profile(user_id):
-    """profile_view のみ返す。seeker は絶対に返さない。"""
+    """profile_view（view_overrides 適用済み）のみ返す。seeker は絶対に返さない。"""
     pv = get_profile_view(user_id, db_path=DB)
     if pv is None:
         return jsonify({"error": "プロフィールが見つかりません"}), 404
     return jsonify(pv)
+
+
+@app.get("/api/profile/<user_id>/edit")
+def api_profile_edit(user_id):
+    """「見せ方を編集」用。base profile_view と現在の view_overrides を返す（seeker原文は返さない）。"""
+    data = get_profile_edit_data(user_id, db_path=DB)
+    if data is None:
+        return jsonify({"error": "プロフィールが見つかりません"}), 404
+    return jsonify(data)
+
+
+@app.post("/api/profile/<user_id>/core")
+def api_profile_core(user_id):
+    """「中身を編集」。4軸のみ更新し supporting_material は保持、profile_view を再生成（§5.1）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    fields = {k: body.get(k, "") for k in ("意志", "求めている", "能力", "フェーズ")}
+    if not update_seeker_core(user_id, fields, db_path=DB):
+        return jsonify({"error": "プロフィールが見つかりません"}), 404
+    return jsonify({"ok": True})
+
+
+@app.put("/api/profile/<user_id>/overrides")
+def api_profile_overrides(user_id):
+    """「見せ方を編集」の保存。view_overrides のみ更新（再生成なし §5.1）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    overrides = body.get("overrides", body)
+    if not save_view_overrides(user_id, overrides, db_path=DB):
+        return jsonify({"error": "プロフィールが見つかりません"}), 404
+    return jsonify({"ok": True})
 
 
 @app.get("/mypage")

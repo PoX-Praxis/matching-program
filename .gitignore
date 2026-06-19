@@ -1,0 +1,38 @@
+# --- 秘密情報（絶対にコミットしない / README 7章・仕様 7.2節） ---
+.env
+.env.*
+*.key
+secrets.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- 生成物（実行時に作られるもの） ---
+# github_transition_builder.py の出力（本番でテーブルを実データ化したもの）
+transition_table.json
+# アプリの SQLite DB（本番は別管理）
+pox.db
+*.db
+# ユーザーがアップロードした添付ファイル（ディレクトリだけ追跡）
+static/uploads/*
+!static/uploads/.gitkeep
+
+# --- Node.js ---
+node_modules/
+package-lock.json
+package.json
+
+# --- OS / エディタ ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

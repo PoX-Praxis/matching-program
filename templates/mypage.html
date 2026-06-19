@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>マイページ — PoX</title>
+<style>
+  body { font-family: sans-serif; max-width: 860px; margin: 40px auto; padding: 0 16px; color: #222; }
+  a.back { font-size: 13px; color: #555; text-decoration: none; }
+  a.back:hover { text-decoration: underline; }
+  h1  { font-size: 1.3rem; margin: 12px 0 4px; }
+  h2  { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
+  th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; width: 160px; white-space: nowrap; }
+  details > summary { cursor: pointer; color: #555; font-size: 12px; }
+  button.sm { padding: 3px 12px; font-size: 12px; cursor: pointer; }
+  .badge-ok     { background: #d4edda; color: #155724; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  .badge-wait   { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  .badge-action { background: #f8d7da; color: #721c24; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  #notice { margin-top: 6px; font-size: 13px; }
+  .ok  { color: #1a8a1a; font-weight: bold; }
+  .err { color: #c00; }
+
+  /* profile_view blocks */
+  .headline-text { font-size: 1.05rem; line-height: 1.7; color: #333; margin: 12px 0 8px; }
+  .phase-badge { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; }
+  .phase-tag { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  .phase-unconfirmed { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 6px; font-size: 11px; }
+  .triangle-block { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .tri-item { background: #f7f9fc; border-radius: 6px; padding: 14px 16px; }
+  .tri-label { font-size: 11px; font-weight: bold; color: #1a56bb; display: block; margin-bottom: 6px; }
+  .tri-text { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
+  details.detail-block { margin: 14px 0; border: 1px solid #e0e0e0; border-radius: 6px; }
+  details.detail-block > summary { padding: 10px 14px; font-size: 13px; color: #555; user-select: none; }
+  details.detail-block > summary:hover { background: #f7f7f7; border-radius: 6px; }
+  .detail-inner { padding: 12px 16px 16px; }
+  .keys-label, .traj-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; }
+  .key-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .key-tag { background: #f0f4ff; border: 1px solid #c5d3f0; color: #1a3a8c; border-radius: 20px; padding: 3px 12px; font-size: 12px; }
+  .traj-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+  .traj-from { background: #f5f5f5; border-radius: 4px; padding: 4px 10px; color: #444; flex: 1; }
+  .traj-arrow { color: #aaa; flex-shrink: 0; padding-top: 4px; }
+  .traj-to { background: #eaf4ea; border-radius: 4px; padding: 4px 10px; color: #1a5c1a; flex: 1; }
+
+  #loading { color: #888; margin-top: 40px; }
+  @media (max-width: 600px) {
+    .triangle-block { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+{% include "_nav.html" %}
+<a href="/" class="back">← トップに戻る</a>
+<div id="loading">読み込み中...</div>
+<div id="main" style="display:none">
+
+  <h1 id="pageTitle"></h1>
+
+  <!-- プロフィール (profile_view) -->
+  <h2>プロフィール</h2>
+
+  <!-- Block 1: headline + phase -->
+  <p class="headline-text" id="headline" style="display:none"></p>
+  <div class="phase-badge">
+    <span id="phaseTag" class="phase-tag" style="display:none"></span>
+    <span id="phaseUnconfirmed" class="phase-unconfirmed" style="display:none">AI推定・未確定</span>
+  </div>
+
+  <!-- Block 2: triangle -->
+  <div class="triangle-block">
+    <div class="tri-item">
+      <span class="tri-label">意志</span>
+      <p class="tri-text" id="pursuing"></p>
+    </div>
+    <div class="tri-item">
+      <span class="tri-label">求めている</span>
+      <p class="tri-text" id="needs"></p>
+    </div>
+    <div class="tri-item">
+      <span class="tri-label">能力</span>
+      <p class="tri-text" id="offering"></p>
+    </div>
+  </div>
+
+  <!-- Block 3: keys + trajectory (accordion) -->
+  <details class="detail-block" id="detailBlock" style="display:none">
+    <summary>注目ポイント・軌跡を見る</summary>
+    <div class="detail-inner">
+      <div id="keysSection" style="display:none">
+        <div class="keys-label">注目ポイント</div>
+        <div class="key-tags" id="keyTags"></div>
+      </div>
+      <div id="trajSection" style="display:none">
+        <div class="traj-label">現在の軌跡</div>
+        <div id="trajItems"></div>
+      </div>
+    </div>
+  </details>
+
+  <div style="margin-top:12px">
+    <a id="editLink" href="#" style="display:inline-block;padding:6px 18px;background:#f0f0f0;border:1px solid #ccc;color:#333;border-radius:4px;text-decoration:none;font-size:13px">プロフィールを編集する</a>
+  </div>
+
+  <!-- 接続状況 -->
+  <h2>接続状況</h2>
+  <div id="notice"></div>
+  <table>
+    <thead>
+      <tr><th>vessel</th><th>相手</th><th>状態</th><th>アクション</th></tr>
+    </thead>
+    <tbody id="connRows"><tr><td colspan="4">まだ接続記録はありません</td></tr></tbody>
+  </table>
+
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const myId = params.get("id");
+if (!myId) {
+  document.getElementById("loading").innerHTML =
+    '<span style="color:#c00">URL に ?id= が指定されていません。<a href="/">トップ</a>から「マイページ」を開いてください。</span>';
+}
+
+async function init() {
+  if (!myId) return;
+
+  const [profileRes, ledgerRes] = await Promise.all([
+    fetch(`/api/profile/${encodeURIComponent(myId)}`),
+    fetch("/ledger"),
+  ]);
+
+  if (!profileRes.ok) {
+    document.getElementById("loading").innerHTML =
+      `<span style="color:#c00">プロフィール "${myId}" が見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
+    return;
+  }
+
+  const pv      = await profileRes.json();
+  const vessels = await ledgerRes.json();
+
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("main").style.display    = "block";
+
+  document.getElementById("pageTitle").textContent = myId;
+  document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
+
+  renderProfileView(pv);
+  renderConnections(vessels, myId);
+}
+
+function renderProfileView(pv) {
+  /* Block 1: headline + phase */
+  if (pv.headline) {
+    const h = document.getElementById("headline");
+    h.textContent = pv.headline;
+    h.style.display = "block";
+  }
+  const badge = pv.phase_badge || {};
+  if (badge.value) {
+    const t = document.getElementById("phaseTag");
+    t.textContent = badge.value;
+    t.style.display = "inline";
+  }
+  if (badge.unconfirmed) {
+    document.getElementById("phaseUnconfirmed").style.display = "inline";
+  }
+
+  /* Block 2: triangle */
+  document.getElementById("pursuing").textContent = pv.pursuing || "—";
+  document.getElementById("needs").textContent    = pv.needs    || "—";
+  document.getElementById("offering").textContent = pv.offering  || "—";
+
+  /* Block 3: keys + trajectory */
+  let hasDetail = false;
+  if (pv.keys && pv.keys.length) {
+    hasDetail = true;
+    document.getElementById("keysSection").style.display = "block";
+    document.getElementById("keyTags").innerHTML = pv.keys.map(k =>
+      `<span class="key-tag">${escHtml(k)}</span>`
+    ).join("");
+  }
+  if (pv.trajectory && pv.trajectory.length) {
+    hasDetail = true;
+    document.getElementById("trajSection").style.display = "block";
+    document.getElementById("trajItems").innerHTML = pv.trajectory.map(t =>
+      `<div class="traj-item">
+        <span class="traj-from">${escHtml(t.from)}</span>
+        <span class="traj-arrow">→</span>
+        <span class="traj-to">${escHtml(t.to)}</span>
+      </div>`
+    ).join("");
+  }
+  if (hasDetail) document.getElementById("detailBlock").style.display = "block";
+}
+
+function renderConnections(vessels, myId) {
+  const mine = vessels.filter(v =>
+    v.founder === myId || (v.joins[0]?.joiner === myId)
+  );
+  const tbody = document.getElementById("connRows");
+  if (!mine.length) {
+    tbody.innerHTML = "<tr><td colspan='4'>まだ接続記録はありません</td></tr>";
+    return;
+  }
+
+  tbody.innerHTML = mine.map(v => {
+    const j        = v.joins[0] || {};
+    const other    = v.founder === myId ? (j.joiner || "-") : v.founder;
+    const approvers = new Set((j.approvals || []).map(a => a.from));
+    const iApproved    = approvers.has(myId);
+    const theyApproved = approvers.has(other);
+
+    let badge, action = "";
+    if (v.is_connected) {
+      badge = `<span class="badge-ok">✅ 接続成立 ${(j.established_at || "").slice(0, 10)}</span>`;
+    } else if (iApproved && !theyApproved) {
+      badge = `<span class="badge-wait">⏳ ${escHtml(other)} の承認待ち</span>`;
+    } else if (!iApproved && theyApproved) {
+      badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
+      const eid = escHtml(other).replace(/'/g, "\\'");
+      action = `<button class="sm" onclick="doApprove('${eid}')">承認する</button>`;
+    } else {
+      badge = `<span class="badge-wait">⏳ 処理中</span>`;
+    }
+
+    const dmHref = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(other)}`;
+    const otherLink = other !== "-"
+      ? `<a href="/profile/${encodeURIComponent(other)}" style="font-family:monospace">${escHtml(other)}</a>`
+      : "-";
+    const dmBtn = other !== "-"
+      ? `<a href="${dmHref}" style="margin-left:8px;font-size:12px;color:#1a3a5c">DM →</a>`
+      : "";
+    return `<tr>
+      <td><code style="font-size:11px">${escHtml(v.vessel_id)}</code></td>
+      <td>${otherLink}${dmBtn}</td>
+      <td>${badge}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join("");
+}
+
+async function doApprove(otherId) {
+  const msg = document.getElementById("notice");
+  const res = await fetch("/approve", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_id: myId, to_id: otherId }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    msg.className = "err"; msg.textContent = "エラー: " + JSON.stringify(data); return;
+  }
+  if (data.established) {
+    msg.className = "ok"; msg.textContent = `🎉 接続成立！  vessel: ${data.vessel_id}`;
+  } else {
+    msg.className = ""; msg.textContent = `✅ 承認しました（vessel: ${data.vessel_id}）。相手の承認待ちです。`;
+  }
+  const ledgerRes = await fetch("/ledger");
+  renderConnections(await ledgerRes.json(), myId);
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+init();
+</script>
+</body>
+</html>

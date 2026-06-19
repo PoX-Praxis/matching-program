@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for
 from werkzeug.utils import secure_filename
+from db_connect import is_postgres
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 get_seeker, list_candidate_pool, get_profile_edit_data,
                 save_view_overrides, update_seeker_core)
@@ -31,6 +32,11 @@ from messages import get_community_messages
 
 app = Flask(__name__)
 DB = os.environ.get("POX_DB", "pox.db")
+
+# Postgres 接続時は起動時にスキーマを初期化（冪等・再デプロイ安全）
+if is_postgres():
+    import schema
+    schema.init()
 
 # ── 添付ファイルのアップロード設定 ──────────────────────────────
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB

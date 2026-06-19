@@ -1,0 +1,35 @@
+## render.yaml — PoX Render デプロイ設定
+##
+## ⚠️  Render 無料 PostgreSQL は 30 日で失効します（2024年ポリシー）。
+##     常設データが必要なら databases[0].plan を "starter"（$7/月）に変更してください。
+##     Web サービス（pox-web）は free のままでも動作します。
+##
+## セットアップ手順:
+##   1. GitHub リポジトリを Render に接続し、このファイルがあるブランチを選択。
+##   2. Render ダッシュボードで pox-web の環境変数 ANTHROPIC_API_KEY を手入力。
+##      （sync: false のためコードにもこのファイルにも値は入らない）
+##   3. push するたびに自動デプロイ。DB は再デプロイで消えない。
+
+services:
+  - type: web
+    name: pox-web
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --workers 1 --timeout 120"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pox-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false          # Render ダッシュボードで手入力。コードにもここにも値を書かない。
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: POX_DEBUG
+        value: "0"
+
+databases:
+  - name: pox-db
+    plan: free               # ⚠️ 30 日失効。常設運用は "starter" ($7/月) を推奨。
+    postgresMajorVersion: "16"

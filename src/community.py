@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
-import json, sqlite3, uuid
+import json, uuid
 from datetime import datetime, timezone
+from db_connect import get_connection, is_postgres
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _connect(db_path: str) -> sqlite3.Connection:
-    con = sqlite3.connect(db_path)
-    con.execute(
-        "CREATE TABLE IF NOT EXISTS communities "
-        "(id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, "
-        "founder TEXT NOT NULL, created_at TEXT NOT NULL)"
-    )
-    con.execute(
-        "CREATE TABLE IF NOT EXISTS community_members "
-        "(community_id TEXT NOT NULL, member_id TEXT NOT NULL, "
-        "status TEXT NOT NULL DEFAULT 'pending', joined_at TEXT NOT NULL, "
-        "PRIMARY KEY (community_id, member_id))"
-    )
-    con.commit()
+def _connect(db_path: str = "pox.db"):
+    con = get_connection(db_path)
+    if not is_postgres():
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS communities "
+            "(id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, "
+            "founder TEXT NOT NULL, created_at TEXT NOT NULL)"
+        )
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS community_members "
+            "(community_id TEXT NOT NULL, member_id TEXT NOT NULL, "
+            "status TEXT NOT NULL DEFAULT 'pending', joined_at TEXT NOT NULL, "
+            "PRIMARY KEY (community_id, member_id))"
+        )
+        con.commit()
     return con
 
 
@@ -29,11 +31,11 @@ def create_community(founder: str, name: str, description: str, db_path: str = "
     created_at = _now()
     with _connect(db_path) as con:
         con.execute(
-            "INSERT INTO communities (id, name, description, founder, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO communities (id, name, description, founder, created_at) VALUES (%s, %s, %s, %s, %s)",
             (cid, name, description or "", founder, created_at),
         )
         con.execute(
-            "INSERT INTO community_members (community_id, member_id, status, joined_at) VALUES (?, ?, 'active', ?)",
+            "INSERT INTO community_members (community_id, member_id, status, joined_at) VALUES (%s, %s, 'active', %s)",
             (cid, founder, created_at),
         )
     return {"id": cid, "name": name, "description": description or "", "founder": founder, "created_at": created_at}
@@ -42,7 +44,7 @@ def create_community(founder: str, name: str, description: str, db_path: str = "
 def get_community(community_id: str, db_path: str = "pox.db") -> dict | None:
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT id, name, description, founder, created_at FROM communities WHERE id=?",
+            "SELECT id, name, description, founder, created_at FROM communities WHERE id=%s",
             (community_id,),
         ).fetchone()
     if row is None:
@@ -59,7 +61,7 @@ def get_all_communities(db_path: str = "pox.db") -> list:
         for r in rows:
             cid = r[0]
             count = con.execute(
-                "SELECT COUNT(*) FROM community_members WHERE community_id=? AND status='active'", (cid,)
+                "SELECT COUNT(*) FROM community_members WHERE community_id=%s AND status='active'", (cid,)
             ).fetchone()[0]
             result.append({
                 "id": cid, "name": r[1], "description": r[2],
@@ -71,14 +73,14 @@ def get_all_communities(db_path: str = "pox.db") -> list:
 def request_join(community_id: str, member_id: str, db_path: str = "pox.db") -> dict:
     with _connect(db_path) as con:
         existing = con.execute(
-            "SELECT status FROM community_members WHERE community_id=? AND member_id=?",
+            "SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
             (community_id, member_id),
         ).fetchone()
         if existing:
             return {"community_id": community_id, "member_id": member_id, "status": existing[0]}
         joined_at = _now()
         con.execute(
-            "INSERT INTO community_members (community_id, member_id, status, joined_at) VALUES (?, ?, 'pending', ?)",
+            "INSERT INTO community_members (community_id, member_id, status, joined_at) VALUES (%s, %s, 'pending', %s)",
             (community_id, member_id, joined_at),
         )
     return {"community_id": community_id, "member_id": member_id, "status": "pending"}
@@ -87,7 +89,7 @@ def request_join(community_id: str, member_id: str, db_path: str = "pox.db") -> 
 def approve_member(community_id: str, member_id: str, db_path: str = "pox.db") -> dict:
     with _connect(db_path) as con:
         con.execute(
-            "UPDATE community_members SET status='active' WHERE community_id=? AND member_id=?",
+            "UPDATE community_members SET status='active' WHERE community_id=%s AND member_id=%s",
             (community_id, member_id),
         )
     return {"community_id": community_id, "member_id": member_id, "status": "active"}
@@ -96,7 +98,7 @@ def approve_member(community_id: str, member_id: str, db_path: str = "pox.db") -
 def get_members(community_id: str, db_path: str = "pox.db") -> list:
     with _connect(db_path) as con:
         rows = con.execute(
-            "SELECT member_id, status, joined_at FROM community_members WHERE community_id=? AND status='active'",
+            "SELECT member_id, status, joined_at FROM community_members WHERE community_id=%s AND status='active'",
             (community_id,),
         ).fetchall()
     return [{"member_id": r[0], "status": r[1], "joined_at": r[2]} for r in rows]
@@ -105,7 +107,7 @@ def get_members(community_id: str, db_path: str = "pox.db") -> list:
 def is_member(community_id: str, user_id: str, db_path: str = "pox.db") -> bool:
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT 1 FROM community_members WHERE community_id=? AND member_id=? AND status='active'",
+            "SELECT 1 FROM community_members WHERE community_id=%s AND member_id=%s AND status='active'",
             (community_id, user_id),
         ).fetchone()
     return row is not None
@@ -114,7 +116,7 @@ def is_member(community_id: str, user_id: str, db_path: str = "pox.db") -> bool:
 def is_founder(community_id: str, user_id: str, db_path: str = "pox.db") -> bool:
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT 1 FROM communities WHERE id=? AND founder=?", (community_id, user_id)
+            "SELECT 1 FROM communities WHERE id=%s AND founder=%s", (community_id, user_id)
         ).fetchone()
     return row is not None
 
@@ -124,7 +126,7 @@ def get_my_communities(user_id: str, db_path: str = "pox.db") -> list:
         rows = con.execute(
             "SELECT c.id, c.name, c.description, c.founder, c.created_at, cm.status "
             "FROM communities c JOIN community_members cm ON c.id=cm.community_id "
-            "WHERE cm.member_id=?",
+            "WHERE cm.member_id=%s",
             (user_id,),
         ).fetchall()
     return [
@@ -136,7 +138,7 @@ def get_my_communities(user_id: str, db_path: str = "pox.db") -> list:
 def get_pending_requests(community_id: str, db_path: str = "pox.db") -> list:
     with _connect(db_path) as con:
         rows = con.execute(
-            "SELECT member_id, joined_at FROM community_members WHERE community_id=? AND status='pending'",
+            "SELECT member_id, joined_at FROM community_members WHERE community_id=%s AND status='pending'",
             (community_id,),
         ).fetchall()
     return [{"member_id": r[0], "joined_at": r[1]} for r in rows]
@@ -145,11 +147,11 @@ def get_pending_requests(community_id: str, db_path: str = "pox.db") -> list:
 def update_community(community_id: str, name: str, description: str, requester_id: str, db_path: str = "pox.db") -> dict | None:
     """Founder only. Returns updated community or None if not found / not authorized."""
     with _connect(db_path) as con:
-        row = con.execute("SELECT founder FROM communities WHERE id=?", (community_id,)).fetchone()
+        row = con.execute("SELECT founder FROM communities WHERE id=%s", (community_id,)).fetchone()
         if row is None or row[0] != requester_id:
             return None
         con.execute(
-            "UPDATE communities SET name=?, description=? WHERE id=?",
+            "UPDATE communities SET name=%s, description=%s WHERE id=%s",
             (name.strip(), (description or "").strip(), community_id),
         )
     return get_community(community_id, db_path)

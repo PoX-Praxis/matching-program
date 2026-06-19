@@ -6,22 +6,26 @@ approve(A, B) ... A が B を承認する（1方向）
 approve(B, A) ... B が A を承認する → 相互成立 → established_at が立つ
 
 vessel_id はソート正規化（どちらが先に呼んでも同じ vessel を指す）。
+
+接続: get_connection(db_path) を使用。SQL は %s プレースホルダ統一。
 """
-import json, sqlite3, uuid
+import json, uuid
 from datetime import datetime, timezone
+from db_connect import get_connection, is_postgres
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _connect(db_path: str) -> sqlite3.Connection:
-    con = sqlite3.connect(db_path)
-    con.execute(
-        "CREATE TABLE IF NOT EXISTS vessels "
-        "(vessel_id TEXT PRIMARY KEY, vessel_json TEXT NOT NULL)"
-    )
-    con.commit()
+def _connect(db_path: str = "pox.db"):
+    con = get_connection(db_path)
+    if not is_postgres():
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS vessels "
+            "(vessel_id TEXT PRIMARY KEY, vessel_json TEXT NOT NULL)"
+        )
+        con.commit()
     return con
 
 
@@ -43,7 +47,7 @@ def approve(
 
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT vessel_json FROM vessels WHERE vessel_id = ?", (vessel_id,)
+            "SELECT vessel_json FROM vessels WHERE vessel_id = %s", (vessel_id,)
         ).fetchone()
 
         if row:
@@ -80,14 +84,11 @@ def approve(
         founder = vessel["founder"]
         joiner  = join["joiner"]
 
-        # 既に承認済みの from_id はスキップ
         approvers = {a["from"] for a in join["approvals"]}
         if from_id not in approvers:
-            # spec サンプルの形式: founder→joiner / joiner→vessel_id
             to_field = joiner if from_id == founder else vessel_id
             join["approvals"].append({"from": from_id, "to": to_field, "at": _now()})
 
-        # 相互承認チェック
         approvers = {a["from"] for a in join["approvals"]}
         if founder in approvers and joiner in approvers and join["established_at"] is None:
             join["established_at"] = _now()
@@ -98,7 +99,8 @@ def approve(
                 join["contributions"].append({"actor": joiner, "role": "approved"})
 
         con.execute(
-            "INSERT OR REPLACE INTO vessels (vessel_id, vessel_json) VALUES (?, ?)",
+            "INSERT INTO vessels (vessel_id, vessel_json) VALUES (%s, %s) "
+            "ON CONFLICT (vessel_id) DO UPDATE SET vessel_json = EXCLUDED.vessel_json",
             (vessel_id, json.dumps(vessel, ensure_ascii=False)),
         )
 

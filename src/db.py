@@ -6,9 +6,13 @@ seekers テーブル : 既存互換。load_all_seekers / save_seeker はその�
 profiles テーブル: save_profile で両カラムを同一トランザクションで書く（UPSERT）。
                    閲覧系は get_profile_view のみ使う（seeker は外に出ない）。
                    view_overrides は表示専用設定（§5）。閲覧時に profile_view へ重ねる。
+
+接続: get_connection(db_path) を使用。DATABASE_URL があれば Postgres、なければ SQLite。
+SQL : %s プレースホルダ統一（SQLite では db_connect が内部で ? に変換）。
 """
-import json, sqlite3
+import json
 from datetime import datetime, timezone
+from db_connect import get_connection, is_postgres
 from profile_view import build_profile_view, apply_overrides
 
 
@@ -16,35 +20,40 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _connect(db_path: str) -> sqlite3.Connection:
-    con = sqlite3.connect(db_path)
-    con.execute(
-        "CREATE TABLE IF NOT EXISTS seekers "
-        "(id TEXT PRIMARY KEY, seeker_json TEXT NOT NULL)"
-    )
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS profiles (
-            user_id        TEXT PRIMARY KEY,
-            seeker         TEXT NOT NULL,
-            profile_view   TEXT NOT NULL,
-            visibility     TEXT NOT NULL DEFAULT 'public',
-            view_overrides TEXT NOT NULL DEFAULT '{}',
-            created_at     TEXT,
-            updated_at     TEXT NOT NULL
+def _connect(db_path: str = "pox.db"):
+    """接続を返す。SQLite の場合はこのモジュールのテーブルも初期化する。"""
+    con = get_connection(db_path)
+    if not is_postgres():
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS seekers "
+            "(id TEXT PRIMARY KEY, seeker_json TEXT NOT NULL)"
         )
-    """)
-    _migrate(con)
-    con.commit()
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS profiles (
+                user_id        TEXT PRIMARY KEY,
+                seeker         TEXT NOT NULL,
+                profile_view   TEXT NOT NULL,
+                visibility     TEXT NOT NULL DEFAULT 'public',
+                view_overrides TEXT NOT NULL DEFAULT '{}',
+                created_at     TEXT,
+                updated_at     TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        _migrate_sqlite(con)
+        con.commit()
     return con
 
 
-def _migrate(con: sqlite3.Connection) -> None:
-    """既存DBに不足カラムを足す（CREATE TABLE IF NOT EXISTS では追加されないため）。"""
-    cols = {row[1] for row in con.execute("PRAGMA table_info(profiles)").fetchall()}
-    if "view_overrides" not in cols:
-        con.execute("ALTER TABLE profiles ADD COLUMN view_overrides TEXT NOT NULL DEFAULT '{}'")
-    if "created_at" not in cols:
-        con.execute("ALTER TABLE profiles ADD COLUMN created_at TEXT")
+def _migrate_sqlite(con) -> None:
+    """SQLite 専用: カラムが無ければ追加（既存ユーザーの DB 互換性）。"""
+    for sql in (
+        "ALTER TABLE profiles ADD COLUMN view_overrides TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE profiles ADD COLUMN created_at TEXT",
+    ):
+        try:
+            con.execute(sql)
+        except Exception:
+            pass
 
 
 # ── 既存 API（後方互換・マッチング内部用） ─────────────────────
@@ -53,7 +62,8 @@ def save_seeker(seeker_id: str, seeker: dict, db_path: str = "pox.db") -> None:
     """後方互換。save_profile も同時に呼ぶことで profiles テーブルも更新される。"""
     with _connect(db_path) as con:
         con.execute(
-            "INSERT OR REPLACE INTO seekers (id, seeker_json) VALUES (?, ?)",
+            "INSERT INTO seekers (id, seeker_json) VALUES (%s, %s) "
+            "ON CONFLICT (id) DO UPDATE SET seeker_json = EXCLUDED.seeker_json",
             (seeker_id, json.dumps(seeker, ensure_ascii=False)),
         )
 
@@ -80,18 +90,19 @@ def save_profile(user_id: str, seeker: dict, db_path: str = "pox.db") -> None:
     pv_json     = json.dumps(pv,     ensure_ascii=False)
     with _connect(db_path) as con:
         con.execute(
-            "INSERT OR REPLACE INTO seekers (id, seeker_json) VALUES (?, ?)",
+            "INSERT INTO seekers (id, seeker_json) VALUES (%s, %s) "
+            "ON CONFLICT (id) DO UPDATE SET seeker_json = EXCLUDED.seeker_json",
             (user_id, seeker_json),
         )
         con.execute(
             """
             INSERT INTO profiles
                 (user_id, seeker, profile_view, visibility, view_overrides, created_at, updated_at)
-            VALUES (?, ?, ?, 'public', '{}', ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                seeker       = excluded.seeker,
-                profile_view = excluded.profile_view,
-                updated_at   = excluded.updated_at
+            VALUES (%s, %s, %s, 'public', '{}', %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                seeker       = EXCLUDED.seeker,
+                profile_view = EXCLUDED.profile_view,
+                updated_at   = EXCLUDED.updated_at
             """,
             (user_id, seeker_json, pv_json, now, now),
         )
@@ -106,14 +117,14 @@ def get_profile_view(user_id: str, db_path: str = "pox.db") -> dict | None:
     """
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT profile_view, view_overrides FROM profiles WHERE user_id=?", (user_id,)
+            "SELECT profile_view, view_overrides FROM profiles WHERE user_id = %s", (user_id,)
         ).fetchone()
         if row:
             pv = json.loads(row[0])
             overrides = json.loads(row[1] or "{}")
             return apply_overrides(pv, overrides)
         seeker_row = con.execute(
-            "SELECT seeker_json FROM seekers WHERE id=?", (user_id,)
+            "SELECT seeker_json FROM seekers WHERE id = %s", (user_id,)
         ).fetchone()
         if seeker_row:
             return build_profile_view(json.loads(seeker_row[0]))
@@ -127,12 +138,12 @@ def get_profile_edit_data(user_id: str, db_path: str = "pox.db") -> dict | None:
     """
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT profile_view, view_overrides FROM profiles WHERE user_id=?", (user_id,)
+            "SELECT profile_view, view_overrides FROM profiles WHERE user_id = %s", (user_id,)
         ).fetchone()
         if row:
             return {"base": json.loads(row[0]), "overrides": json.loads(row[1] or "{}")}
         seeker_row = con.execute(
-            "SELECT seeker_json FROM seekers WHERE id=?", (user_id,)
+            "SELECT seeker_json FROM seekers WHERE id = %s", (user_id,)
         ).fetchone()
         if seeker_row:
             return {"base": build_profile_view(json.loads(seeker_row[0])), "overrides": {}}
@@ -148,14 +159,13 @@ def save_view_overrides(user_id: str, overrides: dict, db_path: str = "pox.db") 
     now = _now()
     with _connect(db_path) as con:
         cur = con.execute(
-            "UPDATE profiles SET view_overrides=?, updated_at=? WHERE user_id=?",
+            "UPDATE profiles SET view_overrides = %s, updated_at = %s WHERE user_id = %s",
             (ov_json, now, user_id),
         )
         if cur.rowcount:
             return True
-        # 後方互換: profiles 未作成なら seekers から実体化
         seeker_row = con.execute(
-            "SELECT seeker_json FROM seekers WHERE id=?", (user_id,)
+            "SELECT seeker_json FROM seekers WHERE id = %s", (user_id,)
         ).fetchone()
         if seeker_row is None:
             return False
@@ -165,7 +175,7 @@ def save_view_overrides(user_id: str, overrides: dict, db_path: str = "pox.db") 
             """
             INSERT INTO profiles
                 (user_id, seeker, profile_view, visibility, view_overrides, created_at, updated_at)
-            VALUES (?, ?, ?, 'public', ?, ?, ?)
+            VALUES (%s, %s, %s, 'public', %s, %s, %s)
             """,
             (user_id, seeker_row[0], pv_json, ov_json, now, now),
         )
@@ -194,12 +204,12 @@ def get_seeker(user_id: str, db_path: str = "pox.db") -> dict | None:
     """
     with _connect(db_path) as con:
         row = con.execute(
-            "SELECT seeker FROM profiles WHERE user_id=?", (user_id,)
+            "SELECT seeker FROM profiles WHERE user_id = %s", (user_id,)
         ).fetchone()
         if row:
             return json.loads(row[0])
         row = con.execute(
-            "SELECT seeker_json FROM seekers WHERE id=?", (user_id,)
+            "SELECT seeker_json FROM seekers WHERE id = %s", (user_id,)
         ).fetchone()
     return json.loads(row[0]) if row else None
 
@@ -211,14 +221,13 @@ def list_candidate_pool(exclude_user_id: str, db_path: str = "pox.db") -> list[d
     """
     with _connect(db_path) as con:
         rows = con.execute(
-            "SELECT user_id, seeker FROM profiles WHERE user_id != ?",
+            "SELECT user_id, seeker FROM profiles WHERE user_id != %s",
             (exclude_user_id,),
         ).fetchall()
         if rows:
             return [{"id": r[0], "profile": _to_profile_text(json.loads(r[1]))} for r in rows]
-        # フォールバック: seekers テーブル
         rows = con.execute(
-            "SELECT id, seeker_json FROM seekers WHERE id != ?",
+            "SELECT id, seeker_json FROM seekers WHERE id != %s",
             (exclude_user_id,),
         ).fetchall()
     return [{"id": r[0], "profile": _to_profile_text(json.loads(r[1]))} for r in rows]

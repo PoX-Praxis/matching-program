@@ -438,4 +438,11 @@ def _to_profile(seeker: dict) -> str:
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # 環境変数で起動設定を変更できる:
+    #   POX_HOST=0.0.0.0  ← LAN/トンネル公開時（既定は localhost のみ）
+    #   POX_PORT=5000
+    #   POX_DEBUG=1        ← 開発時のみ。公開時は必ず 0（debugger は遠隔実行の危険）
+    host  = os.environ.get("POX_HOST", "127.0.0.1")
+    port  = int(os.environ.get("POX_PORT", "5000"))
+    debug = os.environ.get("POX_DEBUG", "0") == "1"
+    app.run(host=host, port=port, debug=debug)

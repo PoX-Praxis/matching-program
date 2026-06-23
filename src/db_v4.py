@@ -44,13 +44,14 @@ _PROFILE_FIELDS = ("will_text", "state_have", "state_can_type",
 
 # ── 取り込み（登録/更新）─────────────────────────────────────────────────────
 def ingest_profile_v4(store, profile_id, profile_input, *,
-                      generator_fn=None, model_tag=MODEL_TAG):
+                      generator_fn=None, model_tag=MODEL_TAG, migrated_from=None):
     """
     ① の構造化出力（profile_input）を取り込み、profiles_v4 / derived_necessity /
     profile_vectors を一括保存する（F章の登録/更新フロー）。
 
     profile_input : {will_text, state_have, state_can_type, state_bound,
                      state_unsorted, supporting_raw(dict)}。
+    migrated_from : v3.1 等からの移行時に出所を記録（F-5。新規登録は None）。
     手順（I章遵守）:
       1. supporting_raw を構造 PII redact（raw は保存するが embedding/LLM には出さない）
       2. ② necessity_gen で必要像と s,u,γ,p,α,β を生成（redacted のみ入力）
@@ -81,6 +82,7 @@ def ingest_profile_v4(store, profile_id, profile_input, *,
         supporting_raw=supporting_raw,
         supporting_redacted=supporting_redacted,
         pii_redaction_status=pii_status,
+        migrated_from=migrated_from,
     )
     store.save_necessity(profile_id, model_tag, necessity)
     store.save_vectors(profile_id, model_tag, vectors)
@@ -174,12 +176,13 @@ class MemoryStore:
         self.ledger = []                   # 監査イベント
 
     def save_profile(self, profile_id, *, fields, supporting_raw,
-                     supporting_redacted, pii_redaction_status):
+                     supporting_redacted, pii_redaction_status, migrated_from=None):
         self.profiles[profile_id] = {
             "id": profile_id, **fields,
             "supporting_raw": supporting_raw,
             "supporting_redacted": supporting_redacted,
             "pii_redaction_status": pii_redaction_status,
+            "migrated_from": migrated_from,
         }
 
     def save_necessity(self, profile_id, model_tag, necessity):
@@ -187,6 +190,10 @@ class MemoryStore:
 
     def save_vectors(self, profile_id, model_tag, vectors):
         self.vectors[(profile_id, model_tag)] = dict(vectors)
+
+    def has_bundle(self, profile_id, model_tag):
+        """profile_vectors に当該 (profile_id, model_tag) が既にあるか（遅延移行の冪等判定）。"""
+        return (profile_id, model_tag) in self.vectors
 
     def get_bundle(self, profile_id, model_tag):
         key = (profile_id, model_tag)
@@ -244,7 +251,7 @@ class PostgresStore:
         return "[" + ",".join(repr(float(x)) for x in v) + "]"
 
     def save_profile(self, profile_id, *, fields, supporting_raw,
-                     supporting_redacted, pii_redaction_status):
+                     supporting_redacted, pii_redaction_status, migrated_from=None):
         import json
         with self._get_connection(self.db_path) as con:
             con.execute(
@@ -252,8 +259,8 @@ class PostgresStore:
                 INSERT INTO profiles_v4
                     (id, will_text, state_have, state_can_type, state_bound,
                      state_unsorted, supporting_raw, supporting_redacted,
-                     pii_redaction_status, updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
+                     pii_redaction_status, migrated_from, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
                 ON CONFLICT (id) DO UPDATE SET
                     will_text            = EXCLUDED.will_text,
                     state_have           = EXCLUDED.state_have,
@@ -263,6 +270,7 @@ class PostgresStore:
                     supporting_raw       = EXCLUDED.supporting_raw,
                     supporting_redacted  = EXCLUDED.supporting_redacted,
                     pii_redaction_status = EXCLUDED.pii_redaction_status,
+                    migrated_from        = EXCLUDED.migrated_from,
                     updated_at           = now()
                 """,
                 (profile_id, fields.get("will_text", ""), fields.get("state_have"),
@@ -270,8 +278,18 @@ class PostgresStore:
                  fields.get("state_unsorted"),
                  json.dumps(supporting_raw, ensure_ascii=False),
                  json.dumps(supporting_redacted, ensure_ascii=False),
-                 pii_redaction_status),
+                 pii_redaction_status, migrated_from),
             )
+
+    def has_bundle(self, profile_id, model_tag):
+        """profile_vectors に当該行があるか（遅延移行の冪等判定）。"""
+        with self._get_connection(self.db_path) as con:
+            row = con.execute(
+                """SELECT 1 FROM profile_vectors
+                   WHERE profile_id = %s AND model_tag = %s LIMIT 1""",
+                (profile_id, model_tag),
+            ).fetchone()
+        return row is not None
 
     def save_necessity(self, profile_id, model_tag, n):
         with self._get_connection(self.db_path) as con:

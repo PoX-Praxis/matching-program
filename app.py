@@ -227,10 +227,25 @@ def post_v4_match():
     if not seeker_id:
         return jsonify({"error": "seeker_id が必要です"}), 400
     top_k = body.get("top_k")
+    migrate_pool = bool(body.get("migrate_pool"))
 
     from db_v4 import match_v4
+    from migrate_v4 import ensure_migrated
+    store = _v4_store()
+    loader = lambda uid: get_seeker(uid, db_path=DB)
+
+    # F-5 遅延移行: seeker が v3.1 のみなら、ここで一度だけ v4 へ移行してから照合。
     try:
-        out = match_v4(_v4_store(), seeker_id, top_k=top_k)
+        ensure_migrated(store, seeker_id, loader)
+        # 移行期のブリッジ: 明示要求時のみ既存 v3.1 全員も v4 化（既定は真の遅延）。
+        if migrate_pool:
+            for row in load_all_seekers(db_path=DB):
+                ensure_migrated(store, row["id"], loader)
+    except Exception as e:
+        return jsonify({"error": f"移行失敗: {e}"}), 500
+
+    try:
+        out = match_v4(store, seeker_id, top_k=top_k)
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:

@@ -268,16 +268,12 @@ def post_approve():
     if from_id == to_id:
         abort(400, "自分自身は承認できません")
 
-    rows = load_all_seekers(db_path=DB)
-    founder_row = next((r for r in rows if r["id"] == from_id), None)
-    phase = founder_row["seeker"].get("フェーズ") if founder_row else None
-
     result = approve(
         from_id=from_id,
         to_id=to_id,
         match_run_id=body.get("match_run_id"),
         predicted_role=body.get("predicted_role"),
-        phase=phase,
+        phase=None,
         db_path=DB,
     )
     return jsonify(result), 200
@@ -317,9 +313,18 @@ def api_profile_edit(user_id):
 
 @app.post("/api/profile/<user_id>/core")
 def api_profile_core(user_id):
-    """「中身を編集」。4軸のみ更新し supporting_material は保持、profile_view を再生成（§5.1）。"""
+    """「中身を編集」。v4（意志/現状4スロット）対応。profile_view を再生成する。"""
     body = request.get_json(force=True, silent=True) or {}
-    fields = {k: body.get(k, "") for k in ("意志", "求めている", "能力", "フェーズ")}
+    fields = {}
+    if "意志" in body:
+        fields["意志"] = body["意志"]
+    for k in ("state_have", "state_can_type", "state_bound", "state_unsorted"):
+        if k in body:
+            fields[k] = body[k]
+    # v3 後方互換
+    for k in ("求めている", "能力", "フェーズ"):
+        if k in body:
+            fields[k] = body[k]
     if not update_seeker_core(user_id, fields, db_path=DB):
         return jsonify({"error": "プロフィールが見つかりません"}), 404
     return jsonify({"ok": True})

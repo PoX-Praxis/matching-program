@@ -9,37 +9,46 @@
   a.back:hover { text-decoration: underline; }
   h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
 
-  /* Block 1: headline */
-  .headline-block { margin: 20px 0 8px; }
-  .headline-text { font-size: 1.05rem; line-height: 1.7; color: #333; margin: 0 0 8px; }
-  .phase-badge { display: inline-flex; align-items: center; gap: 6px; }
-  .phase-tag { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  /* v4 blocks */
+  .headline-text { font-size: 1.05rem; line-height: 1.7; color: #333; margin: 20px 0 12px; }
+
+  .will-block { background: #f0f4ff; border-left: 4px solid #1a3a5c;
+                padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 12px 0 14px; }
+  .will-label { font-size: 11px; font-weight: bold; color: #1a3a5c; text-transform: uppercase;
+                letter-spacing: .05em; margin-bottom: 6px; }
+  .will-text  { font-size: 13px; line-height: 1.7; margin: 0; color: #222; }
+
+  .state-grid  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 12px 0 16px; }
+  .state-item  { background: #f7f9fc; border-radius: 6px; padding: 12px 14px; }
+  .state-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 5px; }
+  .state-text  { font-size: 13px; line-height: 1.6; margin: 0; color: #333; }
+
+  /* v3 backward compat */
+  .triangle-block { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 20px 0; }
+  .tri-item  { background: #f7f9fc; border-radius: 6px; padding: 14px 16px; }
+  .tri-label { font-size: 11px; font-weight: bold; color: #1a56bb; text-transform: uppercase;
+               letter-spacing: .04em; display: block; margin-bottom: 6px; }
+  .tri-text  { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
+  .phase-badge      { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .phase-tag        { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
   .phase-unconfirmed { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 6px; font-size: 11px; }
 
-  /* Block 2: triangle */
-  .triangle-block { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 20px 0; }
-  .tri-item { background: #f7f9fc; border-radius: 6px; padding: 14px 16px; }
-  .tri-label { font-size: 11px; font-weight: bold; color: #1a56bb; text-transform: uppercase; letter-spacing: .04em; display: block; margin-bottom: 6px; }
-  .tri-text { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
-
-  /* Block 3: accordion */
+  /* shared accordion */
   details.detail-block { margin: 16px 0; border: 1px solid #e0e0e0; border-radius: 6px; }
   details.detail-block > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: #555; user-select: none; }
   details.detail-block > summary:hover { background: #f7f7f7; border-radius: 6px; }
   .detail-inner { padding: 12px 16px 16px; }
-  .keys-section { margin-bottom: 14px; }
-  .keys-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; }
-  .key-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-  .key-tag { background: #f0f4ff; border: 1px solid #c5d3f0; color: #1a3a8c; border-radius: 20px; padding: 3px 12px; font-size: 12px; }
-  .traj-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; }
-  .traj-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; font-size: 13px; }
-  .traj-from { background: #f5f5f5; border-radius: 4px; padding: 4px 10px; color: #444; flex: 1; }
+  .keys-label, .traj-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; }
+  .key-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .key-tag  { background: #f0f4ff; border: 1px solid #c5d3f0; color: #1a3a8c; border-radius: 20px; padding: 3px 12px; font-size: 12px; }
+  .traj-item  { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+  .traj-from  { background: #f5f5f5; border-radius: 4px; padding: 4px 10px; color: #444; flex: 1; }
   .traj-arrow { color: #aaa; flex-shrink: 0; padding-top: 4px; }
-  .traj-to { background: #eaf4ea; border-radius: 4px; padding: 4px 10px; color: #1a5c1a; flex: 1; }
+  .traj-to    { background: #eaf4ea; border-radius: 4px; padding: 4px 10px; color: #1a5c1a; flex: 1; }
 
-  /* Block 4/5: connect */
+  /* connect */
   .connect-block { margin: 28px 0 8px; }
-  .want-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .want-row  { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .want-label { font-size: 12px; color: #555; }
   .want-select { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
   .btn { padding: 9px 22px; cursor: pointer; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; }
@@ -53,6 +62,7 @@
   #loading { color: #888; margin-top: 40px; }
 
   @media (max-width: 600px) {
+    .state-grid { grid-template-columns: 1fr; }
     .triangle-block { grid-template-columns: 1fr; }
   }
 </style>
@@ -63,53 +73,21 @@
 <div id="loading">読み込み中...</div>
 <div id="main" style="display:none">
 
-  <!-- Block 1: headline + phase -->
-  <div class="headline-block">
-    <p class="headline-text" id="headline"></p>
-    <div class="phase-badge">
-      <span id="phaseTag" class="phase-tag" style="display:none"></span>
-      <span id="phaseUnconfirmed" class="phase-unconfirmed" style="display:none">AI推定・未確定</span>
-    </div>
-  </div>
+  <div id="profileBlock"></div>
 
-  <!-- Block 2: triangle -->
-  <div class="triangle-block">
-    <div class="tri-item">
-      <span class="tri-label">意志</span>
-      <p class="tri-text" id="pursuing"></p>
-    </div>
-    <div class="tri-item">
-      <span class="tri-label">求めている</span>
-      <p class="tri-text" id="needs"></p>
-    </div>
-    <div class="tri-item">
-      <span class="tri-label">能力</span>
-      <p class="tri-text" id="offering"></p>
-    </div>
-  </div>
-
-  <!-- Block 3: keys + trajectory (accordion) -->
+  <!-- accordion: keys + trajectory -->
   <details class="detail-block" id="detailBlock" style="display:none">
-    <summary>注目ポイント・軌跡を見る</summary>
-    <div class="detail-inner">
-      <div class="keys-section" id="keysSection" style="display:none">
-        <div class="keys-label">注目ポイント</div>
-        <div class="key-tags" id="keyTags"></div>
-      </div>
-      <div id="trajSection" style="display:none">
-        <div class="traj-label">現在の軌跡</div>
-        <div id="trajItems"></div>
-      </div>
-    </div>
+    <summary id="detailSummary">詳細・軌跡を見る</summary>
+    <div class="detail-inner" id="detailInner"></div>
   </details>
 
-  <!-- Block 4/5: actions -->
+  <!-- connect actions -->
   <div class="connect-block" id="connectBlock" style="display:none">
     <h2>つながる</h2>
     <div class="want-row">
       <span class="want-label">マッチングの方向性：</span>
       <select class="want-select" id="wantMode">
-        <option value="complement">補完（能力・役割が違う人）</option>
+        <option value="complement">補完（現状・役割が違う人）</option>
         <option value="similar">共鳴（意志が近い人）</option>
         <option value="balanced" selected>バランス</option>
       </select>
@@ -144,7 +122,6 @@ async function init() {
     return;
   }
   const pv = await res.json();
-
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display = "block";
 
@@ -154,60 +131,102 @@ async function init() {
     document.getElementById("connectBlock").style.display = "block";
   } else if (!myId) {
     document.getElementById("connectBlock").style.display = "block";
+  } else {
+    const own = document.getElementById("ownActions");
+    own.style.display = "block";
+    document.getElementById("mypageLink").href = `/mypage?id=${encodeURIComponent(myId)}`;
   }
 }
 
 function renderProfileView(pv) {
-  /* Block 1: headline + phase */
-  const headlineEl = document.getElementById("headline");
-  headlineEl.textContent = pv.headline || "";
-  if (!pv.headline) headlineEl.style.display = "none";
+  const container = document.getElementById("profileBlock");
+  let html = "";
 
-  const badge = pv.phase_badge || {};
-  if (badge.value) {
-    const phaseTag = document.getElementById("phaseTag");
-    phaseTag.textContent = badge.value;
-    phaseTag.style.display = "inline";
-  }
-  if (badge.unconfirmed) {
-    document.getElementById("phaseUnconfirmed").style.display = "inline";
+  if (pv.headline) {
+    html += `<p class="headline-text">${escHtml(pv.headline)}</p>`;
   }
 
-  /* Block 2: triangle */
-  document.getElementById("pursuing").textContent = pv.pursuing || "—";
-  document.getElementById("needs").textContent    = pv.needs    || "—";
-  document.getElementById("offering").textContent = pv.offering  || "—";
+  if (pv.schema_version === "v4") {
+    html += `<div class="will-block">
+      <div class="will-label">意志 — なぜ動くか・どこへ</div>
+      <p class="will-text">${escHtml(pv.pursuing || "—")}</p>
+    </div>`;
 
-  /* Block 3: keys + trajectory */
-  let hasDetail = false;
+    const slots = [
+      { label: "持っているもの", val: pv.state_have },
+      { label: "できること（型）", val: pv.state_can_type },
+      { label: "縛られているもの", val: pv.state_bound },
+    ];
+    const hasState = slots.some(s => s.val);
+    if (hasState) {
+      html += `<div class="state-grid">`;
+      for (const s of slots) {
+        html += `<div class="state-item">
+          <span class="state-label">${escHtml(s.label)}</span>
+          <p class="state-text">${escHtml(s.val || "—")}</p>
+        </div>`;
+      }
+      html += `</div>`;
+    }
 
-  if (pv.keys && pv.keys.length) {
-    hasDetail = true;
-    const keysSection = document.getElementById("keysSection");
-    const keyTags = document.getElementById("keyTags");
-    keysSection.style.display = "block";
-    keyTags.innerHTML = pv.keys.map(k =>
-      `<span class="key-tag">${escHtml(k)}</span>`
-    ).join("");
+    // accordion contents
+    const seekingText = pv.seeking && pv.seeking !== "未取得" ? pv.seeking : "";
+    const hasDetail = (pv.keys && pv.keys.length) || (pv.trajectory && pv.trajectory.length) || seekingText;
+    if (hasDetail) {
+      let inner = "";
+      if (seekingText) {
+        inner += `<div style="margin-bottom:14px">
+          <div class="keys-label">求めている（本人申告）</div>
+          <p style="font-size:13px;line-height:1.65;margin:0;color:#333">${escHtml(seekingText)}</p>
+        </div>`;
+      }
+      inner += buildKeysHtml(pv.keys);
+      inner += buildTrajHtml(pv.trajectory);
+      document.getElementById("detailBlock").style.display = "block";
+      document.getElementById("detailInner").innerHTML = inner;
+    }
+
+  } else {
+    // v3
+    const badge = pv.phase_badge || {};
+    if (badge.value) {
+      html += `<div class="phase-badge">
+        <span class="phase-tag">${escHtml(badge.value)}</span>
+        ${badge.unconfirmed ? '<span class="phase-unconfirmed">AI推定・未確定</span>' : ""}
+      </div>`;
+    }
+    html += `<div class="triangle-block">
+      <div class="tri-item"><span class="tri-label">意志</span><p class="tri-text">${escHtml(pv.pursuing || "—")}</p></div>
+      <div class="tri-item"><span class="tri-label">求めている</span><p class="tri-text">${escHtml(pv.needs || "—")}</p></div>
+      <div class="tri-item"><span class="tri-label">能力</span><p class="tri-text">${escHtml(pv.offering || "—")}</p></div>
+    </div>`;
+
+    const hasDetail = (pv.keys && pv.keys.length) || (pv.trajectory && pv.trajectory.length);
+    if (hasDetail) {
+      document.getElementById("detailBlock").style.display = "block";
+      document.getElementById("detailSummary").textContent = "注目ポイント・軌跡を見る";
+      document.getElementById("detailInner").innerHTML =
+        buildKeysHtml(pv.keys) + buildTrajHtml(pv.trajectory);
+    }
   }
 
-  if (pv.trajectory && pv.trajectory.length) {
-    hasDetail = true;
-    const trajSection = document.getElementById("trajSection");
-    const trajItems = document.getElementById("trajItems");
-    trajSection.style.display = "block";
-    trajItems.innerHTML = pv.trajectory.map(t =>
-      `<div class="traj-item">
-        <span class="traj-from">${escHtml(t.from)}</span>
-        <span class="traj-arrow">→</span>
-        <span class="traj-to">${escHtml(t.to)}</span>
-      </div>`
-    ).join("");
-  }
+  container.innerHTML = html;
+}
 
-  if (hasDetail) {
-    document.getElementById("detailBlock").style.display = "block";
-  }
+function buildKeysHtml(keys) {
+  if (!keys || !keys.length) return "";
+  return `<div><div class="keys-label">注目ポイント</div>
+    <div class="key-tags">${keys.map(k => `<span class="key-tag">${escHtml(k)}</span>`).join("")}</div></div>`;
+}
+
+function buildTrajHtml(trajectory) {
+  if (!trajectory || !trajectory.length) return "";
+  return `<div><div class="traj-label">現在の軌跡</div>
+    ${trajectory.map(t => `<div class="traj-item">
+      <span class="traj-from">${escHtml(t.from)}</span>
+      <span class="traj-arrow">→</span>
+      <span class="traj-to">${escHtml(t.to)}</span>
+    </div>`).join("")}</div>`;
 }
 
 async function doConnect() {
@@ -218,11 +237,9 @@ async function doConnect() {
   }
   const notice = document.getElementById("notice");
   const want = document.getElementById("wantMode").value;
-
   notice.textContent = "マッチング中...";
   notice.className = "";
 
-  /* step 1: run_matching でロール判定 */
   const mRes = await fetch("/match", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ seeker_id: myId, want }),
@@ -239,7 +256,6 @@ async function doConnect() {
   const matchEntry = ranking.find(r => r.id === profileId);
   const predictedRole = matchEntry?.predicted_role || null;
 
-  /* step 2: approve */
   const aRes = await fetch("/approve", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ from_id: myId, to_id: profileId, match_run_id: matchRunId, predicted_role: predictedRole }),

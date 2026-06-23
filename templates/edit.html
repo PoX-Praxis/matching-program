@@ -9,7 +9,6 @@
   h1 { font-size: 1.3rem; margin: 12px 0 4px; }
   .sub { font-size: 13px; color: #555; margin: 2px 0 16px; }
 
-  /* tabs */
   .tabs { display: flex; gap: 4px; border-bottom: 2px solid #e0e0e0; margin-top: 20px; }
   .tab { padding: 9px 18px; cursor: pointer; font-size: 14px; color: #666; border: none; background: none;
          border-bottom: 2px solid transparent; margin-bottom: -2px; }
@@ -24,6 +23,16 @@
     border: 1px solid #ccc; border-radius: 4px; margin-top: 5px;
   }
   textarea { height: 80px; resize: vertical; line-height: 1.6; }
+  textarea.tall { height: 120px; }
+
+  .section-header {
+    font-size: 12px; font-weight: bold; color: #1a3a5c;
+    text-transform: uppercase; letter-spacing: .05em;
+    border-bottom: 1px solid #e8eef8; padding-bottom: 4px;
+    margin-top: 28px; margin-bottom: 2px;
+  }
+  .slot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+
   .btn { padding: 8px 24px; cursor: pointer; background: #1a3a5c; color: white;
          border: none; border-radius: 4px; font-size: 14px; margin-top: 22px; }
   .btn-ghost { background: #f0f0f0; border: 1px solid #ccc; color: #333; }
@@ -32,7 +41,6 @@
   .err { color: #c00; }
   #loading { color: #888; margin-top: 40px; }
 
-  /* reorder list */
   .reorder-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #e0e0e0;
                   border-radius: 5px; margin-bottom: 6px; background: #fafafa; font-size: 13px; }
   .reorder-item.hidden-row { opacity: .45; background: #f3f3f3; }
@@ -45,6 +53,8 @@
   .ai-box { background:#f0f4ff; border-left:4px solid #1a3a5c; padding:12px 16px; border-radius:0 6px 6px 0;
             margin-top:14px; font-size:13px; line-height:1.7; }
   .ai-box a { color:#1a3a5c; }
+
+  @media (max-width: 600px) { .slot-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -61,25 +71,33 @@
     <button class="tab" data-tab="view" onclick="switchTab('view')">見せ方を編集</button>
   </div>
 
-  <!-- ── 中身を編集（seeker＝マッチング根拠）── -->
+  <!-- 中身を編集（二軸・v4） -->
   <div class="panel active" id="panel-core">
-    <p class="sub">マッチングの判断に使われる4軸です。保存すると表示も再生成されます。</p>
+    <p class="sub">マッチングの判断に使われる「意志」と「現状」です。保存すると表示も再生成されます。</p>
 
-    <label>意志 <span class="hint">— なぜ動くのか、何を実現したいのか</span></label>
-    <textarea id="f_will"></textarea>
+    <div class="section-header">意志 — なぜ動くか・どこへ</div>
+    <label>意志 <span class="hint">— 根底の価値（抽象）と、いまの願い（具体）の両方</span></label>
+    <textarea id="f_will" class="tall"></textarea>
 
-    <label>求めている <span class="hint">— どんな人・スキル・関係性が欲しいか</span></label>
-    <textarea id="f_want"></textarea>
-
-    <label>能力 <span class="hint">— 今あなたが提供できるもの・強み</span></label>
-    <textarea id="f_ability"></textarea>
-
-    <label>フェーズ <span class="hint">— 現在のステージ</span></label>
-    <input type="text" id="f_phase" list="phaseList" placeholder="mvp">
-    <datalist id="phaseList">
-      <option value="idea"><option value="mvp"><option value="early_validation">
-      <option value="scale"><option value="fundraising">
-    </datalist>
+    <div class="section-header">現状 — いま何を持ち、どう動けるか、何が止めているか</div>
+    <div class="slot-grid">
+      <div>
+        <label>持っているもの <span class="hint">— 資源・関係・実績</span></label>
+        <textarea id="f_state_have"></textarea>
+      </div>
+      <div>
+        <label>できること（型） <span class="hint">— 複数エピソードの共通点から抽出した動き方</span></label>
+        <textarea id="f_state_can"></textarea>
+      </div>
+      <div>
+        <label>縛られているもの <span class="hint">— いまを止めている制約・環境</span></label>
+        <textarea id="f_state_bound"></textarea>
+      </div>
+      <div>
+        <label>未分類 <span class="hint">— どのスロットにも割り切れなかった原文（任意）</span></label>
+        <textarea id="f_state_unsorted"></textarea>
+      </div>
+    </div>
 
     <br>
     <button class="btn" onclick="saveCore()">中身を保存する</button>
@@ -87,17 +105,16 @@
 
     <div class="ai-box">
       <strong>もっと充実させたいときは ──</strong><br>
-      補足素材（注目ポイント・軌跡）まで作り直したい場合は、登録ページの「AIと対話して作る」プロンプトを使い、
-      生成された JSON を貼り直すと、このアカウントに上書き反映されます。<br>
+      登録ページの「AIと対話して作る」プロンプトを使い、生成された JSON を貼り直すとこのアカウントに上書き反映されます。<br>
       <a href="/register">→ 登録ページでAIに作り直してもらう</a>
     </div>
   </div>
 
-  <!-- ── 見せ方を編集（view_overrides＝表示専用）── -->
+  <!-- 見せ方を編集 -->
   <div class="panel" id="panel-view">
     <p class="sub">表示の文言・並び順・公開ON/OFFだけを変えます。マッチングの中身（上のタブ）は変わりません。</p>
 
-    <label>見出し（headline） <span class="hint">— 空欄なら自動生成（要約文）を使います</span></label>
+    <label>見出し（headline） <span class="hint">— 空欄なら要約文を使います</span></label>
     <input type="text" id="f_headline">
 
     <label style="margin-top:24px">注目ポイント <span class="hint">— チェックで公開／↑↓で並び替え</span></label>
@@ -116,8 +133,8 @@
 const params = new URLSearchParams(location.search);
 const myId = params.get("id") || localStorage.getItem("pox_my_id");
 
-let baseKeys = [];   // [{text, visible, order-managed via array position}]
-let baseTraj = [];   // [{from, to, sig, visible}]
+let baseKeys = [];
+let baseTraj = [];
 
 if (!myId) {
   document.getElementById("loading").innerHTML =
@@ -144,13 +161,20 @@ async function init() {
   document.getElementById("wrap").style.display = "block";
   document.getElementById("editId").textContent = myId;
 
-  // 中身タブ（base profile_view から4軸を流し込む）
-  document.getElementById("f_will").value    = base.pursuing || "";
-  document.getElementById("f_want").value    = base.needs    || "";
-  document.getElementById("f_ability").value = base.offering || "";
-  document.getElementById("f_phase").value   = (base.phase_badge && base.phase_badge.value) || "";
+  // 意志は共通
+  document.getElementById("f_will").value = base.pursuing || "";
 
-  // 見せ方タブ
+  if (base.schema_version === "v4") {
+    document.getElementById("f_state_have").value    = base.state_have    || "";
+    document.getElementById("f_state_can").value     = base.state_can_type || "";
+    document.getElementById("f_state_bound").value   = base.state_bound   || "";
+    document.getElementById("f_state_unsorted").value = base.state_unsorted || "";
+  } else {
+    // v3 → v4 フォームへ引き当て
+    document.getElementById("f_state_can").value   = base.offering || "";
+    document.getElementById("f_state_bound").value = (base.phase_badge && base.phase_badge.value) || "";
+  }
+
   document.getElementById("f_headline").value = overrides.headline || "";
   buildKeysState(base.keys || [], overrides.keys);
   buildTrajState(base.trajectory || [], overrides.trajectory);
@@ -158,7 +182,6 @@ async function init() {
   renderTraj();
 }
 
-/* keys: 並び＝overrides.keys の順、含まれないものは非表示として後ろに付ける */
 function buildKeysState(allKeys, ovKeys) {
   if (Array.isArray(ovKeys)) {
     const visible = ovKeys.filter(k => allKeys.includes(k));
@@ -224,10 +247,11 @@ async function saveCore() {
   const notice = document.getElementById("coreNotice");
   notice.className = ""; notice.textContent = "保存中...";
   const body = {
-    "意志": document.getElementById("f_will").value,
-    "求めている": document.getElementById("f_want").value,
-    "能力": document.getElementById("f_ability").value,
-    "フェーズ": document.getElementById("f_phase").value,
+    "意志":        document.getElementById("f_will").value,
+    "state_have":     document.getElementById("f_state_have").value,
+    "state_can_type": document.getElementById("f_state_can").value,
+    "state_bound":    document.getElementById("f_state_bound").value,
+    "state_unsorted": document.getElementById("f_state_unsorted").value,
   };
   const res = await fetch(`/api/profile/${encodeURIComponent(myId)}/core`, {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -235,7 +259,7 @@ async function saveCore() {
   });
   const data = await res.json();
   if (res.ok) {
-    notice.className = "ok"; notice.textContent = "✅ 保存しました（表示を再生成しました）";
+    notice.className = "ok"; notice.textContent = "✅ 保存しました";
     setTimeout(() => notice.textContent = "", 3000);
   } else {
     notice.className = "err"; notice.textContent = "エラー: " + (data.error || JSON.stringify(data));

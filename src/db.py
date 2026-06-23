@@ -184,15 +184,62 @@ def save_view_overrides(user_id: str, overrides: dict, db_path: str = "pox.db") 
 
 def update_seeker_core(user_id: str, fields: dict, db_path: str = "pox.db") -> bool:
     """
-    「中身を編集」用。4軸（意志/求めている/能力/フェーズ）のみ更新し supporting_material は保持。
-    save_profile 経由で profile_view を再生成する（§5.1）。
+    「中身を編集」用。v4（意志/現状4スロット）対応。
+    v3ユーザーがv4フィールドで保存するとその場でv4に遅延移行する。
     """
     seeker = get_seeker(user_id, db_path=db_path)
     if seeker is None:
         return False
-    for k in ("意志", "求めている", "能力", "フェーズ"):
-        if k in fields:
-            seeker[k] = fields[k]
+
+    meta = seeker.get("_meta") or {}
+    schema_ver = meta.get("schema_version", "v3")
+
+    if "意志" in fields:
+        seeker["意志"] = fields["意志"]
+
+    v4_state_fields = {k for k in ("state_have", "state_can_type", "state_bound", "state_unsorted")
+                       if k in fields}
+
+    if v4_state_fields:
+        if schema_ver != "v4":
+            # v3 → v4 遅延移行
+            seeker["現状"] = {
+                "持っているもの": "",
+                "できること_型": seeker.get("能力", ""),
+                "縛られているもの": seeker.get("フェーズ", ""),
+                "未分類": "",
+            }
+            sm = seeker.get("supporting_material") or {}
+            if not isinstance(sm, dict):
+                sm = {}
+            sm.setdefault("求めている", seeker.get("求めている") or "未取得")
+            for k in ("意志要求の素材", "連言選言の素材", "チャネル重み素材"):
+                sm.setdefault(k, "未取得")
+            sm.setdefault("系列素材", sm.get("系列素材") if isinstance(sm.get("系列素材"), list) else [])
+            sm.setdefault("生テキスト", sm.get("生テキスト") if isinstance(sm.get("生テキスト"), list) else [])
+            seeker["supporting_material"] = sm
+            seeker["_meta"] = {**meta, "schema_version": "v4",
+                               "migrated_from": "v3.1", "confidence": "legacy_low"}
+
+        field_map = {
+            "state_have":     "持っているもの",
+            "state_can_type": "できること_型",
+            "state_bound":    "縛られているもの",
+            "state_unsorted": "未分類",
+        }
+        jotai = seeker.get("現状") or {}
+        if not isinstance(jotai, dict):
+            jotai = {}
+        for fk, jk in field_map.items():
+            if fk in fields:
+                jotai[jk] = fields[fk]
+        seeker["現状"] = jotai
+    else:
+        # v3 フィールドのみの更新（後方互換）
+        for k in ("求めている", "能力", "フェーズ"):
+            if k in fields:
+                seeker[k] = fields[k]
+
     save_profile(user_id, seeker, db_path=db_path)
     return True
 
@@ -234,4 +281,16 @@ def list_candidate_pool(exclude_user_id: str, db_path: str = "pox.db") -> list[d
 
 
 def _to_profile_text(seeker: dict) -> str:
-    return "。".join(seeker[k] for k in ("意志", "求めている", "能力") if seeker.get(k))
+    parts = []
+    if seeker.get("意志"):
+        parts.append(str(seeker["意志"]))
+    jotai = seeker.get("現状")
+    if isinstance(jotai, dict):
+        for k in ("持っているもの", "できること_型", "縛られているもの"):
+            if jotai.get(k):
+                parts.append(str(jotai[k]))
+    else:
+        for k in ("求めている", "能力"):
+            if seeker.get(k):
+                parts.append(str(seeker[k]))
+    return "。".join(parts)

@@ -10,10 +10,9 @@ Postgres 専用: vector / JSONB / HNSW / BIGSERIAL は SQLite 非対応。
 import os, sys
 from db_connect import get_connection, is_postgres
 
-# ── 未確定パラメータ（仕様書 H章）の初期値（外出し必須。ハードコードして散らさない）──
-DEFAULT_MODEL_TAG = "qwen3-embedding-0.6b-d1024"  # H-1 実機確定後に更新
-FULL_DIM  = 1024  # Qwen3-0.6B 固定。別モデルは別 model_tag で管理（B-2 複合キー）
-SHORT_DIM = 256   # MRL 短次元（H-3 実機で損失 <1% を確認後に変更可）
+# ── 未確定パラメータ（仕様書 H章）は embedding_config に単一ソース化 ──────────
+# vector 列サイズと embedding 次元は必ず一致しなければならないため、定数は共有する。
+from embedding_config import MODEL_TAG as DEFAULT_MODEL_TAG, FULL_DIM, SHORT_DIM
 
 # ── テーブル DDL（依存順: profiles_v4 → vectors/necessity/ledger）──────────────
 

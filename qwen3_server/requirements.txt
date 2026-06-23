@@ -1,0 +1,8 @@
+# Qwen3-Embedding 推論サーバ依存
+# CPU 専用で軽くしたい場合は torch を CPU wheel で入れる:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+flask>=3.0.0
+gunicorn>=21.0.0
+sentence-transformers>=4.0.0
+torch>=2.2.0
+numpy>=1.26.0

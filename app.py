@@ -37,6 +37,14 @@ DB = os.environ.get("POX_DB", "pox.db")
 if is_postgres():
     import schema
     schema.init()
+    # v4 スキーマも初期化（既存テーブルと並存・非破壊）
+    try:
+        import schema_v4
+        schema_v4.init_v4()
+    except SystemExit:
+        pass  # init_v4 は CLI 用に sys.exit する。起動時は握りつぶす
+    except Exception as e:
+        print(f"[app] v4 スキーマ初期化スキップ: {e}")
 
 # ── 添付ファイルのアップロード設定 ──────────────────────────────
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
@@ -153,6 +161,98 @@ def _demo_judge(seeker, cand, roles):
     comp_via = roles[0]["role"] if roles else None
     sim = round(min(1.0, _jaccard(seeker.get("意志", ""), profile) * 2), 2)
     return {"comp": comp, "comp_via": comp_via, "sim": sim}
+
+
+# ── v4 embedding接続システム（F章 / 非破壊で並存）────────────────────────────
+# 既存 /seekers・/match（v3.1）はそのまま。v4 は profiles_v4 系テーブルを使う。
+# Postgres（DATABASE_URL）必須: vector / JSONB / HNSW は SQLite 非対応。
+
+def _v4_store():
+    """v4 用 PostgresStore を返す。Postgres でなければ 503 を投げる。"""
+    from db_v4 import PostgresStore
+    return PostgresStore(db_path=DB)
+
+
+@app.post("/v4/seekers")
+def post_v4_seeker():
+    """
+    ①v4 の構造化出力を取り込み、profiles_v4 / derived_necessity / profile_vectors
+    を一括保存する（F章 登録/更新）。supporting_raw は保存するが embedding/② には
+    redacted のみ渡す（I章）。s,u,γ,p,α,β は ② が所有。
+    """
+    if not is_postgres():
+        return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "JSON が読めません"}), 400
+    if not (body.get("will_text") or "").strip():
+        return jsonify({"error": "will_text が必要です"}), 400
+
+    from db_v4 import ingest_profile_v4
+    profile_id = body.get("user_id") or f"u_{uuid.uuid4().hex[:8]}"
+    profile_input = {
+        "will_text":      body.get("will_text", ""),
+        "state_have":     body.get("state_have", ""),
+        "state_can_type": body.get("state_can_type", ""),
+        "state_bound":    body.get("state_bound", ""),
+        "state_unsorted": body.get("state_unsorted", ""),
+        "supporting_raw": body.get("supporting_raw") or {},
+    }
+    try:
+        out = ingest_profile_v4(_v4_store(), profile_id, profile_input)
+    except Exception as e:
+        return jsonify({"error": f"取り込み失敗: {e}"}), 500
+    # 必要像の数値（②所有）はレスポンスに必要分のみ返す（生ベクトルは返さない）
+    nec = out["necessity"]
+    return jsonify({
+        "id": out["profile_id"],
+        "necessity_text": nec["necessity_text"],
+        "gate_s": nec["gate_s"], "gate_u": nec["gate_u"], "gamma": nec["gamma"],
+    }), 201
+
+
+@app.post("/v4/match")
+def post_v4_match():
+    """
+    seeker_id を起点に v4 エンジンで照合し ranking を返す（E章）。
+    256次元 shortlist → 全次元 nested complement → 律速軸/寄与率。ledger_v4 に監査記録。
+    seeker の生テキスト・ベクトルはレスポンスに含めない。
+    """
+    if not is_postgres():
+        return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "JSON が読めません"}), 400
+    seeker_id = body.get("seeker_id")
+    if not seeker_id:
+        return jsonify({"error": "seeker_id が必要です"}), 400
+    top_k = body.get("top_k")
+    migrate_pool = bool(body.get("migrate_pool"))
+
+    from db_v4 import match_v4
+    from migrate_v4 import ensure_migrated
+    store = _v4_store()
+    loader = lambda uid: get_seeker(uid, db_path=DB)
+
+    # F-5 遅延移行: seeker が v3.1 のみなら、ここで一度だけ v4 へ移行してから照合。
+    try:
+        ensure_migrated(store, seeker_id, loader)
+        # 移行期のブリッジ: 明示要求時のみ既存 v3.1 全員も v4 化（既定は真の遅延）。
+        if migrate_pool:
+            for row in load_all_seekers(db_path=DB):
+                ensure_migrated(store, row["id"], loader)
+    except Exception as e:
+        return jsonify({"error": f"移行失敗: {e}"}), 500
+
+    try:
+        out = match_v4(store, seeker_id, top_k=top_k)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"照合失敗: {e}"}), 500
+
+    out["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
+    return jsonify(out)
 
 
 @app.post("/approve")

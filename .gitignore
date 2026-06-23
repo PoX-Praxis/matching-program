@@ -25,6 +25,10 @@ pox.db
 static/uploads/*
 !static/uploads/.gitkeep
 
+# --- Qwen3 推論サーバ（実行時にモデルをDLするキャッシュ。コミットしない） ---
+qwen3_server/.hf/
+.hf/
+
 # --- Node.js ---
 node_modules/
 package-lock.json

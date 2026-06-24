@@ -23,11 +23,10 @@ def strip_code_fence(text: str) -> str:
     """先頭末尾の ```（```json 含む）を除去し、最初の { から最後の } までを返す。"""
     if not isinstance(text, str):
         text = str(text or "")
-    # iOS スマートクォート（" " ' '）を ASCII に正規化
+    # Normalize iOS smart quotes to ASCII before JSON parse
     text = (text
-            .replace('“', '"').replace('”', '"')
-            .replace('‘', "'").replace('’', "'")
-            .replace('「', '"').replace('」', '"'))
+            .replace('\u201c', '"').replace('\u201d', '"')
+            .replace('\u2018', "'").replace('\u2019', "'"))
     fence = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
     if fence:
         text = fence.group(1)

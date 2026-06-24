@@ -2,16 +2,14 @@
 """
 PoX 変換層 — 登録テキスト → seeker（非公開・原本）→ profile_view（公開・表示用）
 
-・純粋関数のみ。LLM 不使用。副作用なし。
-・入力キーが欠けても例外を投げない（防御的）。
-・_meta / 生テキスト / _ 始まりキーは profile_view 出力に含まない。
+v4: 二軸（意志/現状）スキーマ対応。v3.1 は後方互換で保持。
 
-登録の変換経路（修正指示書 v3.1 §3）:
+登録の変換経路:
     貼り付けテキスト
-      ↓ parse_registration_text()   ← ``` 除去＋JSONパース（受け側の責任）
+      ↓ parse_registration_text()   ← ``` 除去＋JSONパース
       ↓ normalize_to_seeker()        ← 構造の揺れを seeker 標準形へ正規化
     seeker（標準形）
-      ↓ build_profile_view()         ← 表示用に変換
+      ↓ build_profile_view()         ← 表示用に変換（v3/v4 分岐）
     profile_view
       ↓ apply_overrides()            ← view_overrides を重ねて返す（閲覧時）
 """
@@ -19,20 +17,15 @@ import re
 import json
 
 
-# ── ① 登録テキストのパース（``` 除去は受け側の責任） ──────────────
+# ── ① 登録テキストのパース ──────────────────────────────────────
 
 def strip_code_fence(text: str) -> str:
-    """
-    先頭末尾の ```（```json 含む）や前後の説明文を除去し、
-    最初の `{` から対応する最後の `}` までを取り出して返す。
-    """
+    """先頭末尾の ```（```json 含む）を除去し、最初の { から最後の } までを返す。"""
     if not isinstance(text, str):
         text = str(text or "")
-    # ``` で囲まれたブロックがあれば中身を優先的に拾う
     fence = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
     if fence:
         text = fence.group(1)
-    # 最初の { から最後の } まで
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -41,9 +34,7 @@ def strip_code_fence(text: str) -> str:
 
 
 def parse_registration_text(text: str) -> dict:
-    """
-    登録テキストを dict にする。失敗時は ValueError（直し方を示すメッセージ付き）。
-    """
+    """登録テキストを dict にする。失敗時は ValueError。"""
     cleaned = strip_code_fence(text)
     try:
         data = json.loads(cleaned)
@@ -60,69 +51,98 @@ def parse_registration_text(text: str) -> dict:
 
 # ── ② seeker 標準形への正規化 ─────────────────────────────────
 
-def _empty_supporting_material() -> dict:
-    return {"生テキスト": [], "要約文": "", "attention候補": [], "系列素材": []}
-
-
 def _clean_supporting_material(sm) -> dict:
-    """supporting_material を標準4キー・型保証で整える（欠損は空で補う）。"""
+    """v3.1 supporting_material を標準4キー・型保証で整える。"""
     if not isinstance(sm, dict):
         sm = {}
     raw_texts = sm.get("生テキスト")
     attention = sm.get("attention候補")
     series = sm.get("系列素材")
     return {
-        "生テキスト":   list(raw_texts) if isinstance(raw_texts, list) else [],
-        "要約文":       str(sm.get("要約文") or ""),
+        "生テキスト":    list(raw_texts) if isinstance(raw_texts, list) else [],
+        "要約文":        str(sm.get("要約文") or ""),
         "attention候補": list(attention) if isinstance(attention, list) else [],
-        "系列素材":     list(series) if isinstance(series, list) else [],
+        "系列素材":      list(series) if isinstance(series, list) else [],
     }
+
+
+def _clean_supporting_material_v4(sm) -> dict:
+    """v4 supporting_material を7キー・型保証で整える。欠落素材は '未取得'。"""
+    if not isinstance(sm, dict):
+        sm = {}
+
+    def _s(k):
+        v = sm.get(k)
+        return str(v) if v else "未取得"
+
+    raw_texts = sm.get("生テキスト")
+    series = sm.get("系列素材")
+    return {
+        "生テキスト":      list(raw_texts) if isinstance(raw_texts, list) else [],
+        "要約文":          str(sm.get("要約文") or ""),
+        "求めている":      _s("求めている"),
+        "意志要求の素材":  _s("意志要求の素材"),
+        "連言選言の素材":  _s("連言選言の素材"),
+        "チャネル重み素材": _s("チャネル重み素材"),
+        "系列素材":        list(series) if isinstance(series, list) else [],
+    }
+
+
+def _is_v4_raw(raw: dict) -> bool:
+    """登録JSONがv4かどうかを判定する。"""
+    if raw.get("schema_version") == "v4":
+        return True
+    inner = raw.get("seeker")
+    if isinstance(inner, dict) and isinstance(inner.get("現状"), dict):
+        return True
+    meta = raw.get("_meta") or {}
+    if meta.get("schema_version") == "v4":
+        return True
+    return False
 
 
 def normalize_to_seeker(raw: dict) -> dict:
     """
-    登録JSONの揺れを吸収して seeker 標準形（フラット）へ。
+    登録JSONの揺れを吸収して seeker 標準形へ。
 
-    対応する入力:
-      ・フル版   : raw["seeker"]（dict）と raw["supporting_material"] がある
-      ・旧式簡易 : トップレベルに 意志/求めている/能力/フェーズ が直接ある
-      ・記入式   : supporting_material はあるが attention候補/系列素材 が空
-
-    返り値（標準形）: 意志/求めている/能力/フェーズ/_phase_status/_phase_candidates
-                      ＋ supporting_material（4キー）＋ _meta ＋ id（ハンドル属性）
+    v4: 現状を dict のまま保持。supporting_material は7キー。
+    v3: 後方互換。意志/求めている/能力/フェーズ。
     """
     if not isinstance(raw, dict):
         raw = {}
 
     inner = raw.get("seeker")
     if isinstance(inner, dict):
-        # フル版: seeker 配下をそのまま採用
         seeker = dict(inner)
         sm = raw.get("supporting_material")
         handle = raw.get("id") or inner.get("id")
         meta = raw.get("_meta") or inner.get("_meta")
     else:
-        # 旧式簡易/記入式フラット: トップレベルを seeker とみなす
-        seeker = {
-            k: v for k, v in raw.items()
-            if k not in ("supporting_material", "_meta")
-        }
+        seeker = {k: v for k, v in raw.items()
+                  if k not in ("supporting_material", "_meta")}
         sm = raw.get("supporting_material")
         handle = raw.get("id")
         meta = raw.get("_meta")
 
-    seeker["supporting_material"] = _clean_supporting_material(sm)
-
-    if handle:
-        seeker["id"] = handle
-
     if not isinstance(meta, dict):
         meta = {}
-    meta.setdefault("schema_version", "v3")
-    seeker["_meta"] = meta
 
-    if not seeker.get("_phase_status"):
-        seeker["_phase_status"] = "candidate_unconfirmed"
+    if _is_v4_raw(raw):
+        seeker["supporting_material"] = _clean_supporting_material_v4(sm)
+        meta.setdefault("schema_version", "v4")
+        if not isinstance(seeker.get("現状"), dict):
+            seeker["現状"] = {
+                "持っているもの": "", "できること_型": "",
+                "縛られているもの": "", "未分類": "",
+            }
+    else:
+        seeker["supporting_material"] = _clean_supporting_material(sm)
+        meta.setdefault("schema_version", "v3")
+        seeker.setdefault("_phase_status", "candidate_unconfirmed")
+
+    seeker["_meta"] = meta
+    if handle:
+        seeker["id"] = handle
 
     return seeker
 
@@ -136,10 +156,7 @@ def _extract_bracket(text: str) -> str:
 
 
 def _parse_trajectory_item(item) -> dict:
-    """
-    「目標『X』→ 次に必要『Y』」を {from, to} に分解。
-    → が無い・非文字列は {from: 原文, to: ""} にフォールバック（情報を捨てない）。
-    """
+    """「目標『X』→ 次に必要『Y』」を {from, to} に分解。"""
     if not isinstance(item, str):
         return {"from": str(item), "to": ""}
     if "→" in item:
@@ -149,7 +166,6 @@ def _parse_trajectory_item(item) -> dict:
 
 
 def _first_sentence(text: str) -> str:
-    """文字列の先頭1文（。または改行まで）を返す。"""
     if not text:
         return ""
     return re.split(r"[。\n]", text, 1)[0].strip()
@@ -157,59 +173,77 @@ def _first_sentence(text: str) -> str:
 
 def build_profile_view(seeker: dict) -> dict:
     """
-    seeker dict → profile_view dict（公開用）。
+    seeker dict → profile_view dict（公開用）。v3/v4 両対応。
 
-    出力キー:
-      headline    : 要約文（空なら意志の先頭1文を流用＝ヘッダーを空にしない §3.3）
-      pursuing    : 意志
-      needs       : 求めている
-      offering    : 能力
-      phase_badge : {value, unconfirmed}
-      keys        : attention候補[]
-      trajectory  : [{from, to}]
+    v4 出力キー:
+      schema_version / headline / pursuing / state_have / state_can_type /
+      state_bound / state_unsorted / seeking / keys / trajectory
 
-    除外: 生テキスト / _meta / _phase_* / id / _ 始まりキー全て
+    v3 出力キー（後方互換）:
+      schema_version / headline / pursuing / needs / offering /
+      phase_badge / keys / trajectory
     """
     if not isinstance(seeker, dict):
         seeker = {}
 
+    meta = seeker.get("_meta") or {}
+    schema_ver = meta.get("schema_version", "v3")
     sm = seeker.get("supporting_material")
     if not isinstance(sm, dict):
-        sm = seeker  # フォールバック: トップレベルを二段目として探す
+        sm = seeker
 
     will = str(seeker.get("意志") or "")
-
     headline = sm.get("要約文") or seeker.get("要約文") or ""
     if not headline:
-        headline = _first_sentence(will)  # §3.3: 要約文が空なら意志の先頭1文
+        headline = _first_sentence(will)
 
-    keys_raw = sm.get("attention候補") or seeker.get("attention候補") or []
-    keys = list(keys_raw) if isinstance(keys_raw, list) else []
+    jotai = seeker.get("現状")
+    is_v4 = schema_ver == "v4" or isinstance(jotai, dict)
 
-    traj_raw = sm.get("系列素材") or seeker.get("系列素材") or []
-    trajectory = [
-        _parse_trajectory_item(item)
-        for item in (traj_raw if isinstance(traj_raw, list) else [])
-    ]
+    if is_v4:
+        if not isinstance(jotai, dict):
+            jotai = {}
+        series_raw = sm.get("系列素材") or []
+        trajectory = [_parse_trajectory_item(item)
+                      for item in (series_raw if isinstance(series_raw, list) else [])]
+        keys_raw = sm.get("attention候補") or seeker.get("attention候補") or []
+        keys = list(keys_raw) if isinstance(keys_raw, list) else []
+        return {
+            "schema_version": "v4",
+            "headline":       str(headline),
+            "pursuing":       will,
+            "state_have":     str(jotai.get("持っているもの") or ""),
+            "state_can_type": str(jotai.get("できること_型") or ""),
+            "state_bound":    str(jotai.get("縛られているもの") or ""),
+            "state_unsorted": str(jotai.get("未分類") or ""),
+            "seeking":        str(sm.get("求めている") or ""),
+            "keys":           keys,
+            "trajectory":     trajectory,
+        }
+    else:
+        keys_raw = sm.get("attention候補") or seeker.get("attention候補") or []
+        keys = list(keys_raw) if isinstance(keys_raw, list) else []
+        traj_raw = sm.get("系列素材") or seeker.get("系列素材") or []
+        trajectory = [_parse_trajectory_item(item)
+                      for item in (traj_raw if isinstance(traj_raw, list) else [])]
+        phase_val = seeker.get("フェーズ") or ""
+        phase_status = seeker.get("_phase_status") or ""
+        return {
+            "schema_version": "v3",
+            "headline":    str(headline) if headline else "",
+            "pursuing":    will,
+            "needs":       str(seeker.get("求めている") or ""),
+            "offering":    str(seeker.get("能力") or ""),
+            "phase_badge": {
+                "value":       str(phase_val) if phase_val else "",
+                "unconfirmed": phase_status == "candidate_unconfirmed",
+            },
+            "keys":       keys,
+            "trajectory": trajectory,
+        }
 
-    phase_val = seeker.get("フェーズ") or ""
-    phase_status = seeker.get("_phase_status") or ""
 
-    return {
-        "headline": str(headline) if headline else "",
-        "pursuing": will,
-        "needs":    str(seeker.get("求めている") or ""),
-        "offering": str(seeker.get("能力") or ""),
-        "phase_badge": {
-            "value":       str(phase_val) if phase_val else "",
-            "unconfirmed": phase_status == "candidate_unconfirmed",
-        },
-        "keys":       keys,
-        "trajectory": trajectory,
-    }
-
-
-# ── ④ 表示オーバーレイ（view_overrides を profile_view に重ねる §5）─
+# ── ④ 表示オーバーレイ（view_overrides を profile_view に重ねる）─
 
 def _traj_sig(t: dict) -> str:
     return f"{t.get('from', '')}|||{t.get('to', '')}"
@@ -217,13 +251,8 @@ def _traj_sig(t: dict) -> str:
 
 def apply_overrides(pv: dict, overrides: dict) -> dict:
     """
-    profile_view（seeker由来）に view_overrides を重ねた結果を返す。
+    profile_view に view_overrides を重ねた結果を返す。
     overrides は表示専用設定であり、マッチング根拠（seeker）には一切触れない。
-
-    overrides 形式（いずれも任意）:
-      headline   : 文字列。非空なら headline を差し替え。
-      keys       : 表示する attention候補テキストの並び（順序＝表示順、含まれない＝非表示）。
-      trajectory : 表示する軌跡シグネチャ "from|||to" の並び（順序＝表示順）。
     """
     if not isinstance(overrides, dict) or not overrides:
         return pv

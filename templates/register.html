@@ -250,8 +250,13 @@ async function register() {
   const el = document.getElementById("msg");
   el.className = ""; el.textContent = "登録中...";
 
-  const rawText = document.getElementById("seekerJson").value.trim();
+  let rawText = document.getElementById("seekerJson").value.trim();
   if (!rawText) { el.className = "err"; el.textContent = "JSON を貼り付けてください"; return; }
+
+  // iOS スマートクォートを ASCII に正規化してからサーバへ送る
+  rawText = rawText
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
 
   // raw_text をサーバへ。``` 除去・パース・正規化はサーバ側が行う。
   const payload = { raw_text: rawText };

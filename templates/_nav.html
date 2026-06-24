@@ -2,6 +2,7 @@
   <a href="/" style="color:white;font-weight:bold;text-decoration:none;font-size:1.1rem">PoX</a>
   <div style="display:flex;gap:16px;align-items:center">
     <a href="/register" style="color:#cde">登録</a>
+    <a href="/" id="navMatch" style="color:#cde">つながる</a>
     <a href="/communities" style="color:#cde">コミュニティ</a>
     <a href="/about" style="color:#cde">PoXとは</a>
     <a href="#" id="navInbox" style="color:#cde">インボックス</a>
@@ -16,6 +17,22 @@
     document.getElementById("navMyPage").href = `/mypage?id=${encodeURIComponent(id)}`;
     document.getElementById("navInbox").href  = `/inbox?id=${encodeURIComponent(id)}`;
     document.getElementById("navId").textContent = id;
+  }
+  const path = location.pathname;
+  const map = {
+    "/": "navMatch",
+    "/register": null,
+    "/communities": null,
+    "/about": null,
+    "/inbox": "navInbox",
+    "/mypage": "navMyPage"
+  };
+  const activeId = map[path];
+  if (activeId) {
+    const el = document.getElementById(activeId);
+    if (el) el.style.color = "#fff";
+  } else {
+    document.querySelectorAll("nav a[href='" + path + "']").forEach(function(a){ a.style.color = "#fff"; });
   }
 })();
 </script>

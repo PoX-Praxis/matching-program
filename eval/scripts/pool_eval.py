@@ -183,13 +183,30 @@ def main():
         all_results.append(case_result)
 
     # 結果保存
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    payload = {"model_tag": MODEL_TAG, "pool_size": len(pool), "cases": all_results}
+
+    # results/: 一時保存（gitignore 対象）
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    ts       = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = RESULTS_DIR / f"pool_{MODEL_TAG}_{ts}.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump({"model_tag": MODEL_TAG, "pool_size": len(pool),
-                   "cases": all_results}, f, ensure_ascii=False, indent=2)
-    print(f"結果保存: {out_path}")
+    tmp_path = RESULTS_DIR / f"pool_{MODEL_TAG}_{ts}.json"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    # snapshots/: 永続保存（git 追跡対象）
+    SNAPSHOTS_DIR = RESULTS_DIR.parent / "snapshots"
+    SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    snap_name = f"pool_{MODEL_TAG}_{ts}.json"
+    snap_path = SNAPSHOTS_DIR / snap_name
+    with open(snap_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    print(f"結果保存（一時）: {tmp_path}")
+    print(f"結果保存（永続）: {snap_path}")
+    print()
+    print("git でスナップショットを記録するには:")
+    print(f"  git add eval/snapshots/{snap_name}")
+    print(f'  git commit -m "snapshot: pool × {MODEL_TAG} マッチング結果"')
+    print("  git push origin exp/embedding-model-eval")
 
 
 if __name__ == "__main__":

@@ -5,17 +5,31 @@ GitHub 公開プロフィールを取得し Claude で PoX v4 形式に構造化
     set GITHUB_TOKEN=ghp_xxxx
     set ANTHROPIC_API_KEY=sk-ant-xxxx
     cd matching-program-exp
+    # 追加で 500 件構造化する場合:
+    set GITHUB_PROFILE_COUNT=500
     python eval/scripts/fetch_github_profiles.py
 
-出力: eval/github_profiles.jsonl
+    （PowerShell の場合）
+    $env:GITHUB_TOKEN = "ghp_xxxx"
+    $env:ANTHROPIC_API_KEY = "sk-ant-xxxx"
+    $env:GITHUB_PROFILE_COUNT = "500"
+    python eval/scripts/fetch_github_profiles.py
+
+出力: eval/github_profiles.jsonl（既存ファイルに追記）
   1行1JSON: {"github_login":"...", "display_name":"...", "bio":"...",
              "will_text":"...", "state_have":"...", "state_can_type":"...",
              "state_bound":"...", "state_unsorted":"..."}
 
+調整できる環境変数:
+  GITHUB_PROFILE_COUNT   今回新たに構造化する目標件数（既定 100）
+  GITHUB_SEARCH_MAX_PAGES 1クエリあたりの取得ページ数（既定 5・per_page=30）
+  GITHUB_OVERSAMPLE      フィルタ脱落を見込んだ過剰収集倍率（既定 2.5）
+
 設計:
   - GitHub Search API で多様なユーザーを収集（日本語/英語混在）
+  - フォロワーを帯域で分割し、毎回トップの有名人を再取得しないようにする
   - bio が空・リポジトリ数が少ないユーザーは除外
-  - 再実行時は出力済みログインをスキップ（レジューム可能）
+  - 再実行時は出力済みログインをスキップ（レジューム可能・既存90件は自動スキップ）
   - GITHUB_TOKEN なしでも動作するが rate limit が 60 req/h になる
 """
 import os, json, time, sys, pathlib, urllib.request, urllib.error, re
@@ -26,27 +40,64 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 TARGET_COUNT     = int(os.environ.get("GITHUB_PROFILE_COUNT", "100"))
 MIN_BIO_LEN      = 20   # bio がこれより短いユーザーはスキップ
 MIN_REPOS        = 5    # public_repos がこれより少ないユーザーはスキップ
+# 1クエリあたり何ページ取るか（per_page=30）。深く掘るほど新規（=低フォロワー層）が増える。
+SEARCH_MAX_PAGES = int(os.environ.get("GITHUB_SEARCH_MAX_PAGES", "5"))
+# 過剰収集の倍率。bio/repos フィルタで脱落する分を見込み、目標の何倍の候補を集めるか。
+OVERSAMPLE       = float(os.environ.get("GITHUB_OVERSAMPLE", "2.5"))
 
 OUTPUT_FILE = pathlib.Path(__file__).parent.parent / "github_profiles.jsonl"
 
 # ── 多様性を確保する検索クエリ群 ──────────────────────────────────────────────
+# 設計方針:
+#   - フォロワーを「帯域（range）」で分割し、毎回トップの有名人を再取得しないようにする
+#     （例: 100..300 と 30..100 は別集合 → 新規が増える）。500件追加に必要な裾野を確保。
+#   - エンジニア偏重（均質プール問題）を緩和するため、役割・ドメインの軸を増やす
+#     （研究/デザイン/社会課題/教育/起業/アート/学生 など）。
+#   - 地域・言語も広げて多様性を底上げ。
 SEARCH_QUERIES = [
-    # 日本のアクティブユーザー（フォロワー数で品質フィルタ）
-    "location:Japan followers:>100",
-    "location:Tokyo followers:>50",
-    "location:Osaka followers:>30",
-    "location:Japan language:Python followers:>30",
-    "location:Japan language:JavaScript followers:>30",
-    # 社会課題・スタートアップ系（英語bio多め）
-    "social+impact in:bio followers:>50",
-    "startup founder in:bio followers:>100",
-    "open+source in:bio location:Japan",
+    # ── 日本：フォロワー帯域で分割（重複回避しつつ裾野まで） ──
+    "location:Japan followers:200..500",
+    "location:Japan followers:100..200",
+    "location:Japan followers:50..100",
+    "location:Japan followers:30..50",
+    "location:Tokyo followers:50..200",
+    "location:Tokyo followers:20..50",
+    "location:Osaka followers:20..100",
+    "location:Kyoto followers:15..100",
+    "location:Fukuoka followers:15..100",
+    "location:Nagoya followers:15..100",
+    "location:Sapporo followers:10..100",
+    "location:Sendai followers:10..100",
+    # ── 日本：言語軸 ──
+    "location:Japan language:Python followers:30..150",
+    "location:Japan language:JavaScript followers:30..150",
+    "location:Japan language:TypeScript followers:30..150",
+    "location:Japan language:Go followers:20..150",
+    "location:Japan language:Rust followers:20..150",
+    "location:Japan language:Ruby followers:20..150",
+    "location:Japan language:Swift followers:20..150",
+    # ── 役割・ドメイン軸（非エンジニアを掘る：均質性を崩す）──
     "researcher in:bio location:Japan",
-    "designer in:bio location:Japan followers:>50",
-    # 多様な地域
-    "location:Fukuoka followers:>20",
-    "location:Kyoto followers:>20",
-    "location:Nagoya followers:>20",
+    "PhD in:bio location:Japan",
+    "designer in:bio location:Japan followers:>20",
+    "artist in:bio location:Japan",
+    "writer in:bio location:Japan",
+    "educator OR teacher in:bio location:Japan",
+    "student in:bio location:Japan followers:>20",
+    "founder in:bio location:Japan followers:>30",
+    "startup in:bio location:Japan followers:>30",
+    "product manager in:bio location:Japan",
+    "data scientist in:bio location:Japan followers:>20",
+    "social in:bio location:Japan",
+    "nonprofit OR NPO in:bio",
+    "music OR game OR creative in:bio location:Japan followers:>30",
+    # ── 社会課題・スタートアップ（英語bio・海外含む）──
+    "social+impact in:bio followers:50..300",
+    "startup founder in:bio followers:100..500",
+    "open+source in:bio location:Japan followers:30..200",
+    "indie+developer in:bio followers:30..300",
+    "civic+tech in:bio",
+    "accessibility in:bio followers:>20",
 ]
 
 # ── GitHub API ────────────────────────────────────────────────────────────────
@@ -86,7 +137,7 @@ def _gh_get(url, retries=3):
     return None
 
 
-def search_users(query, per_page=30, max_pages=3):
+def search_users(query, per_page=30, max_pages=SEARCH_MAX_PAGES):
     logins = []
     for page in range(1, max_pages + 1):
         q = urllib.parse.quote(query)
@@ -240,21 +291,28 @@ def main():
     print(f"既処理: {len(done)} 件 / 目標: {TARGET_COUNT} 件")
 
     # ── ユーザー収集（クエリをローテーション）──
+    # フィルタ（bio/repos）で一定割合が脱落するため、目標の OVERSAMPLE 倍まで候補を集める。
+    # 収集段階で done（処理済み）は seen に入れて二重取得しない＝スキップ。
     collected_logins = list(done)  # 順序保持
     seen = set(done)
+    want_candidates = int(TARGET_COUNT * OVERSAMPLE)
 
     for query in SEARCH_QUERIES:
-        if len(collected_logins) - len(done) >= TARGET_COUNT:
+        new_so_far = len(collected_logins) - len(done)
+        if new_so_far >= want_candidates:
             break
-        print(f"[search] {query}")
+        print(f"[search] {query}  (新規候補 {new_so_far}/{want_candidates})")
         logins = search_users(query)
+        added = 0
         for login in logins:
             if login not in seen:
                 seen.add(login)
                 collected_logins.append(login)
+                added += 1
+        print(f"         +{added} 件（うち既処理スキップ済み）")
 
     new_logins = [l for l in collected_logins if l not in done]
-    print(f"新規候補: {len(new_logins)} 件")
+    print(f"新規候補: {len(new_logins)} 件（目標処理数 {TARGET_COUNT} / 過剰収集上限 {want_candidates}）")
 
     processed = 0
     skipped = 0

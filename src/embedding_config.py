@@ -11,14 +11,14 @@ schema_v4 の vector 列サイズもここを参照する（列サイズと embe
 import os
 
 # ── モデル・次元（A-3 / H-3）──────────────────────────────────────────────
-MODEL_TAG = os.environ.get("POX_EMBED_MODEL_TAG", "qwen3-emb-0.6b")
+MODEL_TAG = os.environ.get("POX_EMBED_MODEL_TAG", "qwen3-embedding-0.6b-d1024")
 
 # モデルごとの出力次元（FULL_DIM）。実機で確認後に埋める。
 # TODO: embgemma-300m / nomic-emb-v2 の実次元を実機確認後にここを更新する。
 MODEL_DIMS = {
-    "qwen3-emb-0.6b":   1024,   # Qwen3-Embedding-0.6B（実機確認済み）
-    "embgemma-300m":     768,   # EmbeddingGemma-300M（公式仕様。実機要確認）
-    "nomic-emb-v2":     None,   # TODO: 実機で確認する
+    "qwen3-embedding-0.6b-d1024": 1024,  # Qwen3-Embedding-0.6B（実機確認済み: dim=1024）
+    "embgemma-300m":               768,  # EmbeddingGemma-300M（公式仕様。実機要確認）
+    "nomic-emb-v2":               None,  # TODO: 実機で確認する
 }
 
 # POX_EMBED_FULL_DIM が明示設定されていれば最優先。なければ MODEL_DIMS から取得。

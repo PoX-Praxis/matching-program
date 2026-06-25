@@ -24,6 +24,10 @@ GitHub 公開プロフィールを取得し Claude で PoX v4 形式に構造化
   GITHUB_PROFILE_COUNT   今回新たに構造化する目標件数（既定 100）
   GITHUB_SEARCH_MAX_PAGES 1クエリあたりの取得ページ数（既定 5・per_page=30）
   GITHUB_OVERSAMPLE      フィルタ脱落を見込んだ過剰収集倍率（既定 2.5）
+  GITHUB_QUERY_SET       使う検索クエリ集合 japan|global|all（既定 japan）
+                         海外（英語圏）を集めたいときは global を指定。
+                         ※ seeker(KH) の英語化は不要。海外アカウントの英語 bio も
+                           構造化層が日本語に変換するため、プールは日本語で統一される。
 
 設計:
   - GitHub Search API で多様なユーザーを収集（日本語/英語混在）
@@ -54,7 +58,7 @@ OUTPUT_FILE = pathlib.Path(__file__).parent.parent / "github_profiles.jsonl"
 #   - エンジニア偏重（均質プール問題）を緩和するため、役割・ドメインの軸を増やす
 #     （研究/デザイン/社会課題/教育/起業/アート/学生 など）。
 #   - 地域・言語も広げて多様性を底上げ。
-SEARCH_QUERIES = [
+JAPAN_QUERIES = [
     # ── 日本：フォロワー帯域で分割（重複回避しつつ裾野まで） ──
     "location:Japan followers:200..500",
     "location:Japan followers:100..200",
@@ -99,6 +103,59 @@ SEARCH_QUERIES = [
     "civic+tech in:bio",
     "accessibility in:bio followers:>20",
 ]
+
+# ── 海外（英語圏中心）クエリ群 ────────────────────────────────────────────────
+# 重要: 海外アカウントの英語 bio も構造化層が「日本語」に変換してプールへ入れる
+#   （STRUCTURE_PROMPT: 言語にかかわらず日本語で出力）。
+#   → プールは日本語で統一され、KH（日本語）とのマッチングは日英をまたがない。
+#   → seeker（KH）を英語化する必要はない。集めるべきは「クエリ」だけ。
+GLOBAL_QUERIES = [
+    # ── 技術ハブ都市：フォロワー帯域で分割 ──
+    "location:\"San Francisco\" followers:100..400",
+    "location:\"New York\" followers:80..300",
+    "location:London followers:80..300",
+    "location:Berlin followers:60..250",
+    "location:Amsterdam followers:40..200",
+    "location:Toronto followers:40..200",
+    "location:Bangalore followers:60..250",
+    "location:Singapore followers:40..200",
+    "location:Paris followers:50..200",
+    "location:Seoul followers:40..200",
+    "location:Sydney followers:30..200",
+    "location:Remote followers:50..300",
+    # ── 言語軸（地域非依存・低めフォロワーで新規を掘る）──
+    "language:Python followers:80..200",
+    "language:TypeScript followers:80..200",
+    "language:Rust followers:60..200",
+    "language:Go followers:60..200",
+    # ── 役割・ドメイン軸（非エンジニアを掘る：均質性を崩す）──
+    "researcher in:bio followers:100..500",
+    "PhD in:bio followers:80..400",
+    "scientist in:bio followers:80..400",
+    "designer in:bio followers:80..400",
+    "educator OR teacher in:bio followers:50..300",
+    "artist in:bio followers:50..300",
+    "writer in:bio followers:50..300",
+    "product manager in:bio followers:50..300",
+    # ── 社会課題・公益（非営利・市民テック・気候・教育）──
+    "climate in:bio followers:50..400",
+    "nonprofit OR NGO in:bio followers:30..400",
+    "social+impact in:bio followers:50..400",
+    "civic+tech in:bio followers:>20",
+    "accessibility in:bio followers:30..300",
+    "healthcare in:bio followers:50..400",
+    "education in:bio followers:50..400",
+]
+
+# ── どのクエリ集合を使うか（japan | global | all）──────────────────────────────
+# 既存挙動を壊さないため既定は japan。海外を集めたいときは GITHUB_QUERY_SET=global。
+_QUERY_SET = os.environ.get("GITHUB_QUERY_SET", "japan").lower()
+if _QUERY_SET == "global":
+    SEARCH_QUERIES = GLOBAL_QUERIES
+elif _QUERY_SET == "all":
+    SEARCH_QUERIES = JAPAN_QUERIES + GLOBAL_QUERIES
+else:
+    SEARCH_QUERIES = JAPAN_QUERIES
 
 # ── GitHub API ────────────────────────────────────────────────────────────────
 def _gh_headers():

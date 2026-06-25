@@ -15,7 +15,8 @@ I章の遵守:
 import math, hashlib, struct, json, os
 
 from embedding_config import (
-    PREFIX, FULL_DIM, SHORT_DIM, EPS, MODEL_TAG, BACKEND, QWEN3_ENDPOINT,
+    PREFIX, FULL_DIM, SHORT_DIM, EPS, MODEL_TAG, BACKEND,
+    QWEN3_ENDPOINT, EMBGEMMA_ENDPOINT, NOMIC_ENDPOINT,
 )
 from pii_redaction import redact_text
 
@@ -86,9 +87,41 @@ def _qwen3_encode(text):
     return vec
 
 
+# ── バックエンド: embgemma（EmbeddingGemma-300M セルフホスト。実装は TODO）──────
+def _embgemma_encode(text):
+    """
+    TODO: EmbeddingGemma-300M 推論サービスを呼ぶ実装を書く。
+    注意: activations は float32 か bfloat16 で動かす（float16 非対応）。
+    インターフェース: {"text": text, "model_tag": MODEL_TAG} → {"embedding": [...]}
+    EMBGEMMA_ENDPOINT が未設定の場合は RuntimeError を上げる。
+    """
+    raise NotImplementedError(
+        "embgemma backend は未実装です（足場のみ）。"
+        "GPU ホストと推論サービスを立ててから実装してください。"
+    )
+
+
+# ── バックエンド: nomic（Nomic Embed v2 セルフホスト。実装は TODO）──────────────
+def _nomic_encode(text):
+    """
+    TODO: Nomic Embed v2 推論サービスを呼ぶ実装を書く。
+    prefix 書式: "search_query:" / "search_document:" を embedding_config の PREFIX で制御。
+    インターフェース: {"text": text, "model_tag": MODEL_TAG} → {"embedding": [...]}
+    NOMIC_ENDPOINT が未設定の場合は RuntimeError を上げる。
+    """
+    raise NotImplementedError(
+        "nomic backend は未実装です（足場のみ）。"
+        "GPU ホストと推論サービスを立ててから実装してください。"
+    )
+
+
 def _encode(text):
     if BACKEND == "qwen3":
         return _qwen3_encode(text)
+    if BACKEND == "embgemma":
+        return _embgemma_encode(text)
+    if BACKEND == "nomic":
+        return _nomic_encode(text)
     return _stub_encode(text)
 
 

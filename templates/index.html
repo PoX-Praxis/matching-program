@@ -139,7 +139,8 @@ async function loadSeekers() {
   }
   tbody.innerHTML = rows.map(r => {
     const will  = (r.seeker["意志"] || "").slice(0, 40) + ((r.seeker["意志"] || "").length > 40 ? "…" : "");
-    const phase = (r.seeker["現状"] || r.seeker["state_have"] || "").slice(0, 30) + ((r.seeker["現状"] || r.seeker["state_have"] || "").length > 30 ? "…" : "") || "-";
+    const stateRaw = r.seeker["state_have"] || (typeof r.seeker["現状"] === "string" ? r.seeker["現状"] : (r.seeker["現状"] && r.seeker["現状"]["持っているもの"]) || "") || "";
+    const phase = stateRaw.slice(0, 30) + (stateRaw.length > 30 ? "…" : "") || "-";
     const sid   = r.id.replace(/'/g, "\\'");
     return `<tr>
       <td><a href="/profile/${encodeURIComponent(r.id)}" style="font-family:monospace;font-size:13px">${r.id}</a></td>

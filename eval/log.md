@@ -18,6 +18,70 @@
 
 ---
 
+## 2026-06-26｜3モデル比較（KH solo eval 第1回）｜検証
+
+**内容:** KH（seeker）固定・必要像は claude-opus-4-8 事前生成を3モデル共通使用・GitHub プール90件・パラメータ固定（gamma=0.43, p=-0.3, alpha=1.0, beta=1.2）で、Qwen3 / EmbGemma / Nomic の3モデルを同一コードでマッチング。
+
+**スナップショット:**
+- `snapshots/solo_KH_qwen3-embedding-0.6b-d1024_20260625.json`
+- `snapshots/solo_KH_embgemma-300m_20260626_022326.json`
+- `snapshots/solo_KH_nomic-emb-v2_20260626_022645.json`
+
+### 上位10件の並び
+
+| Rank | Qwen3 | score | EmbGemma | score | Nomic | score |
+|---|---|---|---|---|---|---|
+| 1 | hoochanlon | 0.7460 | SakanaAI | 0.7754 | hoochanlon | 0.7919 |
+| 2 | SakanaAI | 0.7394 | hoochanlon | 0.7724 | yuk7 | 0.7816 |
+| 3 | yusukebe | 0.7346 | Jannchie | 0.7697 | privatenumber | 0.7810 |
+| 4 | chomado | 0.7307 | privatenumber | 0.7663 | SakanaAI | 0.7756 |
+| 5 | Jannchie | 0.7297 | Desgard | 0.7659 | marcan | 0.7738 |
+| 6 | marcan | 0.7275 | matchai | 0.7624 | gfx | 0.7709 |
+| 7 | onevcat | 0.7257 | sxzz | 0.7621 | brettwooldridge | 0.7698 |
+| 8 | kana | 0.7253 | unhappychoice | 0.7607 | kana | 0.7688 |
+| 9 | privatenumber | 0.7243 | kallydev | 0.7606 | yusukebe | 0.7656 |
+| 10 | gfx | 0.7218 | kevinzhow | 0.7573 | Santos-Enoque | 0.7656 |
+
+### 一致構造
+
+- **3モデル共通（top10）**: hoochanlon / SakanaAI / privatenumber → 3人
+- **Qwen3 ∩ Nomic = 7人**（ほぼ同型）／ Qwen3 ∩ EmbGemma = 4人 ／ EmbGemma ∩ Nomic = 3人
+- **EmbGemma が外れ値**：Web3（Desgard）・OSSメンテナ（matchai/sxzz/kallydev）系を独自に上位化
+- **hoochanlon は全モデル Rank1〜2** の頑健なトップ、SakanaAI も Rank1〜4 で安定
+
+### 決定的所見：limiting_axis がモデルで反転
+
+| | a（意志↔意志 対称） | b（必要像→現状） | c（意志 passage） | limiting_axis |
+|---|---|---|---|---|
+| EmbGemma | 0.61〜0.67（高） | 0.41〜0.46（低=制約） | 0.47〜0.56 | 全件 "b" |
+| Nomic | 0.48〜0.54（低=制約） | 0.51〜0.60 | 0.62〜0.68（高） | 全件 "a" |
+
+- **EmbGemma**：意志はよく合う（a高）が「現状が必要像を満たすか」（b）が常にボトルネック＝KHのマッチの難所を b で捕捉
+- **Nomic**：意志passage・現状（c/b）は出るが、意志↔意志の対称類似（a）が全体的に低くそこが制約
+- → モデルごとに cos類似度の絶対水準・分布が全く異なる。パラメータ固定（公平比較のため正しい）の結果、**スコア絶対値はモデル間で直接比較不可。比較対象は順位構造のみ**。
+- （Qwen3 は手動再構成スナップのため attribution なし。次回再実行で取得すること）
+
+### スコア分布（均質プール問題は3モデル共通）
+
+| | 最高 | 最低 | レンジ幅 |
+|---|---|---|---|
+| Qwen3 | 0.7460 | 0.7218 | 0.0242 |
+| EmbGemma | 0.7754 | 0.7573 | 0.0181 |
+| Nomic | 0.7919 | 0.7656 | 0.0263（分離度最大）|
+
+**気づき:**
+- 3モデルとも0.72〜0.79に圧縮 → プールが全員エンジニアで均質という根本問題は不変
+- 「どのモデルが良いか」は**順位の妥当性をKHが人手で判定**するしかない（スコア絶対値では決められない）。hoochanlon/SakanaAI/privatenumber の3人がKHにとって本当に会いたい相手かが判断軸
+- EmbGemma だけ別集合を出すのは採否判断の分岐点。EmbGemma の上位（unhappychoice「エンジニアが本当に価値あることに注力できる世界」、kallydev「人々が本当に求めるプロダクト」）は意志文がKHと語彙的に酷似 → 意志の意味照合は EmbGemma が鋭い可能性
+
+**次のアクション:**
+- [ ] KH が3モデルの上位を見て「会いたい順」と照合 → どのモデルの順位が一番納得できるか人手評価
+- [ ] Qwen3 を attribution 付きで再実行（チャネル別比較を3モデル揃える）
+- [ ] 採否判断（設計書 §6-3）：順位妥当性 × チャネル健全性 × 速度/コストで決定
+- [ ] 非エンジニアをプールに混ぜて均質性を崩す（別タスク）
+
+---
+
 ## 2026-06-25｜Qwen3 × KH solo eval｜実験
 
 **内容:** KH（seeker）の必要像を claude-opus-4-8 で事前生成し、GitHub プロフィール 90 件（エンジニア中心）に対して Qwen3-Embedding-0.6B でマッチング実行。

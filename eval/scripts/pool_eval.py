@@ -102,9 +102,39 @@ def main():
     pool    = load_pool()
     print(f"Seeker: {len(seekers)} 件 / プール: {len(pool)} 件\n")
 
+    # ── 候補ベクトルを一度だけ構築（seeker をまたいで再利用）────────────────
+    # 候補は seeker が変わっても同じなので 1 回だけ埋め込む。
+    # 旧実装は seeker ごとに再計算していた（90件×6回）→ ここで 90件×1回に削減。
+    print(f"候補プールのベクトル化を開始（{len(pool)} 件）...", flush=True)
+    cand_list = []        # [(login, cvecs), ...]
+    rec_by_login = {}     # login -> p_rec
+    for i, p_rec in enumerate(pool, 1):
+        login = p_rec.get("github_login", "?")
+        cand_profile = {
+            "will_text":      _s(p_rec.get("will_text")),
+            "state_have":     _s(p_rec.get("state_have")),
+            "state_can_type": _s(p_rec.get("state_can_type")),
+            "state_bound":    _s(p_rec.get("state_bound")),
+            "state_unsorted": _s(p_rec.get("state_unsorted")),
+        }
+        try:
+            cvecs = _to_vecs(cand_profile)
+            cand_list.append((login, cvecs))
+            rec_by_login[login] = p_rec
+        except Exception as e:
+            print(f"\n  skip {login}: {e}")
+        if i % 5 == 0 or i == len(pool):
+            print(f"\r  候補ベクトル化: {i}/{len(pool)} 完了", end="", flush=True)
+    print()  # 改行
+
+    if not cand_list:
+        print("候補ベクトルが1件も作れませんでした。終了します。")
+        return
+    print(f"候補ベクトル化 完了: {len(cand_list)} 件\n")
+
     all_results = []
 
-    for case in seekers:
+    for s_idx, case in enumerate(seekers, 1):
         case_id     = case["case_id"]
         seeker_node = case["seeker"]
         seeker_profile = {
@@ -115,45 +145,24 @@ def main():
             "state_unsorted": seeker_node.get("state_unsorted", ""),
         }
         will_preview = seeker_node.get("will", "")[:40]
-        print(f"=== Seeker {case_id}: {will_preview}... ===")
+        print(f"=== Seeker {s_idx}/{len(seekers)} {case_id}: {will_preview}... ===")
 
         try:
+            print("  必要像を生成中（Claude）→ seeker をベクトル化...", flush=True)
             svecs, gamma, p, alpha, beta = _seeker_vecs_and_params(seeker_profile)
         except Exception as e:
             traceback.print_exc()
             print(f"  ERROR (seeker vecs): {e}\n")
             continue
 
-        # 候補ベクトルを構築
-        cand_list = []
-        for p_rec in pool:
-            cand_profile = {
-                "will_text":      _s(p_rec.get("will_text")),
-                "state_have":     _s(p_rec.get("state_have")),
-                "state_can_type": _s(p_rec.get("state_can_type")),
-                "state_bound":    _s(p_rec.get("state_bound")),
-                "state_unsorted": _s(p_rec.get("state_unsorted")),
-            }
-            try:
-                cvecs = _to_vecs(cand_profile)
-                cand_list.append((p_rec["github_login"], cvecs, p_rec))
-            except Exception as e:
-                print(f"  skip {p_rec.get('github_login','?')}: {e}")
-
-        if not cand_list:
-            print("  候補なし\n")
-            continue
-
         # rank_candidates は (seeker_vecs, [(cid, cvecs), ...], gamma, ...) を期待
+        # 候補ベクトルは事前計算済みを再利用
         ranked = rank_candidates(
             svecs,
-            [(cid, cvecs) for cid, cvecs, _ in cand_list],
+            cand_list,
             gamma=gamma, p=p, alpha=alpha, beta=beta,
             top_k=TOP_N,
         )
-
-        # login → p_rec を引くための辞書
-        rec_by_login = {p_rec["github_login"]: p_rec for _, _, p_rec in cand_list}
 
         case_result = {"case_id": case_id, "model_tag": MODEL_TAG, "top": []}
         for rank, r in enumerate(ranked, 1):

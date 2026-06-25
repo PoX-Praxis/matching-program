@@ -32,8 +32,21 @@
 - `p_sharpness=-0.3`（意志＋実装力の両方必須：ソフト AND）
 - `alpha=1.0` / `beta=1.2`（補完をやや重視：実装力が足りない側）
 
-**結果:** 上位 10 件（KH 本人が妥当性を確認予定）
-**スナップショット:** `snapshots/solo_KH_qwen3_20260625.json`（実行後に配置）
+**結果:** 上位 10 件
+**スナップショット:** `snapshots/solo_KH_qwen3-embedding-0.6b-d1024_20260625.json`
+
+| Rank | 名前 | login | score | 特徴 |
+|---|---|---|---|---|
+| 1 | 123456 | @hoochanlon | 0.7460 | ネットワーク・インフラ技術、実用ツール開発、自由なネット空間を大切に |
+| 2 | Sakana AI | @SakanaAI | 0.7394 | LLMエージェント・マルチエージェントシステム・次世代知能システム |
+| 3 | Yusuke Wada | @yusukebe | 0.7346 | Hono 作者、Cloudflare、「楽しさ重視で価値あるものを作り続けたい」|
+| 4 | ちょまど | @chomado | 0.7307 | MS Cloud DA、開発者コミュニティ支援・発信力 |
+| 5 | Jianqi Pan | @Jannchie | 0.7297 | ML実験管理・画像評価ツール、実用的で美しいツールを作る |
+| 6 | Hector Martin | @marcan | 0.7275 | システム改善・深い技術理解、「壊れていないものをさらに良くしたい」|
+| 7 | Wei Wang | @onevcat | 0.7257 | iOS/Swift OSS、マルチエージェントAI設計、クリエイター向けツール |
+| 8 | Kana Natsuno | @kana | 0.7253 | 本質的なツール・自動化、「人間らしい創造活動を支援したい」|
+| 9 | Hiroki Osame | @privatenumber | 0.7243 | JS/Node.js OSS、技術的ソリューションを世界と共有したい |
+| 10 | FUJI Goro | @gfx | 0.7218 | ソフトウェアエンジニア、プログラミングで価値を創造 |
 
 **気づき（pool_eval.py × 6 seeker 分の所見）:**
 - AdiChat（@AdiChat）が c01〜c04 の 4 ケースで Rank 1 → プールが全員エンジニアのため、発信力の高い汎用的な人物が何にでも上位に出る

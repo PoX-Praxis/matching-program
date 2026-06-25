@@ -45,6 +45,8 @@ class NomicEmbedder:
                 device=self.device,
                 trust_remote_code=True,
             )
+            # テストエンコードで実次元を検出し起動時にログ出力
+            self.encode_batch(["warmup"])
         return self._model
 
     def encode(self, text):

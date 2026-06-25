@@ -45,6 +45,9 @@ class EmbGemmaEmbedder:
                 device=self.device,
                 model_kwargs={"torch_dtype": dtype},
             )
+            # テストエンコードで実次元を確認し起動時にログ出力
+            test_vec = self.encode_batch(["warmup"])[0]
+            print(f"[EmbGemmaEmbedder] 実次元確認: {len(test_vec)} 次元 (期待値={self.expected_dim})")
         return self._model
 
     def encode(self, text):

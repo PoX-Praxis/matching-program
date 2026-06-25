@@ -29,6 +29,9 @@ static/uploads/*
 qwen3_server/.hf/
 .hf/
 
+# --- embedding 実験の生出力（評価表が成果物。生JSONは追跡しない） ---
+eval/results/
+
 # --- Node.js ---
 node_modules/
 package-lock.json

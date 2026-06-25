@@ -1,0 +1,12 @@
+# snapshots/ の使い方
+#
+# eval/results/ に生成された JSON の中で「後から参照・ブラッシュアップしたいもの」を
+# このフォルダにコピーして git commit する。
+#
+# 命名規則（例）:
+#   solo_KH_qwen3_20260625.json   … KH seeker × Qwen3 の結果
+#   solo_KH_embgemma_20260625.json
+#   pool_qwen3_20260625.json      … 6 seeker × Qwen3 の結果
+#
+# eval/results/ は gitignore 除外（一時的な生出力）。
+# このフォルダだけが git で追跡・蓄積される。

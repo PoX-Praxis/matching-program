@@ -14,7 +14,7 @@ embedding_config.PREFIX で付与済みで送られてくるため、ここで�
 """
 import os
 
-DEFAULT_MODEL = os.environ.get("EMBGEMMA_MODEL", "google/gemma-embedding-300m-v2")
+DEFAULT_MODEL = os.environ.get("EMBGEMMA_MODEL", "google/embeddinggemma-300m")
 EXPECTED_DIM  = int(os.environ.get("EMBGEMMA_DIM", "768"))
 MODEL_TAG     = os.environ.get("EMBGEMMA_MODEL_TAG", "embgemma-300m")
 

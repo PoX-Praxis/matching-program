@@ -5,12 +5,15 @@ embed(text, role) が full(FULL_DIM) + short(SHORT_DIM) の L2 正規化ベク�
 prefix は embedding_config に外出し（H-1）。MRL 短次元は先頭 SHORT_DIM を再正規化（C-1/C-4）。
 
 バックエンド:
-  - 'stub'  : 決定論的・非意味的。Qwen3 ホスト確定までの代替（POX_EMBED_BACKEND 既定）。
-  - 'qwen3' : セルフホスト常駐推論（QWEN3_ENDPOINT）。ホスト確定後に有効化。
+  - 'stub'     : 決定論的・非意味的。配管検証用。
+  - 'qwen3'    : Qwen3-Embedding-0.6B セルフホスト（QWEN3_ENDPOINT）。
+  - 'embgemma' : EmbeddingGemma-300M セルフホスト（EMBGEMMA_ENDPOINT）。
+  - 'nomic'    : Nomic Embed v2 セルフホスト（NOMIC_ENDPOINT）。
 
 I章の遵守:
   - raw を embedding に直接渡さない → build_vectors は入力テキストを防御的に redact する。
   - "未取得" は embedding 入力から除外（#11）。state_concat / clean_slot で落とす。
+  - PREFIX[role] が None（TODO）のモデルは embed() 時に ValueError を上げる。
 """
 import math, hashlib, struct, json, os
 
@@ -87,32 +90,63 @@ def _qwen3_encode(text):
     return vec
 
 
-# ── バックエンド: embgemma（EmbeddingGemma-300M セルフホスト。実装は TODO）──────
+# ── バックエンド: embgemma（EmbeddingGemma-300M セルフホスト）────────────────────
 def _embgemma_encode(text):
     """
-    TODO: EmbeddingGemma-300M 推論サービスを呼ぶ実装を書く。
-    注意: activations は float32 か bfloat16 で動かす（float16 非対応）。
-    インターフェース: {"text": text, "model_tag": MODEL_TAG} → {"embedding": [...]}
-    EMBGEMMA_ENDPOINT が未設定の場合は RuntimeError を上げる。
+    EMBGEMMA_ENDPOINT に POST して 768 次元ベクトルを得る。
+    サーバは embgemma_server/server.py（run_embgemma.bat で起動）。
+    prefix は embedding_config.PREFIX で付与済みで渡ってくるため、ここでは付け足さない。
     """
-    raise NotImplementedError(
-        "embgemma backend は未実装です（足場のみ）。"
-        "GPU ホストと推論サービスを立ててから実装してください。"
+    if not EMBGEMMA_ENDPOINT:
+        raise RuntimeError(
+            "POX_EMBED_BACKEND=embgemma だが POX_EMBGEMMA_ENDPOINT が未設定です。"
+            "embgemma_server/run_embgemma.bat でサーバを起動し URL を設定してください。"
+        )
+    import urllib.request
+    req = urllib.request.Request(
+        EMBGEMMA_ENDPOINT,
+        data=json.dumps({"text": text, "model_tag": MODEL_TAG}).encode("utf-8"),
+        headers={"content-type": "application/json"},
     )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read())
+    vec = data["embedding"]
+    if len(vec) != FULL_DIM:
+        raise RuntimeError(
+            f"EmbeddingGemma 出力次元 {len(vec)} が FULL_DIM={FULL_DIM} と不一致。"
+            "POX_EMBED_FULL_DIM=768 を設定してください。"
+        )
+    return vec
 
 
-# ── バックエンド: nomic（Nomic Embed v2 セルフホスト。実装は TODO）──────────────
+# ── バックエンド: nomic（Nomic Embed v2 セルフホスト）────────────────────────────
 def _nomic_encode(text):
     """
-    TODO: Nomic Embed v2 推論サービスを呼ぶ実装を書く。
-    prefix 書式: "search_query:" / "search_document:" を embedding_config の PREFIX で制御。
-    インターフェース: {"text": text, "model_tag": MODEL_TAG} → {"embedding": [...]}
-    NOMIC_ENDPOINT が未設定の場合は RuntimeError を上げる。
+    NOMIC_ENDPOINT に POST してベクトルを得る。
+    サーバは nomic_server/server.py（run_nomic.bat で起動）。
+    FULL_DIM は起動時に /health で実次元を確認し POX_EMBED_FULL_DIM に設定すること。
+    prefix は embedding_config.PREFIX で付与済みで渡ってくるため、ここでは付け足さない。
     """
-    raise NotImplementedError(
-        "nomic backend は未実装です（足場のみ）。"
-        "GPU ホストと推論サービスを立ててから実装してください。"
+    if not NOMIC_ENDPOINT:
+        raise RuntimeError(
+            "POX_EMBED_BACKEND=nomic だが POX_NOMIC_ENDPOINT が未設定です。"
+            "nomic_server/run_nomic.bat でサーバを起動し URL を設定してください。"
+        )
+    import urllib.request
+    req = urllib.request.Request(
+        NOMIC_ENDPOINT,
+        data=json.dumps({"text": text, "model_tag": MODEL_TAG}).encode("utf-8"),
+        headers={"content-type": "application/json"},
     )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read())
+    vec = data["embedding"]
+    if len(vec) != FULL_DIM:
+        raise RuntimeError(
+            f"Nomic 出力次元 {len(vec)} が FULL_DIM={FULL_DIM} と不一致。"
+            "nomic_server 起動ログの実次元を POX_EMBED_FULL_DIM に設定してください。"
+        )
+    return vec
 
 
 def _encode(text):
@@ -131,10 +165,18 @@ def embed(text, role):
     text を role の prefix 付きでエンコードし (full, short) を返す（C-1）。
     role: 'symmetric' | 'query' | 'passage'。
     short = full の先頭 SHORT_DIM を再正規化（MRL）。
+    PREFIX[role] が None のモデルは実機確認後に embedding_config.py の TODO を埋めること。
     """
     if role not in PREFIX:
         raise ValueError(f"未知の role: {role}（{list(PREFIX)} のいずれか）")
-    full_text = PREFIX[role] + (text or "")
+    pfx = PREFIX[role]
+    if pfx is None:
+        raise ValueError(
+            f"MODEL_TAG={MODEL_TAG!r} の PREFIX[{role!r}] が未確定（None）です。"
+            "実機でモデルの推奨 prefix 書式を確認し、"
+            "embedding_config.py の _PREFIX_BY_MODEL を更新してください。"
+        )
+    full_text = pfx + (text or "")
     full = l2_normalize(_encode(full_text))
     short = l2_normalize(full[:SHORT_DIM])
     return full, short

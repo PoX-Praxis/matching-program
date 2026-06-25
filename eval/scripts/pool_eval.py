@@ -23,14 +23,6 @@ embedding モデルでランキングし、上位5件を標準出力に表示す
     set POX_EMBED_BACKEND=nomic
     set POX_NOMIC_ENDPOINT=http://localhost:8002/embed
     python eval/scripts/pool_eval.py
-
-出力例:
-    === Seeker c01: テクノロジーで社会の仕組みを変えたい ===
-    Rank 1: yuki-suzuki  「障害を持つ人が...」  score=0.832
-    Rank 2: taro-yamada  「AIで医療を変え...」  score=0.791
-    ...
-
-    結果は eval/results/pool_<MODEL_TAG>_<timestamp>.json にも保存。
 """
 import sys, os, json, pathlib, datetime
 
@@ -39,16 +31,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "src"))
 from necessity_gen import generate_necessity
 from embedding_service import build_vectors
 from matcher_v4 import rank_candidates
-from embedding_config import MODEL_TAG, SHORT_DIM
+from embedding_config import MODEL_TAG
 
-EVAL_FILE    = pathlib.Path(__file__).parent.parent / "eval_pairs_v1.jsonl"
-POOL_FILE    = pathlib.Path(__file__).parent.parent / "github_profiles.jsonl"
-RESULTS_DIR  = pathlib.Path(__file__).parent.parent / "results"
-TOP_N        = int(os.environ.get("POOL_EVAL_TOP_N", "5"))
+EVAL_FILE   = pathlib.Path(__file__).parent.parent / "eval_pairs_v1.jsonl"
+POOL_FILE   = pathlib.Path(__file__).parent.parent / "github_profiles.jsonl"
+RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
+TOP_N       = int(os.environ.get("POOL_EVAL_TOP_N", "5"))
 
 
 def load_seekers():
-    seekers = []
+    cases = []
     with open(EVAL_FILE, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -57,53 +49,46 @@ def load_seekers():
             obj = json.loads(line)
             if "_comment" in obj or "_schema" in obj:
                 continue
-            seekers.append(obj)
-    return seekers
+            cases.append(obj)
+    return cases
 
 
 def load_pool():
-    pool = []
     if not POOL_FILE.exists():
         print(f"ERROR: {POOL_FILE} が見つかりません。", file=sys.stderr)
         print("先に eval/scripts/fetch_github_profiles.py を実行してください。", file=sys.stderr)
         sys.exit(1)
+    pool = []
     with open(POOL_FILE, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line:
-                continue
-            pool.append(json.loads(line))
+            if line:
+                pool.append(json.loads(line))
     return pool
 
 
-def profile_from_eval_node(node):
+def _to_vecs(profile):
+    """build_vectors の結果を rank_candidates 用の4チャネル dict に変換。"""
+    v = build_vectors(profile, "")
     return {
-        "will_text":       node.get("will", ""),
-        "state_have":      node.get("now", ""),
-        "state_can_type":  node.get("state_can_type", ""),
-        "state_bound":     node.get("state_bound", ""),
-        "state_unsorted":  node.get("state_unsorted", ""),
+        "will_symmetric":  v["will_symmetric"],
+        "will_passage":    v["will_passage"],
+        "state_passage":   v["state_passage"],
+        "necessity_query": v["necessity_query"],
     }
 
 
-def profile_from_pool(p):
-    return {
-        "will_text":       p.get("will_text", ""),
-        "state_have":      p.get("state_have", ""),
-        "state_can_type":  p.get("state_can_type", ""),
-        "state_bound":     p.get("state_bound", ""),
-        "state_unsorted":  p.get("state_unsorted", ""),
+def _seeker_vecs_and_params(profile):
+    """seeker: generate_necessity → build_vectors → 4チャネル dict + gamma/p/alpha/beta。"""
+    nec  = generate_necessity(profile)
+    v    = build_vectors(profile, nec["necessity_text"])
+    vecs = {
+        "will_symmetric":  v["will_symmetric"],
+        "will_passage":    v["will_passage"],
+        "state_passage":   v["state_passage"],
+        "necessity_query": v["necessity_query"],
     }
-
-
-def build_seeker_vecs(profile):
-    necessity = generate_necessity(profile)
-    vecs = build_vectors(profile, necessity)
-    return vecs
-
-
-def build_candidate_vecs(profile):
-    return build_vectors(profile, "")
+    return vecs, nec["gamma"], nec["p_sharpness"], nec["alpha"], nec["beta"]
 
 
 def main():
@@ -112,65 +97,83 @@ def main():
     pool    = load_pool()
     print(f"Seeker: {len(seekers)} 件 / プール: {len(pool)} 件\n")
 
-    results = []
+    all_results = []
 
     for case in seekers:
-        case_id = case["case_id"]
+        case_id     = case["case_id"]
         seeker_node = case["seeker"]
-        seeker_profile = profile_from_eval_node(seeker_node)
+        seeker_profile = {
+            "will_text":      seeker_node.get("will", ""),
+            "state_have":     seeker_node.get("now", ""),
+            "state_can_type": seeker_node.get("state_can_type", ""),
+            "state_bound":    seeker_node.get("state_bound", ""),
+            "state_unsorted": seeker_node.get("state_unsorted", ""),
+        }
         will_preview = seeker_node.get("will", "")[:40]
-
         print(f"=== Seeker {case_id}: {will_preview}... ===")
 
         try:
-            seeker_vecs = build_seeker_vecs(seeker_profile)
+            svecs, gamma, p, alpha, beta = _seeker_vecs_and_params(seeker_profile)
         except Exception as e:
             print(f"  ERROR (seeker vecs): {e}\n")
             continue
 
-        candidates = []
-        for p in pool:
+        # 候補ベクトルを構築
+        cand_list = []
+        for p_rec in pool:
+            cand_profile = {
+                "will_text":      p_rec.get("will_text", ""),
+                "state_have":     p_rec.get("state_have", ""),
+                "state_can_type": p_rec.get("state_can_type", ""),
+                "state_bound":    p_rec.get("state_bound", ""),
+                "state_unsorted": p_rec.get("state_unsorted", ""),
+            }
             try:
-                cand_profile = profile_from_pool(p)
-                cand_vecs    = build_candidate_vecs(cand_profile)
-                candidates.append({
-                    "id":    p["github_login"],
-                    "name":  p.get("display_name", p["github_login"]),
-                    "will":  p.get("will_text", ""),
-                    "state": p.get("state_have", ""),
-                    "vecs":  cand_vecs,
-                })
+                cvecs = _to_vecs(cand_profile)
+                cand_list.append((p_rec["github_login"], cvecs, p_rec))
             except Exception as e:
-                print(f"  skip {p.get('github_login','?')}: {e}")
+                print(f"  skip {p_rec.get('github_login','?')}: {e}")
 
-        if not candidates:
+        if not cand_list:
             print("  候補なし\n")
             continue
 
-        # rank_candidates はベクトル dict と seeker_vecs dict を取る
-        ranked = rank_candidates(seeker_vecs, [c["vecs"] for c in candidates])
-        # ranked は score のリスト（candidates と同順）
-        scored = sorted(zip(ranked, candidates), key=lambda x: -x[0])
+        # rank_candidates は (seeker_vecs, [(cid, cvecs), ...], gamma, ...) を期待
+        ranked = rank_candidates(
+            svecs,
+            [(cid, cvecs) for cid, cvecs, _ in cand_list],
+            gamma=gamma, p=p, alpha=alpha, beta=beta,
+            top_k=TOP_N,
+        )
 
-        top = scored[:TOP_N]
+        # login → p_rec を引くための辞書
+        rec_by_login = {p_rec["github_login"]: p_rec for _, _, p_rec in cand_list}
+
         case_result = {"case_id": case_id, "model_tag": MODEL_TAG, "top": []}
-        for rank, (score, cand) in enumerate(top, 1):
-            print(f"  Rank {rank}: {cand['name']} ({cand['id']})  score={score:.4f}")
-            print(f"           意志: {cand['will'][:60]}")
+        for rank, r in enumerate(ranked, 1):
+            login = r["candidate_id"]
+            score = r["score"]
+            rec   = rec_by_login.get(login, {})
+            print(f"  Rank {rank}: {rec.get('display_name', login)} (@{login})  score={score:.4f}")
+            print(f"           意志: {rec.get('will_text','')[:60]}")
             case_result["top"].append({
-                "rank": rank, "login": cand["id"], "name": cand["name"],
-                "score": round(score, 6), "will": cand["will"], "state": cand["state"],
+                "rank":  rank,
+                "login": login,
+                "name":  rec.get("display_name", login),
+                "score": round(score, 6),
+                "will":  rec.get("will_text", ""),
+                "state": rec.get("state_have", ""),
             })
         print()
-        results.append(case_result)
+        all_results.append(case_result)
 
     # 結果保存
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts       = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = RESULTS_DIR / f"pool_{MODEL_TAG}_{ts}.json"
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump({"model_tag": MODEL_TAG, "pool_size": len(pool), "cases": results},
-                  f, ensure_ascii=False, indent=2)
+        json.dump({"model_tag": MODEL_TAG, "pool_size": len(pool),
+                   "cases": all_results}, f, ensure_ascii=False, indent=2)
     print(f"結果保存: {out_path}")
 
 

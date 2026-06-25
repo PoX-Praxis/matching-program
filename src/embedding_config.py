@@ -54,19 +54,23 @@ _PREFIX_BY_MODEL = {
         ),
         "passage": "",
     },
-    # TODO: EmbeddingGemma の prefix 書式を実機確認後に埋める
-    # （"task: search result | query: " 等、Gemma 指定の書式に従う）
+    # EmbeddingGemma（google/embeddinggemma-300m）公式プロンプト書式。
+    #   symmetric : 対称類似（STS）→ "task: sentence similarity | query: "
+    #   query     : 検索クエリ（必要像）→ "task: search result | query: "
+    #   passage   : 検索ドキュメント（候補の現状）→ "title: none | text: "
     "embgemma-300m": {
-        "symmetric": None,  # TODO
-        "query":     None,  # TODO
-        "passage":   None,  # TODO
+        "symmetric": "task: sentence similarity | query: ",
+        "query":     "task: search result | query: ",
+        "passage":   "title: none | text: ",
     },
-    # TODO: Nomic Embed v2 の prefix 書式を実機確認後に埋める
-    # （"search_query:" / "search_document:" の指定 prefix）
+    # Nomic Embed v2（nomic-embed-text-v2-moe）公式 task prefix。
+    #   symmetric : 両側同一 prefix で対称比較 → "search_query: "
+    #   query     : クエリ側（必要像）→ "search_query: "
+    #   passage   : ドキュメント側（候補の現状）→ "search_document: "
     "nomic-emb-v2": {
-        "symmetric": None,  # TODO
-        "query":     None,  # TODO
-        "passage":   None,  # TODO
+        "symmetric": "search_query: ",
+        "query":     "search_query: ",
+        "passage":   "search_document: ",
     },
 }
 

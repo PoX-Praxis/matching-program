@@ -48,7 +48,7 @@
 <h2>2. 登録済み seeker 一覧</h2>
 <button onclick="loadSeekers()">一覧を更新</button>
 <table>
-  <thead><tr><th>id</th><th>意志（抜粋）</th><th>フェーズ</th><th>マッチング</th></tr></thead>
+  <thead><tr><th>id</th><th>意志（抜粋）</th><th>現状（抜粋）</th><th>マッチング</th></tr></thead>
   <tbody id="seekerRows"><tr><td colspan="4">読み込み中...</td></tr></tbody>
 </table>
 
@@ -139,7 +139,7 @@ async function loadSeekers() {
   }
   tbody.innerHTML = rows.map(r => {
     const will  = (r.seeker["意志"] || "").slice(0, 40) + ((r.seeker["意志"] || "").length > 40 ? "…" : "");
-    const phase = r.seeker["フェーズ"] || "-";
+    const phase = (r.seeker["現状"] || r.seeker["state_have"] || "").slice(0, 30) + ((r.seeker["現状"] || r.seeker["state_have"] || "").length > 30 ? "…" : "") || "-";
     const sid   = r.id.replace(/'/g, "\\'");
     return `<tr>
       <td><a href="/profile/${encodeURIComponent(r.id)}" style="font-family:monospace;font-size:13px">${r.id}</a></td>
@@ -147,9 +147,9 @@ async function loadSeekers() {
       <td>${phase}</td>
       <td>
         <select id="want_${r.id}">
-          <option value="complement">相補</option>
-          <option value="similar">類似</option>
-          <option value="balanced">バランス</option>
+          <option value="complement">補完</option>
+          <option value="similar">共鳴</option>
+          <option value="balanced">バランス（両方）</option>
         </select>
         <button class="sm" onclick="runMatch('${sid}')">マッチング実行</button>
       </td>
@@ -210,7 +210,7 @@ async function runMatch(seekerId) {
     </p>`+ `
     <table>
       <thead>
-        <tr><th>順</th><th>候補 id</th><th>総合</th><th>相補</th><th>類似</th><th>根拠</th><th>承認</th></tr>
+        <tr><th>順</th><th>候補 id</th><th>総合</th><th>補完</th><th>共鳴</th><th>根拠</th><th>承認</th></tr>
       </thead>
       <tbody>${rankRows}</tbody>
     </table>`;

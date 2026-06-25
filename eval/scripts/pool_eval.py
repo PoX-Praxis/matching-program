@@ -24,7 +24,7 @@ embedding モデルでランキングし、上位5件を標準出力に表示す
     set POX_NOMIC_ENDPOINT=http://localhost:8002/embed
     python eval/scripts/pool_eval.py
 """
-import sys, os, json, pathlib, datetime
+import sys, os, json, pathlib, datetime, traceback
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "src"))
 
@@ -32,6 +32,11 @@ from necessity_gen import generate_necessity
 from embedding_service import build_vectors
 from matcher_v4 import rank_candidates
 from embedding_config import MODEL_TAG
+
+def _s(v):
+    """str 以外（dict・list・None 等）を空文字に落とす。github_profiles の型ずれ対策。"""
+    return v if isinstance(v, str) else ""
+
 
 EVAL_FILE   = pathlib.Path(__file__).parent.parent / "eval_pairs_v1.jsonl"
 POOL_FILE   = pathlib.Path(__file__).parent.parent / "github_profiles.jsonl"
@@ -115,6 +120,7 @@ def main():
         try:
             svecs, gamma, p, alpha, beta = _seeker_vecs_and_params(seeker_profile)
         except Exception as e:
+            traceback.print_exc()
             print(f"  ERROR (seeker vecs): {e}\n")
             continue
 
@@ -122,11 +128,11 @@ def main():
         cand_list = []
         for p_rec in pool:
             cand_profile = {
-                "will_text":      p_rec.get("will_text", ""),
-                "state_have":     p_rec.get("state_have", ""),
-                "state_can_type": p_rec.get("state_can_type", ""),
-                "state_bound":    p_rec.get("state_bound", ""),
-                "state_unsorted": p_rec.get("state_unsorted", ""),
+                "will_text":      _s(p_rec.get("will_text")),
+                "state_have":     _s(p_rec.get("state_have")),
+                "state_can_type": _s(p_rec.get("state_can_type")),
+                "state_bound":    _s(p_rec.get("state_bound")),
+                "state_unsorted": _s(p_rec.get("state_unsorted")),
             }
             try:
                 cvecs = _to_vecs(cand_profile)

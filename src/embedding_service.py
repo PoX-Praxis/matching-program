@@ -184,8 +184,8 @@ def embed(text, role):
 
 # ── 登録時の 4 ベクトル生成（C-2）─────────────────────────────────────────────
 def clean_slot(x):
-    """"未取得"・空・None を None に落とす（embedding 入力から除外。#11）。"""
-    if not x or x == "未取得":
+    """"未取得"・空・None・非文字列 を None に落とす（embedding 入力から除外。#11）。"""
+    if not isinstance(x, str) or not x or x == "未取得":
         return None
     return x
 
@@ -220,14 +220,18 @@ def build_vectors(profile_redacted, necessity_text):
 
     意志は対称用(symmetric)と passage 用で別エンコード（混同禁止）。
     """
-    will = redact_text(profile_redacted.get("will_text") or "")
+    # 非文字列値（github_profiles 等でClaude が dict を返した場合）を空文字に落とす
+    def _to_str(v):
+        return v if isinstance(v, str) else ""
+
+    will = redact_text(_to_str(profile_redacted.get("will_text")))
     # state_concat 用に各スロットを防御 redact した dict を作る
     safe_profile = {
-        k: redact_text(profile_redacted.get(k))
+        k: redact_text(_to_str(profile_redacted.get(k)))
         for k in ("state_have", "state_can_type", "state_bound", "state_unsorted")
     }
     state_text = state_concat(safe_profile)
-    necessity = redact_text(necessity_text or "")
+    necessity = redact_text(_to_str(necessity_text))
 
     wsym, wsym256 = embed(will, "symmetric")        # a チャネル
     wpas, wpas256 = embed(will, "passage")          # c チャネル（passage。a と別ベクトル）

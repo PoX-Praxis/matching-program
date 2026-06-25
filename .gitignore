@@ -44,3 +44,6 @@ Thumbs.db
 .vscode/
 *.swp
 eval/github_profiles.jsonl
+
+# solo_eval 用の個人プロフィール（個人情報なのでコミットしない）
+eval/my_profile.json

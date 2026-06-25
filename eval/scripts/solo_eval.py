@@ -87,6 +87,10 @@ def load_my_profile():
             "supporting_material": raw.get("supporting_material", {}),
         }
 
+    # 必要像が事前に紐づいていれば持ち回す（②生成スキップ用）
+    if isinstance(raw.get("derived_necessity"), dict):
+        prof["derived_necessity"] = raw["derived_necessity"]
+
     if not prof["will_text"] and not prof["state_have"]:
         print("ERROR: プロフィールの意志・現状が両方空です。記入してください。", file=sys.stderr)
         sys.exit(1)
@@ -118,9 +122,28 @@ def _to_vecs(profile):
     }
 
 
+def _resolve_necessity(profile):
+    """
+    必要像を解決する。プロフィールに derived_necessity が紐づいていればそれを使い
+    （②生成を再実行しない＝ANTHROPIC_API_KEY 不要）、無ければ generate_necessity を呼ぶ。
+    """
+    bound = profile.get("derived_necessity")
+    if isinstance(bound, dict) and bound.get("necessity_text"):
+        print("  （プロフィールに紐づく必要像を使用：Claude 呼び出しをスキップ）", flush=True)
+        return {
+            "necessity_text": bound["necessity_text"],
+            "gamma":          float(bound.get("gamma", 0.0)),
+            "p_sharpness":    float(bound.get("p_sharpness", 0.0)),
+            "alpha":          float(bound.get("alpha", 1.0)),
+            "beta":           float(bound.get("beta", 1.0)),
+        }
+    print("  （必要像を Claude で新規生成：ANTHROPIC_API_KEY が必要）", flush=True)
+    return generate_necessity(profile)
+
+
 def _seeker_vecs_and_params(profile):
-    """seeker: generate_necessity → build_vectors → 4チャネル dict + gamma/p/alpha/beta。"""
-    nec  = generate_necessity(profile)
+    """seeker: 必要像解決 → build_vectors → 4チャネル dict + gamma/p/alpha/beta。"""
+    nec  = _resolve_necessity(profile)
     v    = build_vectors(profile, nec["necessity_text"])
     vecs = {
         "will_symmetric":  v["will_symmetric"],
@@ -141,15 +164,15 @@ def main():
     # load_my_profile() が v4→フラット変換済みの dict を返すのでそのまま使う
     seeker_profile = me
 
-    # ── seeker（あなた）の必要像を生成 → ベクトル化 ──────────────────────
-    print("あなたの必要像を生成中（Claude）→ ベクトル化...", flush=True)
+    # ── seeker（あなた）の必要像を解決 → ベクトル化 ──────────────────────
+    print("あなたの必要像を解決 → ベクトル化...", flush=True)
     try:
         svecs, necessity_text, gamma, p, alpha, beta = _seeker_vecs_and_params(seeker_profile)
     except Exception as e:
         traceback.print_exc()
         print(f"ERROR (seeker vecs): {e}")
         return
-    print(f"\n【あなたの必要像（Claude が生成）】\n  {necessity_text}\n")
+    print(f"\n【あなたの必要像】\n  {necessity_text}\n")
     print(f"  パラメータ: gamma={gamma:.3f} p={p:.3f} alpha={alpha:.3f} beta={beta:.3f}\n")
 
     # ── 候補ベクトルを一度だけ構築 ──────────────────────────────────────

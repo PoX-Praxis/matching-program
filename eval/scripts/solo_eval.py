@@ -50,14 +50,45 @@ TOP_N        = int(os.environ.get("SOLO_EVAL_TOP_N", "10"))
 
 
 def load_my_profile():
+    """
+    my_profile.json を読み込み、フラット形式の seeker_profile dict を返す。
+    v4 形式（seeker.意志 / seeker.現状.*）とフラット形式（will / now）の両方に対応。
+    supporting_material があればそのまま渡す（②生成の精度が上がる）。
+    """
     if not PROFILE_FILE.exists():
         print(f"ERROR: {PROFILE_FILE} が見つかりません。", file=sys.stderr)
         print("eval/my_profile.json を作成し、あなたの意志・現状を記入してください。", file=sys.stderr)
         sys.exit(1)
     with open(PROFILE_FILE, encoding="utf-8") as f:
-        prof = json.load(f)
-    if not prof.get("will") and not prof.get("now"):
-        print("ERROR: my_profile.json の will / now が両方空です。記入してください。", file=sys.stderr)
+        raw = json.load(f)
+
+    # v4 形式（schema_version=v4 または seeker.意志 が存在）
+    if raw.get("schema_version") == "v4" or isinstance(raw.get("seeker"), dict):
+        sk = raw.get("seeker", {})
+        gj = sk.get("現状", {}) if isinstance(sk.get("現状"), dict) else {}
+        prof = {
+            "name":           raw.get("id") or raw.get("name") or "seeker",
+            "will_text":      _s(sk.get("意志")),
+            "state_have":     _s(gj.get("持っているもの")),
+            "state_can_type": _s(gj.get("できること_型")),
+            "state_bound":    _s(gj.get("縛られているもの")),
+            "state_unsorted": _s(gj.get("未分類")),
+            "supporting_material": raw.get("supporting_material", {}),
+        }
+    else:
+        # フラット形式（旧テンプレ: will / now キー）
+        prof = {
+            "name":           raw.get("name") or "seeker",
+            "will_text":      _s(raw.get("will")),
+            "state_have":     _s(raw.get("now")),
+            "state_can_type": _s(raw.get("state_can_type")),
+            "state_bound":    _s(raw.get("state_bound")),
+            "state_unsorted": _s(raw.get("state_unsorted")),
+            "supporting_material": raw.get("supporting_material", {}),
+        }
+
+    if not prof["will_text"] and not prof["state_have"]:
+        print("ERROR: プロフィールの意志・現状が両方空です。記入してください。", file=sys.stderr)
         sys.exit(1)
     return prof
 
@@ -104,16 +135,11 @@ def main():
     print(f"モデル: {MODEL_TAG}")
     me   = load_my_profile()
     pool = load_pool()
-    me_name = me.get("name") or "あなた"
+    me_name = me.get("name") or "seeker"
     print(f"Seeker: {me_name}（固定）/ プール: {len(pool)} 件\n")
 
-    seeker_profile = {
-        "will_text":      _s(me.get("will")),
-        "state_have":     _s(me.get("now")),
-        "state_can_type": _s(me.get("state_can_type")),
-        "state_bound":    _s(me.get("state_bound")),
-        "state_unsorted": _s(me.get("state_unsorted")),
-    }
+    # load_my_profile() が v4→フラット変換済みの dict を返すのでそのまま使う
+    seeker_profile = me
 
     # ── seeker（あなた）の必要像を生成 → ベクトル化 ──────────────────────
     print("あなたの必要像を生成中（Claude）→ ベクトル化...", flush=True)

@@ -31,6 +31,8 @@ qwen3_server/.hf/
 
 # --- embedding 実験の生出力（評価表が成果物。生JSONは追跡しない） ---
 eval/results/
+# ベクトルキャッシュ（個人データ由来のベクトル。モデル別 .npz。git管理しない） ---
+eval/cache/
 
 # --- Node.js ---
 node_modules/

@@ -28,14 +28,16 @@ my_profile.json の形式（eval_pairs の seeker と同じ will/now 形式）:
       "state_unsorted": "（任意）その他の文脈"
     }
 """
-import sys, os, json, pathlib, datetime, traceback
+import sys, os, json, pathlib, datetime, traceback, time
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "src"))
+sys.path.insert(0, str(pathlib.Path(__file__).parent))  # vector_cache（同ディレクトリ）
 
 from necessity_gen import generate_necessity
 from embedding_service import build_vectors
 from matcher_v4 import rank_candidates
 from embedding_config import MODEL_TAG
+import vector_cache
 
 
 def _s(v):
@@ -164,19 +166,40 @@ def main():
     # load_my_profile() が v4→フラット変換済みの dict を返すのでそのまま使う
     seeker_profile = me
 
-    # ── seeker（あなた）の必要像を解決 → ベクトル化 ──────────────────────
-    print("あなたの必要像を解決 → ベクトル化...", flush=True)
+    timing = {}  # 段階別計時（秒）＋キャッシュヒット率。snapshot に追加保存。
+
+    # ── (a) seeker の必要像を解決 ────────────────────────────────────────
+    print("あなたの必要像を解決...", flush=True)
+    _t = time.perf_counter()
     try:
-        svecs, necessity_text, gamma, p, alpha, beta = _seeker_vecs_and_params(seeker_profile)
+        nec = _resolve_necessity(seeker_profile)
+    except Exception as e:
+        traceback.print_exc()
+        print(f"ERROR (necessity): {e}")
+        return
+    timing["necessity_sec"] = time.perf_counter() - _t
+    necessity_text = nec["necessity_text"]
+    gamma = nec["gamma"]; p = nec["p_sharpness"]; alpha = nec["alpha"]; beta = nec["beta"]
+
+    # ── (b) seeker のベクトル化 ──────────────────────────────────────────
+    _t = time.perf_counter()
+    try:
+        _sv = build_vectors(seeker_profile, necessity_text)
     except Exception as e:
         traceback.print_exc()
         print(f"ERROR (seeker vecs): {e}")
         return
+    svecs = {k: _sv[k] for k in ("will_symmetric", "will_passage", "state_passage", "necessity_query")}
+    timing["seeker_vec_sec"] = time.perf_counter() - _t
     print(f"\n【あなたの必要像】\n  {necessity_text}\n")
     print(f"  パラメータ: gamma={gamma:.3f} p={p:.3f} alpha={alpha:.3f} beta={beta:.3f}\n")
 
-    # ── 候補ベクトルを一度だけ構築 ──────────────────────────────────────
-    print(f"候補プールのベクトル化を開始（{len(pool)} 件）...", flush=True)
+    # ── (c) 候補ベクトル化（モデル別キャッシュ経由）────────────────────────
+    #   前回と入力テキストが同じ候補はキャッシュから読み出し（build_vectors を呼ばない）。
+    cache = vector_cache.load_cache(MODEL_TAG)
+    print(f"候補プールのベクトル化を開始（{len(pool)} 件・キャッシュ {len(cache)} 件）...", flush=True)
+    _t = time.perf_counter()
+    hits = misses = 0
     cand_list = []        # [(login, cvecs), ...]
     rec_by_login = {}
     for i, p_rec in enumerate(pool, 1):
@@ -189,25 +212,37 @@ def main():
             "state_unsorted": _s(p_rec.get("state_unsorted")),
         }
         try:
-            cand_list.append((login, _to_vecs(cand_profile)))
+            if vector_cache.is_cached(login, cand_profile, MODEL_TAG, cache):
+                hits += 1
+            else:
+                misses += 1
+            full = vector_cache.get_or_build(login, cand_profile, MODEL_TAG, cache)
+            cvecs = {k: full[k] for k in ("will_symmetric", "will_passage", "state_passage", "necessity_query")}
+            cand_list.append((login, cvecs))
             rec_by_login[login] = p_rec
         except Exception as e:
             print(f"\n  skip {login}: {e}")
         if i % 5 == 0 or i == len(pool):
-            print(f"\r  候補ベクトル化: {i}/{len(pool)} 完了", end="", flush=True)
+            print(f"\r  候補ベクトル化: {i}/{len(pool)} 完了（hit {hits} / miss {misses}）", end="", flush=True)
     print()
+    vector_cache.save_cache(MODEL_TAG, cache)  # 新規/更新分を永続化
+    timing["cand_vec_sec"] = time.perf_counter() - _t
+    timing["cache_hits"] = hits
+    timing["cache_misses"] = misses
 
     if not cand_list:
         print("候補ベクトルが1件も作れませんでした。終了します。")
         return
-    print(f"候補ベクトル化 完了: {len(cand_list)} 件\n")
+    print(f"候補ベクトル化 完了: {len(cand_list)} 件（hit {hits} / miss {misses}）\n")
 
-    # ── ランキング ──────────────────────────────────────────────────────
+    # ── (d) ランキング ──────────────────────────────────────────────────
+    _t = time.perf_counter()
     ranked = rank_candidates(
         svecs, cand_list,
         gamma=gamma, p=p, alpha=alpha, beta=beta,
         top_k=TOP_N,
     )
+    timing["scoring_sec"] = time.perf_counter() - _t
 
     print(f"=== {me_name} に対するマッチング上位 {len(ranked)} 件 ===\n")
     top = []
@@ -239,8 +274,18 @@ def main():
         "necessity_text": necessity_text,
         "params": {"gamma": gamma, "p": p, "alpha": alpha, "beta": beta},
         "pool_size":      len(pool),
+        "timing":         timing,
         "top":            top,
     }
+
+    # ── 段階別計時サマリー（標準出力）────────────────────────────────────
+    print("段階別計時（秒）:")
+    print(f"  (a) 必要像解決    : {timing.get('necessity_sec', 0):.2f}")
+    print(f"  (b) seekerベクトル: {timing.get('seeker_vec_sec', 0):.2f}")
+    print(f"  (c) 候補ベクトル  : {timing.get('cand_vec_sec', 0):.2f}"
+          f"  （hit {timing.get('cache_hits', 0)} / miss {timing.get('cache_misses', 0)}）")
+    print(f"  (d) スコアリング  : {timing.get('scoring_sec', 0):.2f}")
+    print()
 
     # results/: 一時保存（gitignore 対象）
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)

@@ -141,6 +141,15 @@ def get_or_build(cand_id, profile, model_tag, cache, necessity_text=""):
     return stored
 
 
+def is_cached(cand_id, profile, model_tag, cache, necessity_text=""):
+    """
+    この候補が現在のキャッシュでヒットするか（get_or_build が build を呼ばずに返せるか）。
+    ヒット率の計測用。get_or_build と同じ判定基準（cand_id 一致かつ text_hash 一致）。
+    """
+    hit = cache.get(cand_id)
+    return hit is not None and hit[1] == _text_hash(profile, necessity_text, model_tag)
+
+
 def cache_stats(cache):
     """キャッシュ件数（デバッグ・進捗表示用）。"""
     return {"entries": len(cache)}

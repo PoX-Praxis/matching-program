@@ -46,7 +46,9 @@ EPS = 1e-6
 #   passage   : 現状・意志passage（相補チャネルの候補側, スコア b/c）
 
 _PREFIX_BY_MODEL = {
-    "qwen3-emb-0.6b": {
+    # キーは MODEL_TAG（MODEL_DIMS と同じ表記）に一致させる。
+    # 以前は "qwen3-emb-0.6b" で MODEL_TAG と不一致 → フォールバック経由で解決していた。
+    "qwen3-embedding-0.6b-d1024": {
         "symmetric": "",
         "query": (
             "Instruct: Given a person's need description, "
@@ -74,7 +76,7 @@ _PREFIX_BY_MODEL = {
     },
 }
 
-PREFIX = _PREFIX_BY_MODEL.get(MODEL_TAG, _PREFIX_BY_MODEL["qwen3-emb-0.6b"])
+PREFIX = _PREFIX_BY_MODEL.get(MODEL_TAG, _PREFIX_BY_MODEL["qwen3-embedding-0.6b-d1024"])
 
 # ── バックエンド選択（stub | qwen3 | embgemma | nomic）────────────────────
 BACKEND = os.environ.get("POX_EMBED_BACKEND", "stub")

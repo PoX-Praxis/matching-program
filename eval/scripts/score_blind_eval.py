@@ -155,7 +155,7 @@ def main():
 
     # ── 1. モデル別集計（そのモデル TOP30 に入っていた候補群の会いたい度）──
     emit("## モデル別：会いたい度（そのモデル TOP30 に入っていた候補群）\n")
-    emit("| モデル | n | 平均 | 分布(1..5) | rank–会いたい度 Spearman |")
+    emit("| モデル | n | 平均 | 分布(1..5) | 順位一致度(高いほど沿う) |")
     emit("|---|---|---|---|---|")
     per_model_pairs = {m: [] for m in MODELS}  # model -> [(rank, score)]
     for bid, info in key.items():
@@ -174,10 +174,13 @@ def main():
         dist = {k: vals.count(k) for k in range(1, 6)}
         avg = sum(vals) / len(vals)
         rho = spearman([r for r, _ in pairs], [s for _, s in pairs])
-        rho_s = f"{rho:.3f}" if rho is not None else "n<3"
-        emit(f"| {MLABEL[m]} | {len(vals)} | {avg:.2f} | {dict(dist)} | {rho_s} |")
+        # rank(1=最良) と 会いたい度(5=最良) は逆向きなので、符号反転して
+        # 「順位一致度（高いほど会いたい順に沿う）」にする。
+        align = (-rho) if rho is not None else None
+        align_s = f"{align:+.3f}" if align is not None else "n<3"
+        emit(f"| {MLABEL[m]} | {len(vals)} | {avg:.2f} | {dict(dist)} | {align_s} |")
     emit("\n※ 平均が高い＝そのモデルの TOP30 が会いたい人で埋まっていた。"
-         "Spearman が正で大きい＝そのモデルの順位が会いたい順に沿う。\n")
+         "順位一致度が正で大きい＝そのモデルの上位ほど会いたい人（rank1 に高評価が集まる）。\n")
 
     # ── 2. 逆引き表：会いたい度の高い候補を各モデルが何位に置いたか ──
     rated = [(bid, key[bid], scores[bid]) for bid in key if scores.get(bid) is not None]
@@ -209,8 +212,9 @@ def main():
         emit("- 高評価候補はどのモデルも取りこぼしていない（または該当なし）。")
     emit(f"\n取りこぼし件数（会いたい度>={hi}）: "
          + " / ".join(f"{MLABEL[m]}={miss_count[m]}" for m in MODELS))
-    emit(f"\n判定の目安：モデル別平均が最も高く・Spearman が最も正で・取りこぼしが最も少ないモデルが、"
-         f"KHの会いたい順に最も沿う。僅差ならライセンス/説明可能性/MRL/較正で決める。")
+    emit(f"\n判定の目安：モデル別平均が最も高く・順位一致度が最も高く・取りこぼしが最も少ないモデルが、"
+         f"KHの会いたい順に最も沿う。僅差ならライセンス/説明可能性/MRL/較正で決める。"
+         f"\n※ 会いたい度が3〜4に偏る（5や1〜2が少ない）と差が出にくい。差が僅少なら full range で再評価も有効。")
 
     RESULT_FILE.write_text("\n".join(out) + "\n", encoding="utf-8")
     print(f"\n[保存] {RESULT_FILE}")

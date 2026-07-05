@@ -18,6 +18,71 @@
 
 ---
 
+## 2026-07-05｜3モデル比較（KH solo eval・1,090件プール）｜検証
+
+**内容:** 拡張プール1,090件（日本590＋海外500）で、Qwen3 / EmbGemma / Nomic を同一 seeker(KH)・同一パラメータ（gamma=0.43, p=-0.3, alpha=1.0, beta=1.2）・必要像は claude-opus-4-8 事前生成の共通値でマッチング。TOP30。
+
+**スナップショット（すべて attribution・timing 付き）:**
+- `snapshots/solo_KH_qwen3-embedding-0.6b-d1024_20260705_092936.json`
+- `snapshots/solo_KH_embgemma-300m_20260705_174952.json`
+- `snapshots/solo_KH_nomic-emb-v2_20260705_222110.json`
+
+### 効率化の成果（ベクトルキャッシュ＝フェーズ2-3で実装）
+
+| モデル | 1回目 候補ベクトル | 2回目（キャッシュ後）| 倍率 |
+|---|---|---|---|
+| EmbGemma | 2383.5秒 | 1.35秒 | ~1765× |
+| Nomic | 2025.6秒 | 3.05秒 | ~664× |
+| Qwen3 | 20266秒（PCスリープ込み）| 数秒 | — |
+
+- `eval/scripts/vector_cache.py`：モデル別 `.npz`・入力テキストsha256キー・model_tag不一致で例外。
+- クラッシュ耐性：25件ごとチェックポイント保存＋原子的書き込み。**Nomic 1回目は4回クラッシュしたが毎回続きから再開して完走**（875件保存済みから+215で1090）。
+
+### 上位10（1,090件）
+
+| # | Qwen3 | EmbGemma | Nomic |
+|---|---|---|---|
+| 1 | furukawa1020 | hfu | **sujii** |
+| 2 | **sujii** | **sujii** | Cj-bc |
+| 3 | woxtu | woxtu | hfu |
+| 4 | behnamazimi | danzeeeman | tuanchauict |
+| 5 | Misaki0331 | channingallen | LumaKernel |
+| 6 | radioblahaj | higedamc | behnamazimi |
+| 7 | tuanchauict | Cj-bc | hoochanlon |
+| 8 | channingallen | adexot | woxtu |
+| 9 | dwango | furukawa1020 | jspolsky |
+| 10 | gil-- | izelnakri | es |
+
+### 構造（90件版と同じ骨格が維持）
+
+- **limiting_axis**：Qwen3=全件 a ／ EmbGemma=全件 b ／ Nomic=全件 a（90件版と同じ反転構造）
+- **Qwen3 ∩ Nomic = 9/15（top15）** で最も似る。EmbGemma は各モデルと ∩5 で**外れ値**。→ a制約組(Q,N)と b制約組(E)という2クラスタ。
+- **3モデル共通（top15）= @sujii / @woxtu / @Cj-bc**
+- スコア幅は3モデルとも約0.033（絶対値はモデル間比較不可・順位のみ比較）
+
+### 各候補の3モデル順位（抜粋・-=TOP30圏外）
+
+| login | Qwen3 | EmbGemma | Nomic | 備考 |
+|---|---|---|---|---|
+| @sujii | 2 | 2 | 1 | 意味と構造・共鳴・自己調整アーキ＝KH必要像と深く一致。**全モデル最上位** |
+| @woxtu | 3 | 3 | 8 | 全モデル top8 |
+| @Cj-bc | 11 | 7 | 2 | 全モデル共通 |
+| @hfu | 24 | 1 | 3 | E/N の champion（誰もが空間情報インフラを所有できる世界）|
+| @furukawa1020 | 1 | 9 | 19 | Qwen3 の champion（誰もが生きていてよかったと思える瞬間）|
+| @tuanchauict | 7 | 20 | 4 | Q/N 寄り |
+
+**気づき:**
+- **プール多様化が効いた**：90件版のトップ（hoochanlon/SakanaAI＝汎用エンジニア）が押しのけられ、**意志がKHのビジョンに共鳴する人**（sujii/hfu/furukawa1020/woxtu/Cj-bc）が上位化。
+- **@sujii が3モデル独立に最上位**＝母集団・モデルに依らない頑健な一致。最有力候補。
+- モデルの個性：EmbGemma/Nomic は @hfu を、Qwen3 は @furukawa1020 を強く推す。EmbGemma は「必要像→現状(b)」が律速＝現状の具体性を重視、Qwen3/Nomic は「意志↔意志(a)」が律速。
+
+**次のアクション:**
+- [ ] **KH本人の人手評価**：上位（特に sujii/hfu/furukawa1020/Cj-bc/woxtu）に「実際に会いたいか」を照合 → どのモデルの順位が最も納得できるか
+- [ ] 採否判断（設計書 §6-3）：順位妥当性 × チャネル健全性 × 速度/コスト
+- [ ] 必要なら非エンジニア（NPO/行政/福祉）をさらに追加して母集団の偏りを是正
+
+---
+
 ## 2026-06-26｜プール拡張 90 → 1,090 件｜調整
 
 **内容:** 均質プール問題（全員エンジニア・スコア圧縮）の対策として、GitHub プロフィールプールを拡張。`fetch_github_profiles.py` を改良し2パス実行。

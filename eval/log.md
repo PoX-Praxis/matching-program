@@ -18,6 +18,37 @@
 
 ---
 
+## 2026-07-05｜3モデル分析データ出力（人手評価の準備）｜検証
+
+**内容:** `eval/scripts/analyze_3models.py` で1,090件×3モデルのスナップショットを分析し、`eval/analysis/`（gitignore・個人データ本文を含むため非コミット）に6成果物を生成：`comparison_report.md` / `human_eval_sheet.md`+`.csv` / `timing_report.md` / `blind_eval_sheet.md`+`.csv` / `blind_key.json`。ブラインド突合用に `eval/scripts/score_blind_eval.py` も追加。
+
+**構造比較の数値（TOP30）:**
+
+| ペア | TOP30 Jaccard | Spearman ρ（共通候補）|
+|---|---|---|
+| Qwen3∩EmbGemma | 0.364（共通16）| 0.268（n=16）|
+| Qwen3∩Nomic | 0.333（共通15）| 0.107（n=15）|
+| EmbGemma∩Nomic | 0.277（共通13）| 0.297（n=13）|
+
+- limiting_axis（TOP30）：Qwen3=30a / EmbGemma=30b / Nomic=30a
+- スコア幅（TOP30）：Qwen3 0.0342 / EmbGemma 0.0334 / Nomic 0.0331（絶対値のモデル間比較はしない）
+- 3モデル共通：TOP10=2件・TOP30=10件 ／ 固有候補：Qwen3 9・EmbGemma 11・Nomic 12
+- ブラインド和集合：56 行（seed=20260705）
+
+**90件時の3知見の再現判定:**
+1. **共通上位層の存在** → **再現**。3モデル共通が TOP30 で10件・TOP10で2件。頑健な上位層はある（ただし顔ぶれは多様化で hoochanlon/SakanaAI 系 → sujii/woxtu 系に交代）。
+2. **「Qwen3≒Nomic・EmbGemma だけ別」** → **変化（明確には再現せず）**。limiting_axis のクラスタ（Q,N=a／E=b）は再現するが、**順位相関では Qwen3∩Nomic が最弱（ρ=0.107）**。membership も rank も Qwen3 が中心的で、90件時の「Q≒N が最も似る」は1,090件では成立しない。→ 母数を10倍にすると細かな順位は各モデル独立に近い。
+3. **limiting_axis 反転（EmbGemma=b・Nomic=a）** → **再現**（E=30b, N=30a, Q=30a）。
+
+**気づき:** 90件時の「Q≒N」は overlap のカウントに引っ張られた見え方で、順位相関で見ると1,090件では崩れる。**モデルは互いにかなり独立に並べている**（弱いρ）。だからこそ最終判断は数値でなく **KHの会いたい順との一致（ブラインド評価）** で決める必要がある。
+
+**次のアクション:**
+- [ ] KH が `eval/analysis/blind_eval_sheet.md`（またはcsv）を記入 → `score_blind_eval.py` で突合 → モデル別の会いたい度・順位相関を得る
+- [ ] その後 `human_eval_sheet.md` で「なぜ納得か」を言語化
+- [ ] 決定ルール（人手評価→僅差ならライセンス/説明可能性→MRL→較正テスト）で1本確定
+
+---
+
 ## 2026-07-05｜3モデル比較（KH solo eval・1,090件プール）｜検証
 
 **内容:** 拡張プール1,090件（日本590＋海外500）で、Qwen3 / EmbGemma / Nomic を同一 seeker(KH)・同一パラメータ（gamma=0.43, p=-0.3, alpha=1.0, beta=1.2）・必要像は claude-opus-4-8 事前生成の共通値でマッチング。TOP30。

@@ -146,6 +146,34 @@ def test_get_or_build_model_tag_mismatch_raises(tmp_cache_dir):
         vc.get_or_build("alice", PROFILE_A, "deliberately-wrong-tag", cache)
 
 
+def test_save_is_atomic_no_tmp_left(tmp_cache_dir):
+    # 保存後に一時ファイル(.tmp)が残らない（原子的 rename 済み）
+    cache = {}
+    vc.get_or_build("alice", PROFILE_A, MODEL_TAG, cache)
+    vc.save_cache(MODEL_TAG, cache)
+    leftovers = list(tmp_cache_dir.glob("*.tmp"))
+    assert leftovers == [], f"一時ファイルが残っている: {leftovers}"
+
+
+def test_checkpoint_resume(tmp_cache_dir, build_counter):
+    # チェックポイント保存→再開のシミュレーション:
+    # 途中まで build して save（クラッシュ想定）→ 再ロードすると済み分は hit になる。
+    cache = {}
+    vc.get_or_build("alice", PROFILE_A, MODEL_TAG, cache)
+    vc.save_cache(MODEL_TAG, cache)         # 1件だけ保存された状態でクラッシュしたと想定
+    assert build_counter["n"] == 1
+
+    resumed = vc.load_cache(MODEL_TAG)       # 再起動後のロード
+    assert set(resumed.keys()) == {"alice"}
+    # alice は再計算されない、bob だけ新規ビルド
+    vc.get_or_build("alice", PROFILE_A, MODEL_TAG, resumed)
+    assert build_counter["n"] == 1           # alice は hit（増えない）
+    vc.get_or_build("bob", PROFILE_B, MODEL_TAG, resumed)
+    assert build_counter["n"] == 2           # bob だけ +1
+    vc.save_cache(MODEL_TAG, resumed)
+    assert set(vc.load_cache(MODEL_TAG).keys()) == {"alice", "bob"}
+
+
 def test_text_hash_stable_and_sensitive():
     h1 = vc._text_hash(PROFILE_A, "", MODEL_TAG)
     h2 = vc._text_hash(dict(PROFILE_A), "", MODEL_TAG)

@@ -103,16 +103,21 @@ def save_cache(model_tag, cache):
 
     ids = list(cache.keys())
     arrays = {"model_tag": np.array(model_tag)}
-    arrays["ids"] = np.array(ids, dtype=object) if ids else np.array([], dtype=object)
     arrays["hashes"] = np.array([cache[c][1] for c in ids]) if ids else np.array([])
     for k in VECTOR_KEYS:
         if ids:
             arrays[k] = np.array([cache[c][0][k] for c in ids], dtype=np.float64)
         else:
             arrays[k] = np.zeros((0, 0), dtype=np.float64)
-    # ids は object 配列だと allow_pickle 必須になるため文字列配列に変換して保存
+    # ids は文字列配列で保存（object 配列は allow_pickle 必須になるため）
     arrays["ids"] = np.array([str(c) for c in ids])
-    np.savez_compressed(path, **arrays)
+
+    # 原子的書き込み: 一時ファイルへ書いてから rename。
+    # 途中でクラッシュしても本体 .npz は壊れない（部分書き込みは .tmp 側だけ）。
+    tmp = path.parent / (path.name + ".tmp")
+    with open(tmp, "wb") as fh:
+        np.savez_compressed(fh, **arrays)
+    os.replace(tmp, path)  # 同一FS上で原子的
     return path
 
 

@@ -49,6 +49,8 @@ PROFILE_FILE = pathlib.Path(__file__).parent.parent / "my_profile.json"
 POOL_FILE    = pathlib.Path(__file__).parent.parent / "github_profiles.jsonl"
 RESULTS_DIR  = pathlib.Path(__file__).parent.parent / "results"
 TOP_N        = int(os.environ.get("SOLO_EVAL_TOP_N", "10"))
+# 何件ビルドするごとにキャッシュをチェックポイント保存するか（クラッシュ耐性）。
+FLUSH_EVERY  = int(os.environ.get("POX_CACHE_FLUSH_EVERY", "25"))
 
 
 def load_my_profile():
@@ -200,6 +202,7 @@ def main():
     print(f"候補プールのベクトル化を開始（{len(pool)} 件・キャッシュ {len(cache)} 件）...", flush=True)
     _t = time.perf_counter()
     hits = misses = 0
+    built_since_flush = 0
     cand_list = []        # [(login, cvecs), ...]
     rec_by_login = {}
     for i, p_rec in enumerate(pool, 1):
@@ -212,7 +215,8 @@ def main():
             "state_unsorted": _s(p_rec.get("state_unsorted")),
         }
         try:
-            if vector_cache.is_cached(login, cand_profile, MODEL_TAG, cache):
+            cached = vector_cache.is_cached(login, cand_profile, MODEL_TAG, cache)
+            if cached:
                 hits += 1
             else:
                 misses += 1
@@ -220,12 +224,18 @@ def main():
             cvecs = {k: full[k] for k in ("will_symmetric", "will_passage", "state_passage", "necessity_query")}
             cand_list.append((login, cvecs))
             rec_by_login[login] = p_rec
+            # 新規ビルドが FLUSH_EVERY 件たまるごとにチェックポイント保存（クラッシュ耐性）。
+            if not cached:
+                built_since_flush += 1
+                if built_since_flush >= FLUSH_EVERY:
+                    vector_cache.save_cache(MODEL_TAG, cache)
+                    built_since_flush = 0
         except Exception as e:
             print(f"\n  skip {login}: {e}")
         if i % 5 == 0 or i == len(pool):
             print(f"\r  候補ベクトル化: {i}/{len(pool)} 完了（hit {hits} / miss {misses}）", end="", flush=True)
     print()
-    vector_cache.save_cache(MODEL_TAG, cache)  # 新規/更新分を永続化
+    vector_cache.save_cache(MODEL_TAG, cache)  # 最終保存（残り分を永続化）
     timing["cand_vec_sec"] = time.perf_counter() - _t
     timing["cache_hits"] = hits
     timing["cache_misses"] = misses

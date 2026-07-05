@@ -119,6 +119,14 @@ def spearman(rank_vals, score_vals):
     return _pearson(_rankdata(rank_vals), _rankdata(score_vals))
 
 
+RESULT_FILE = ANALYSIS / "blind_eval_result.md"
+MLABEL = {"qwen3": "Qwen3", "embgemma": "EmbGemma", "nomic": "Nomic"}
+
+
+def _rankcell(v):
+    return str(v) if v else "圏外"
+
+
 def main():
     use_md = "--md" in sys.argv
     hi = 4
@@ -133,14 +141,23 @@ def main():
     key = json.load(open(KEY_FILE, encoding="utf-8"))["map"]
     scores = load_scores_md() if use_md else load_scores_csv()
 
+    out = []  # 標準出力と md の両方に出す行を貯める（本文テキストは含めない）
+
+    def emit(line=""):
+        print(line)
+        out.append(line)
+
     filled = {k: v for k, v in scores.items() if v is not None}
-    print(f"記入済み: {len(filled)} / {len(key)} 行\n")
+    emit(f"# ブラインド評価 集計結果")
+    emit(f"\n記入済み: {len(filled)} / {len(key)} 行（空欄＝未評価は除外）\n")
     if not filled:
         raise SystemExit("会いたい度が1つも記入されていません。blind_eval_sheet を記入してから再実行。")
 
-    # モデルごと集計
-    print("=== モデル別：会いたい度（そのモデル TOP30 に入っていた候補群）===")
-    per_model_pairs = {m: [] for m in MODELS}  # (rank, score)
+    # ── 1. モデル別集計（そのモデル TOP30 に入っていた候補群の会いたい度）──
+    emit("## モデル別：会いたい度（そのモデル TOP30 に入っていた候補群）\n")
+    emit("| モデル | n | 平均 | 分布(1..5) | rank–会いたい度 Spearman |")
+    emit("|---|---|---|---|---|")
+    per_model_pairs = {m: [] for m in MODELS}  # model -> [(rank, score)]
     for bid, info in key.items():
         sc = scores.get(bid)
         if sc is None:
@@ -151,30 +168,52 @@ def main():
     for m in MODELS:
         pairs = per_model_pairs[m]
         if not pairs:
-            print(f"  {m}: 該当なし")
+            emit(f"| {MLABEL[m]} | 0 | - | - | - |")
             continue
         vals = [s for _, s in pairs]
         dist = {k: vals.count(k) for k in range(1, 6)}
         avg = sum(vals) / len(vals)
         rho = spearman([r for r, _ in pairs], [s for _, s in pairs])
         rho_s = f"{rho:.3f}" if rho is not None else "n<3"
-        print(f"  {m}: n={len(vals)} 平均={avg:.2f} 分布={dist} rank-会いたい度 Spearman={rho_s}")
-    print()
+        emit(f"| {MLABEL[m]} | {len(vals)} | {avg:.2f} | {dict(dist)} | {rho_s} |")
+    emit("\n※ 平均が高い＝そのモデルの TOP30 が会いたい人で埋まっていた。"
+         "Spearman が正で大きい＝そのモデルの順位が会いたい順に沿う。\n")
 
-    # 取りこぼし: 会いたい度>=hi なのに、特定モデルだけ入れていない
-    print(f"=== 取りこぼし分析（会いたい度>={hi} の候補を、どのモデルが TOP30 に入れ損ねたか）===")
+    # ── 2. 逆引き表：会いたい度の高い候補を各モデルが何位に置いたか ──
+    rated = [(bid, key[bid], scores[bid]) for bid in key if scores.get(bid) is not None]
+    rated.sort(key=lambda x: (-x[2], x[0]))  # 会いたい度 降順
+    emit("## 逆引き表：あなたの高評価候補を各モデルは何位に置いたか（圏外＝そのモデルのTOP30外）\n")
+    emit("| 会いたい度 | 匿名ID | login | Qwen3 | EmbGemma | Nomic | 取りこぼしモデル |")
+    emit("|---|---|---|---|---|---|---|")
+    for bid, info, sc in rated:
+        missed = [MLABEL[m] for m in MODELS if not info.get(m)]
+        emit(f"| {sc} | {bid} | @{info['login']} | "
+             f"{_rankcell(info.get('qwen3'))} | {_rankcell(info.get('embgemma'))} | "
+             f"{_rankcell(info.get('nomic'))} | {', '.join(missed) or '—'} |")
+    emit("")
+
+    # ── 3. 取りこぼしサマリ（会いたい度>=hi を、特定モデルだけ落としたケース）──
+    emit(f"## 取りこぼしサマリ（会いたい度 >= {hi} なのに TOP30 外に落としたモデル）\n")
+    miss_count = {m: 0 for m in MODELS}
     any_row = False
-    for bid, info in key.items():
-        sc = scores.get(bid)
-        if sc is None or sc < hi:
+    for bid, info, sc in rated:
+        if sc < hi:
             continue
         missed = [m for m in MODELS if not info.get(m)]
-        got = [m for m in MODELS if info.get(m)]
+        for m in missed:
+            miss_count[m] += 1
         if missed:
             any_row = True
-            print(f"  {bid} @{info['login']}（会いたい度{sc}）: 取得={got or '（なし）'} / 取りこぼし={missed}")
+            emit(f"- {bid} @{info['login']}（会いたい度{sc}）取りこぼし: {', '.join(MLABEL[m] for m in missed)}")
     if not any_row:
-        print("  高評価候補はすべてのモデルが拾えていた（または該当なし）。")
+        emit("- 高評価候補はどのモデルも取りこぼしていない（または該当なし）。")
+    emit(f"\n取りこぼし件数（会いたい度>={hi}）: "
+         + " / ".join(f"{MLABEL[m]}={miss_count[m]}" for m in MODELS))
+    emit(f"\n判定の目安：モデル別平均が最も高く・Spearman が最も正で・取りこぼしが最も少ないモデルが、"
+         f"KHの会いたい順に最も沿う。僅差ならライセンス/説明可能性/MRL/較正で決める。")
+
+    RESULT_FILE.write_text("\n".join(out) + "\n", encoding="utf-8")
+    print(f"\n[保存] {RESULT_FILE}")
 
 
 if __name__ == "__main__":

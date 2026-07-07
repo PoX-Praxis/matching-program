@@ -18,6 +18,30 @@
 
 ---
 
+## 2026-07-07｜全件スコア分布の蓄積＋MRL256検証基盤＋課題追記｜調整
+
+**タスク1（分布蓄積・恒久機能）:** `eval/scripts/distribution_log.py` を追加、solo_eval にフック。
+実行のたびに TOP30 snapshot とは別に、全候補の `(login, final_score, a_sim,b_sim,c_sim, limiting_axis)` を
+`eval/analysis/distributions/{model_tag}_{ts}_full_scores.jsonl`＋necessity_id 単位の percentile/b近傍密度
+`_summary.json` に蓄積（gitignore・**判定ロジックは作らず蓄積のみ**）。蓄積単位＝`necessity_id`
+（必要像 sha256 先頭12桁）。同一必要像の蓄積回数を stdout 表示。snapshot スキーマは不変。
+
+**タスク2（MRL256 検証・基盤）:** `eval/scripts/mrl_report.py` を追加。**キャッシュ済みベクトルのみ**で
+フル次元 vs 先頭256次元（キャッシュ _256＝スライス＋L2再正規化済）のランキングを突合
+（TOP30 Jaccard/Spearman・TOP10残存・limiting_axis一致率・経路a/b/c別）。H-3合否（Jaccard≥0.9 かつ
+TOP10残存≥9）を判定。**サーバー不要**。ただし seeker ベクトルが従来未保存だったため、solo_eval に
+seeker full+256 の永続化（`eval/cache/seeker_{tag}_{nid}.json`）を追加して MRL をオフライン化。
+→ **実数値は PC 実行（cache＋seekerベクトルが PC 側）。** cloud では stub 機構検証のみ。
+
+**タスク3（課題追記）:** `spec/matching_spec_v0.6.md` §12.A に「必要像の複数仮説化（multi-necessity）」を追記
+（平均化の病理／仮説別分割生成／necessity_id 単位で互換／未着手・構想）。
+
+**テスト:** 既存140＋新規7（distribution_log 5・mrl_report 2）＝**147 全通過**。matcher_v4/match_config/necessity_gen 不変。
+
+**次のアクション:** PC で solo_eval を各モデル1回再実行（seekerベクトル捕捉＋分布蓄積）→ `python eval/scripts/mrl_report.py` で MRL256 実数値を取得。
+
+---
+
 ## 2026-07-05｜モデル選定 最終レポート作成｜検証
 
 **内容:** 決定ルール（①人手評価→②ライセンス/説明可能性→③MRL→④較正）に沿って全材料を `eval/analysis/final_report.md`（gitignore）に集約。結論（採用モデル）は書かず判断材料の整理まで。

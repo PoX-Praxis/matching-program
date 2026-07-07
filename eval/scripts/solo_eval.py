@@ -38,6 +38,7 @@ from embedding_service import build_vectors
 from matcher_v4 import rank_candidates
 from embedding_config import MODEL_TAG
 import vector_cache
+import distribution_log
 
 
 def _s(v):
@@ -196,6 +197,12 @@ def main():
     print(f"\n【あなたの必要像】\n  {necessity_text}\n")
     print(f"  パラメータ: gamma={gamma:.3f} p={p:.3f} alpha={alpha:.3f} beta={beta:.3f}\n")
 
+    # 蓄積の単位＝必要像。seeker ベクトル（full+256）を保存（MRL256 検証用・サーバー不要化）。
+    nid = distribution_log.necessity_id(necessity_text)
+    distribution_log.save_seeker_vecs(MODEL_TAG, nid, _sv)
+    print(f"  necessity_id={nid} ｜ この必要像での蓄積: "
+          f"{distribution_log.count_prior(MODEL_TAG, nid) + 1} 回目\n")
+
     # ── (c) 候補ベクトル化（モデル別キャッシュ経由）────────────────────────
     #   前回と入力テキストが同じ候補はキャッシュから読み出し（build_vectors を呼ばない）。
     cache = vector_cache.load_cache(MODEL_TAG)
@@ -246,13 +253,21 @@ def main():
     print(f"候補ベクトル化 完了: {len(cand_list)} 件（hit {hits} / miss {misses}）\n")
 
     # ── (d) ランキング ──────────────────────────────────────────────────
+    #   全候補を採点（top_k=None）→ 分布蓄積に全件、表示/snapshot には先頭 TOP_N を使う。
     _t = time.perf_counter()
-    ranked = rank_candidates(
+    ranked_all = rank_candidates(
         svecs, cand_list,
         gamma=gamma, p=p, alpha=alpha, beta=beta,
-        top_k=TOP_N,
+        top_k=None,
     )
     timing["scoring_sec"] = time.perf_counter() - _t
+
+    # 全件スコア分布を蓄積（判定はしない・蓄積のみ）。
+    run_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    dist_jsonl, dist_summary = distribution_log.save_distribution(MODEL_TAG, nid, ranked_all, run_ts)
+    print(f"全件スコア分布を保存: {dist_jsonl.name} / {dist_summary.name}\n")
+
+    ranked = ranked_all[:TOP_N]
 
     print(f"=== {me_name} に対するマッチング上位 {len(ranked)} 件 ===\n")
     top = []

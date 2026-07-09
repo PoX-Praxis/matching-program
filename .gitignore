@@ -29,6 +29,13 @@ static/uploads/*
 qwen3_server/.hf/
 .hf/
 
+# --- embedding 実験の生出力（評価表が成果物。生JSONは追跡しない） ---
+eval/results/
+# ベクトルキャッシュ（個人データ由来のベクトル。モデル別 .npz。git管理しない） ---
+eval/cache/
+# 分析出力（候補プロフィール本文を含むため git管理しない） ---
+eval/analysis/
+
 # --- Node.js ---
 node_modules/
 package-lock.json
@@ -40,3 +47,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+eval/github_profiles.jsonl
+
+# solo_eval 用の個人プロフィール（個人情報なのでコミットしない）
+eval/my_profile.json

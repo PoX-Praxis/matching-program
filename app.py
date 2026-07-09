@@ -167,18 +167,97 @@ def _demo_judge(seeker, cand, roles):
 # 既存 /seekers・/match（v3.1）はそのまま。v4 は profiles_v4 系テーブルを使う。
 # Postgres（DATABASE_URL）必須: vector / JSONB / HNSW は SQLite 非対応。
 
+import threading, time as _time
+
+# 必要像フィールド（①各自AIが構造化と同時に生成し body に同梱する正式ルートのキー）
+_NECESSITY_FIELDS = ("necessity_text", "gate_s", "gate_u", "p_sharpness",
+                     "alpha", "beta", "evidence_span", "generator")
+
+
 def _v4_store():
     """v4 用 PostgresStore を返す。Postgres でなければ 503 を投げる。"""
     from db_v4 import PostgresStore
     return PostgresStore(db_path=DB)
 
 
+def _v4_profile_input(body):
+    """body から profiles_v4 の flat フィールド＋supporting_raw を組む。"""
+    return {
+        "will_text":      body.get("will_text", ""),
+        "state_have":     body.get("state_have", ""),
+        "state_can_type": body.get("state_can_type", ""),
+        "state_bound":    body.get("state_bound", ""),
+        "state_unsorted": body.get("state_unsorted", ""),
+        "supporting_raw": body.get("supporting_raw") or {},
+    }
+
+
+def _run_with_retry(fn, *, tries=3, base_delay=2.0):
+    """指数バックオフ付きリトライ（2s→4s→8s）。最後の例外を送出する。"""
+    last = None
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001（生成/埋め込みの一過性障害を吸収）
+            last = e
+            if i < tries - 1:
+                _time.sleep(base_delay * (2 ** i))
+    raise last
+
+
+def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback):
+    """
+    非同期ジョブ（daemon スレッド）: 必要像生成（フォールバック時のみ）＋4ベクトル生成。
+    生成状態は generation_status（preparing→ready / error）で追跡する。
+    - user-supplied 経路: necessity は受付時に検証・保存済み → ベクトル化のみ。
+    - fallback 経路: ここで ② サーバー生成（ANTHROPIC_API_KEY 必須）→ 保存 → ベクトル化。
+    """
+    from db_v4 import (generate_necessity_v4, vectorize_profile_v4,
+                       GEN_ERROR)
+    store = _v4_store()
+    try:
+        if is_fallback:
+            if not os.environ.get("ANTHROPIC_API_KEY"):
+                store.set_generation_status(
+                    profile_id, GEN_ERROR,
+                    error=("必要像フィールド未同梱かつサーバー生成キー未設定。"
+                           "各自AIで必要像を生成して同梱し再送するか、"
+                           "管理者に ② 生成キー設定を依頼してください。"))
+                return
+            necessity = _run_with_retry(
+                lambda: generate_necessity_v4(store, profile_id, profile_input))
+        _run_with_retry(
+            lambda: vectorize_profile_v4(
+                store, profile_id, profile_input, necessity["necessity_text"]))
+    except Exception as e:  # noqa: BLE001
+        try:
+            store.set_generation_status(profile_id, GEN_ERROR, error=str(e)[:500])
+        except Exception:
+            pass
+
+
+def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback):
+    t = threading.Thread(
+        target=_v4_async_job, args=(profile_id, profile_input, necessity),
+        kwargs={"is_fallback": is_fallback}, daemon=True)
+    t.start()
+
+
 @app.post("/v4/seekers")
 def post_v4_seeker():
     """
-    ①v4 の構造化出力を取り込み、profiles_v4 / derived_necessity / profile_vectors
-    を一括保存する（F章 登録/更新）。supporting_raw は保存するが embedding/② には
-    redacted のみ渡す（I章）。s,u,γ,p,α,β は ② が所有。
+    ①v4 の構造化出力を取り込む（F章 登録/更新）。二経路:
+
+      A. 必要像フィールド同梱（各自AI生成・正式ルート）:
+         build_user_necessity で **無検証で信頼せず** 範囲検証・クランプし、
+         γ は compute_gamma で算出（供給 gamma は使わない）。受付で profile+necessity
+         を同期保存（status=preparing）→ 202。ベクトル化は非同期。
+      B. 必要像フィールド無し（フォールバック・判断B）:
+         受付で profile のみ同期保存（status=preparing）→ 202。必要像のサーバー生成
+         （ANTHROPIC_API_KEY 必須）とベクトル化を非同期ジョブで実行。
+
+    supporting_raw は保存するが embedding/② には redacted のみ渡す（I章）。
+    s,u,γ,p,α,β は ② が所有。生ベクトルはレスポンスに含めない。
     """
     if not is_postgres():
         return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
@@ -188,34 +267,104 @@ def post_v4_seeker():
     if not (body.get("will_text") or "").strip():
         return jsonify({"error": "will_text が必要です"}), 400
 
-    from db_v4 import ingest_profile_v4
+    from db_v4 import receive_profile_v4, GEN_PREPARING
+    from necessity_gen import build_user_necessity
+    from pii_redaction import redact_for_storage
+
     profile_id = body.get("user_id") or f"u_{uuid.uuid4().hex[:8]}"
-    profile_input = {
-        "will_text":      body.get("will_text", ""),
-        "state_have":     body.get("state_have", ""),
-        "state_can_type": body.get("state_can_type", ""),
-        "state_bound":    body.get("state_bound", ""),
-        "state_unsorted": body.get("state_unsorted", ""),
-        "supporting_raw": body.get("supporting_raw") or {},
-    }
+    profile_input = _v4_profile_input(body)
+    store = _v4_store()
+
+    # necessity_text の有無で経路を分岐（正式ルート＝各自AI生成の必要像同梱）
+    supplied = (body.get("necessity_text") or "").strip()
+    is_fallback = not supplied
+
+    necessity = None
+    if not is_fallback:
+        # A. 正式ルート: 各自AI出力を検証・クランプ（無検証で信頼しない）。
+        # src_input_hash は保存後の再生成判定（get_profile 経由）と一致させるため、
+        # 保存時と同じ supporting_redacted を与えて計算する。
+        supporting_redacted, _ = redact_for_storage(profile_input.get("supporting_raw") or {})
+        hash_profile = {**profile_input, "supporting_redacted": supporting_redacted}
+        try:
+            necessity = build_user_necessity(hash_profile, body)
+        except (ValueError, TypeError) as e:
+            return jsonify({"error": f"必要像フィールド不正: {e}"}), 400
+
     try:
-        out = ingest_profile_v4(_v4_store(), profile_id, profile_input)
+        receive_profile_v4(store, profile_id, profile_input, necessity,
+                           generation_status=GEN_PREPARING)
     except Exception as e:
-        return jsonify({"error": f"取り込み失敗: {e}"}), 500
-    # 必要像の数値（②所有）はレスポンスに必要分のみ返す（生ベクトルは返さない）
-    nec = out["necessity"]
+        return jsonify({"error": f"受付失敗: {e}"}), 500
+
+    _spawn_v4_job(profile_id, profile_input, necessity, is_fallback=is_fallback)
+
+    resp = {
+        "id": profile_id,
+        "generation_status": GEN_PREPARING,
+        "route": "fallback" if is_fallback else "user-supplied",
+        "status_url": f"/v4/seekers/{profile_id}/status",
+    }
+    if necessity is not None:  # 正式ルートは受付時点で数値が確定（②所有分のみ返す）
+        resp.update({
+            "necessity_text": necessity["necessity_text"],
+            "gate_s": necessity["gate_s"], "gate_u": necessity["gate_u"],
+            "gamma": necessity["gamma"],
+        })
+    return jsonify(resp), 202
+
+
+@app.get("/v4/seekers/<profile_id>/status")
+def get_v4_seeker_status(profile_id):
+    """非同期生成の進捗（preparing / ready / error / needs_regeneration）を返す。"""
+    if not is_postgres():
+        return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
+    st = _v4_store().get_profile_status(profile_id)
+    if st is None:
+        return jsonify({"error": "プロフィールが見つかりません"}), 404
+    return jsonify({"id": profile_id, **st})
+
+
+@app.post("/v4/seekers/<profile_id>/retry")
+def retry_v4_seeker(profile_id):
+    """
+    失敗した非同期生成を再試行する。保存済み necessity があれば再ベクトル化のみ、
+    無ければフォールバック生成からやり直す。status=preparing に戻して再ジョブ。
+    """
+    if not is_postgres():
+        return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
+    store = _v4_store()
+    from db_v4 import GEN_PREPARING, MODEL_TAG
+
+    profile = store.get_profile(profile_id)
+    if profile is None:
+        return jsonify({"error": "プロフィールが見つかりません"}), 404
+
+    profile_input = {
+        "will_text":      profile.get("will_text", ""),
+        "state_have":     profile.get("state_have", ""),
+        "state_can_type": profile.get("state_can_type", ""),
+        "state_bound":    profile.get("state_bound", ""),
+        "state_unsorted": profile.get("state_unsorted", ""),
+        "supporting_raw": profile.get("supporting_raw") or {},
+    }
+    necessity = store.get_necessity(profile_id, MODEL_TAG)
+    is_fallback = necessity is None  # necessity 未保存なら②生成からやり直す
+
+    store.set_generation_status(profile_id, GEN_PREPARING, error=None)
+    _spawn_v4_job(profile_id, profile_input, necessity, is_fallback=is_fallback)
     return jsonify({
-        "id": out["profile_id"],
-        "necessity_text": nec["necessity_text"],
-        "gate_s": nec["gate_s"], "gate_u": nec["gate_u"], "gamma": nec["gamma"],
-    }), 201
+        "id": profile_id, "generation_status": GEN_PREPARING,
+        "route": "fallback" if is_fallback else "user-supplied",
+        "status_url": f"/v4/seekers/{profile_id}/status",
+    }), 202
 
 
 @app.post("/v4/match")
 def post_v4_match():
     """
     seeker_id を起点に v4 エンジンで照合し ranking を返す（E章）。
-    256次元 shortlist → 全次元 nested complement → 律速軸/寄与率。ledger_v4 に監査記録。
+    フル次元総当たり（stage1）→ nested complement → 律速軸/寄与率。ledger_v4 に監査記録。
     seeker の生テキスト・ベクトルはレスポンスに含めない。
     """
     if not is_postgres():

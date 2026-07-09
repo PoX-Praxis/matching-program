@@ -133,10 +133,15 @@ def _nomic_encode(text):
             "nomic_server/run_nomic.bat でサーバを起動し URL を設定してください。"
         )
     import urllib.request
+    headers = {"content-type": "application/json"}
+    # サーバが NOMIC_SERVER_API_KEY を要求する場合、pox-web 側は POX_NOMIC_API_KEY で送る。
+    _api_key = os.environ.get("POX_NOMIC_API_KEY", "")
+    if _api_key:
+        headers["X-API-Key"] = _api_key
     req = urllib.request.Request(
         NOMIC_ENDPOINT,
         data=json.dumps({"text": text, "model_tag": MODEL_TAG}).encode("utf-8"),
-        headers={"content-type": "application/json"},
+        headers=headers,
     )
     with urllib.request.urlopen(req, timeout=60) as r:
         data = json.loads(r.read())

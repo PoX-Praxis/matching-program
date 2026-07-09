@@ -1,18 +1,22 @@
 """
 Step 6 DoD 検証テスト — プラットフォーム統合 / v4 取り込み・照合（F章）
 
+束2a 更新:
+  - 256 shortlist 廃止 → フル次元総当たり（match_v4 は同 model_tag・is_active 全件を rank）
+  - profile_vectors は full 4ベクトルのみ保存（_256 は廃止）
+  - derived_necessity は履歴保存（MemoryStore.get_necessity が最新を返す）
+
 DoD（Postgres 無しで MemoryStore により全オーケストレーションを検証）:
   - ingest_profile_v4: raw 保存 / redacted 保存 / PII status / ② 必要像生成 / 4ベクトル保存
   - I章: raw を embedding/LLM に直接渡さない（防御 redact）
   - match_v4: ランキング生成 / γ,p,α,β が derived_necessity から流れる / ledger_v4 監査記録
-  - 跨プール禁止: shortlist は同 model_tag のみ（別 model_tag を混ぜない）
-  - 非破壊: v4 ストアは既存 seekers/profiles に触れない
+  - 跨プール禁止: 照合は同 model_tag のみ（別 model_tag を混ぜない）
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from db_v4 import ingest_profile_v4, match_v4, MemoryStore, _union_shortlist
-from embedding_config import MODEL_TAG, FULL_DIM, SHORT_DIM
+from db_v4 import ingest_profile_v4, match_v4, MemoryStore
+from embedding_config import MODEL_TAG, FULL_DIM
 from necessity_gen import compute_gamma
 from match_config import GAMMA_MAX
 
@@ -40,9 +44,7 @@ def test_ingest_saves_profile_raw_and_redacted():
                  want="アプリを実装できるエンジニア")
     ingest_profile_v4(store, "u1", p)
     saved = store.profiles["u1"]
-    # raw は原文保持（will_text の生値は profiles_v4 に保存される）
     assert saved["will_text"] == "農家と店をつなぎたい 連絡 a@b.com"
-    # supporting_redacted が作られ status が立つ
     assert saved["pii_redaction_status"] == "structural_done"
     assert "supporting_redacted" in saved
 
@@ -50,22 +52,21 @@ def test_ingest_saves_profile_raw_and_redacted():
 def test_ingest_generates_necessity_owned_by_two():
     store = MemoryStore()
     ingest_profile_v4(store, "u1", _profile("意志", want="必要な相手"))
-    nec = store.necessity[("u1", MODEL_TAG)]
-    # ② が s,u,γ,p,α,β と src_input_hash を所有
+    nec = store.get_necessity("u1", MODEL_TAG)
     for k in ("necessity_text", "gate_s", "gate_u", "gamma", "p_sharpness",
               "alpha", "beta", "src_input_hash", "generator_prompt_version"):
         assert k in nec
     assert nec["gamma"] == compute_gamma(nec["gate_s"], nec["gate_u"], GAMMA_MAX)
 
 
-def test_ingest_saves_8_vectors_correct_dims():
+def test_ingest_saves_full_vectors_correct_dims():
+    """束2a: 保存は full 4ベクトルのみ（_256 は保存しない）。"""
     store = MemoryStore()
     ingest_profile_v4(store, "u1", _profile("意志"))
     v = store.vectors[("u1", MODEL_TAG)]
-    for k in ("will_symmetric", "will_passage", "state_passage", "necessity_query"):
+    assert set(v.keys()) == {"will_symmetric", "will_passage", "state_passage", "necessity_query"}
+    for k in v:
         assert len(v[k]) == FULL_DIM
-    for k in ("will_sym_256", "will_pas_256", "state_pas_256", "necessity_q_256"):
-        assert len(v[k]) == SHORT_DIM
 
 
 def test_ingest_defensive_redaction_into_embedding():
@@ -85,13 +86,13 @@ def test_ingest_uses_injected_generator():
                 "p_sharpness": -0.5, "alpha": 1.0, "beta": 2.0, "evidence_span": "x"}
     out = ingest_profile_v4(store, "u1", _profile("意志"), generator_fn=fake)
     assert out["necessity"]["necessity_text"] == "注入された必要像"
-    assert store.necessity[("u1", MODEL_TAG)]["beta"] == 2.0
+    assert store.get_necessity("u1", MODEL_TAG)["beta"] == 2.0
 
 
-def test_ingest_returns_profile_id():
+def test_ingest_sets_status_ready():
     store = MemoryStore()
-    out = ingest_profile_v4(store, "uX", _profile("意志"))
-    assert out["profile_id"] == "uX"
+    ingest_profile_v4(store, "u1", _profile("意志"))
+    assert store.get_profile_status("u1")["generation_status"] == "ready"
 
 
 # ── match_v4 ──────────────────────────────────────────────────────────────────
@@ -106,12 +107,10 @@ def test_match_returns_ranking():
     ingest_profile_v4(store, "seeker", _profile("つなぎたい", want="実装者"))
     _seed_pool(store, 3)
     out = match_v4(store, "seeker")
-    assert out["seeker_id"] == "seeker"
-    assert out["model_tag"] == MODEL_TAG
+    assert out["seeker_id"] == "seeker" and out["model_tag"] == MODEL_TAG
     assert len(out["results"]) >= 1
     for r in out["results"]:
         assert {"candidate_id", "score", "attribution"} <= set(r)
-    # 自分自身は候補に含まれない
     assert all(r["candidate_id"] != "seeker" for r in out["results"])
 
 
@@ -130,9 +129,7 @@ def test_match_writes_ledger_audit():
     match_v4(store, "seeker")
     assert len(store.ledger) >= 1
     ev = store.ledger[0]
-    assert ev["seeker_id"] == "seeker"
-    assert ev["event"] == "match_ranked"
-    # 監査メタデータ（律速軸・γ・チャネル類似）が記録される（F章）
+    assert ev["seeker_id"] == "seeker" and ev["event"] == "match_ranked"
     for k in ("score", "limiting_axis", "gamma", "alpha", "beta", "model_tag"):
         assert k in ev["payload"]
 
@@ -146,14 +143,12 @@ def test_match_no_ledger_when_disabled():
 
 
 def test_match_gamma_flows_from_necessity():
-    """derived_necessity の γ が照合に反映される（γ=0 で c チャネル無視）。"""
     store = MemoryStore()
     def gamma_zero(inputs):
         return {"necessity_text": "必要", "gate_s": 0.0, "gate_u": 0.0,
                 "p_sharpness": 0.0, "alpha": 1.0, "beta": 1.0, "evidence_span": ""}
     ingest_profile_v4(store, "seeker", _profile("意志"), generator_fn=gamma_zero)
     _seed_pool(store, 2)
-    # γ=0 → ledger に gamma=0 が記録される
     match_v4(store, "seeker")
     assert store.ledger[0]["payload"]["gamma"] == 0.0
 
@@ -184,9 +179,8 @@ def test_match_pool_size_reported():
     assert out["pool_size"] == 3
 
 
-# ── 跨プール禁止（I章）─────────────────────────────────────────────────────────
-def test_shortlist_isolates_model_tag():
-    """別 model_tag の候補は shortlist に混ざらない。"""
+def test_match_isolates_model_tag():
+    """別 model_tag の候補は照合に混ざらない（跨プール禁止 I章）。"""
     store = MemoryStore()
     ingest_profile_v4(store, "seeker", _profile("意志"), model_tag="model-A")
     ingest_profile_v4(store, "same", _profile("候補A"), model_tag="model-A")
@@ -196,26 +190,3 @@ def test_shortlist_isolates_model_tag():
     assert "same" in ids
     assert "other" not in ids, "別 model_tag は跨プール禁止（I章）"
     assert out["pool_size"] == 1
-
-
-# ── _union_shortlist 直接 ─────────────────────────────────────────────────────
-def test_union_shortlist_merges_paths():
-    """3経路の近傍 union を返す。"""
-    e1 = [1.0] + [0.0] * (SHORT_DIM - 1)
-    e2 = [0.0, 1.0] + [0.0] * (SHORT_DIM - 2)
-    seeker = {k: e1 for k in ("necessity_q_256", "will_sym_256", "will_pas_256",
-                              "state_pas_256")}
-    cands = {
-        "near": {"state_pas_256": e1, "will_sym_256": e1, "will_pas_256": e1},
-        "far":  {"state_pas_256": e2, "will_sym_256": e2, "will_pas_256": e2},
-    }
-    chosen = _union_shortlist(seeker, cands, k=1)
-    assert "near" in chosen
-
-
-if __name__ == "__main__":
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    for t in tests:
-        t()
-        print(f"  PASS: {t.__name__}")
-    print(f"\nStep 6 DoD テスト: {len(tests)} 件 全 PASS")

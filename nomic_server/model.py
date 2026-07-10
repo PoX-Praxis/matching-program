@@ -19,6 +19,11 @@ DEFAULT_MODEL = os.environ.get("NOMIC_MODEL", "nomic-ai/nomic-embed-text-v2-moe"
 EXPECTED_DIM  = int(os.environ.get("NOMIC_DIM", "0")) or None   # 0 = 自動検出
 MODEL_TAG     = os.environ.get("NOMIC_MODEL_TAG", "nomic-emb-v2")
 
+# 重み読み込み精度。既定 bfloat16 = メモリ約半減（fp32 の 1.9GB → ~1GB）で 2GB 級に載せる。
+# fp32 に戻したい場合は NOMIC_TORCH_DTYPE=float32（4GB 以上のインスタンス想定）。
+# 空/none/float32 → dtype 指定なし（ライブラリ既定 = fp32）。
+TORCH_DTYPE   = os.environ.get("NOMIC_TORCH_DTYPE", "bfloat16").strip().lower()
+
 
 class NomicEmbedder:
     """
@@ -39,11 +44,17 @@ class NomicEmbedder:
     def warmup(self):
         if self._model is None:
             from sentence_transformers import SentenceTransformer
+            # 重み精度を絞ってメモリ削減（既定 bfloat16）。2GB 級インスタンス対策。
+            model_kwargs = {"low_cpu_mem_usage": True}
+            if TORCH_DTYPE and TORCH_DTYPE not in ("float32", "fp32", "none", "default"):
+                model_kwargs["torch_dtype"] = TORCH_DTYPE
+                print(f"[NomicEmbedder] torch_dtype={TORCH_DTYPE} で読み込み（メモリ削減）")
             # Nomic は trust_remote_code=True が必要
             self._model = SentenceTransformer(
                 self.model_name,
                 device=self.device,
                 trust_remote_code=True,
+                model_kwargs=model_kwargs,
             )
             # テストエンコードで実次元を検出し起動時にログ出力
             self.encode_batch(["warmup"])

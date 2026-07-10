@@ -24,9 +24,12 @@ from flask import Flask, request, jsonify
 from model import NomicEmbedder, MODEL_TAG as SERVER_MODEL_TAG
 
 STRICT_TAG = os.environ.get("NOMIC_STRICT_MODEL_TAG", "0") == "1"
+# APIキー認証。設定時のみ有効（未設定＝ローカル開発は認証なし）。/health は認証不要（Render のヘルスチェック用）。
+SERVER_API_KEY = os.environ.get("NOMIC_SERVER_API_KEY", "")
 
 
-def create_app(embedder, *, server_model_tag=SERVER_MODEL_TAG, strict_tag=STRICT_TAG):
+def create_app(embedder, *, server_model_tag=SERVER_MODEL_TAG, strict_tag=STRICT_TAG,
+               api_key=SERVER_API_KEY):
     app = Flask(__name__)
 
     def _check_tag(req_tag):
@@ -37,6 +40,17 @@ def create_app(embedder, *, server_model_tag=SERVER_MODEL_TAG, strict_tag=STRICT
                 return msg
             app.logger.warning(msg)
         return None
+
+    def _auth_ok():
+        """api_key 設定時のみ検証。X-API-Key ヘッダ or Authorization: Bearer を受理。"""
+        if not api_key:
+            return True
+        supplied = request.headers.get("X-API-Key", "")
+        if not supplied:
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                supplied = auth[len("Bearer "):]
+        return supplied == api_key
 
     @app.get("/health")
     def health():
@@ -50,6 +64,8 @@ def create_app(embedder, *, server_model_tag=SERVER_MODEL_TAG, strict_tag=STRICT
 
     @app.post("/embed")
     def embed():
+        if not _auth_ok():
+            return jsonify({"error": "unauthorized（X-API-Key 不一致）"}), 401
         body = request.get_json(force=True, silent=True)
         if not isinstance(body, dict):
             return jsonify({"error": "JSON body が必要です"}), 400
@@ -91,5 +107,6 @@ def build_default_app():
 
 if __name__ == "__main__":
     host = os.environ.get("NOMIC_HOST", "0.0.0.0")
-    port = int(os.environ.get("NOMIC_PORT", "8002"))
+    # Render は $PORT を注入する。優先し、無ければ NOMIC_PORT（ローカル既定 8002）。
+    port = int(os.environ.get("PORT") or os.environ.get("NOMIC_PORT", "8002"))
     build_default_app().run(host=host, port=port)

@@ -113,7 +113,7 @@ def test_migrate_produces_vectors_and_necessity():
     migrate_seeker(store, "u1", SEEKER_V31)
     v = store.vectors[("u1", MODEL_TAG)]
     assert len(v["will_symmetric"]) == FULL_DIM
-    nec = store.necessity[("u1", MODEL_TAG)]
+    nec = store.get_necessity("u1", MODEL_TAG)
     # 求めている申告（実証パートナー）が demo の必要像に反映される
     assert nec["necessity_text"] == "実証パートナー"
 

@@ -3,3 +3,4 @@ sentence-transformers>=4.0.0
 torch>=2.2.0
 numpy>=1.26.0
 gunicorn>=21.0.0
+einops>=0.7.0  # nomic-embed-text-v2-moe の trust_remote_code モデリングが要求

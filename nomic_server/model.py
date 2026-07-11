@@ -43,11 +43,17 @@ class NomicEmbedder:
 
     def warmup(self):
         if self._model is None:
+            import torch
             from sentence_transformers import SentenceTransformer
             # 重み精度を絞ってメモリ削減（既定 bfloat16）。2GB 級インスタンス対策。
+            # Nomic の remote code は torch_dtype を model.to(dtype=...) にそのまま渡すため、
+            # 文字列ではなく torch.dtype オブジェクトを渡す必要がある（文字列だと TypeError）。
+            _dtype_map = {"bfloat16": torch.bfloat16, "bf16": torch.bfloat16,
+                          "float16": torch.float16, "fp16": torch.float16}
             model_kwargs = {"low_cpu_mem_usage": True}
-            if TORCH_DTYPE and TORCH_DTYPE not in ("float32", "fp32", "none", "default"):
-                model_kwargs["torch_dtype"] = TORCH_DTYPE
+            dt = _dtype_map.get(TORCH_DTYPE)
+            if dt is not None:
+                model_kwargs["torch_dtype"] = dt
                 print(f"[NomicEmbedder] torch_dtype={TORCH_DTYPE} で読み込み（メモリ削減）")
             # Nomic は trust_remote_code=True が必要
             self._model = SentenceTransformer(

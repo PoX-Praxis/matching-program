@@ -94,7 +94,21 @@ def post_seeker():
         user_id = f"u_{uuid.uuid4().hex[:8]}"   # UUID由来・連番ではない（不変条件4）
 
     save_profile(user_id, seeker, db_path=DB)   # seeker + profile_view を同時保存（UPSERT）
-    return jsonify({"id": user_id, "handle": seeker.get("id")}), 201
+
+    # dual-write: v4 形の貼り付けJSONなら Nomic 取り込みも非同期起動（非破壊・ベストエフォート）。
+    # v4 側で何が起きても v3 登録は成功させる（登録を止めない）。
+    v4_status = None
+    try:
+        if _dual_write_v4(user_id, raw):
+            v4_status = "preparing"
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[dual-write] v4 取り込みskip（v3は成功）: {e}")
+
+    out = {"id": user_id, "handle": seeker.get("id")}
+    if v4_status:
+        out["v4_generation_status"] = v4_status
+        out["v4_status_url"] = f"/v4/seekers/{user_id}/status"
+    return jsonify(out), 201
 
 
 @app.get("/seekers")
@@ -285,6 +299,57 @@ def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback):
     t.start()
 
 
+def _ingest_v4_from_flat(body, *, profile_id=None):
+    """
+    フラット化済み body から v4 受付＋非同期ベクトル化を起動する共通処理
+    （/v4/seekers と /seekers の dual-write が共有）。
+
+    必要像フィールドがあれば正式ルート（build_user_necessity で検証・クランプ、
+    γ は compute_gamma 算出）、無ければフォールバック（サーバー生成）。
+    build_user_necessity の ValueError/TypeError は呼び出し側で 400 等に写す。
+    戻り値: (profile_id, necessity or None, is_fallback)。
+    """
+    from db_v4 import receive_profile_v4, GEN_PREPARING
+    from necessity_gen import build_user_necessity
+    from pii_redaction import redact_for_storage
+
+    pid = profile_id or body.get("user_id") or f"u_{uuid.uuid4().hex[:8]}"
+    profile_input = _v4_profile_input(body)
+    store = _v4_store()
+
+    supplied = (body.get("necessity_text") or "").strip()
+    is_fallback = not supplied
+
+    necessity = None
+    if not is_fallback:
+        # 各自AI出力を無検証で信頼せず検証・クランプ。src_input_hash は保存後の
+        # 再生成判定（get_profile 経由）と一致させるため同じ supporting_redacted を渡す。
+        supporting_redacted, _ = redact_for_storage(profile_input.get("supporting_raw") or {})
+        hash_profile = {**profile_input, "supporting_redacted": supporting_redacted}
+        necessity = build_user_necessity(hash_profile, body)
+
+    receive_profile_v4(store, pid, profile_input, necessity,
+                       generation_status=GEN_PREPARING)
+    _spawn_v4_job(pid, profile_input, necessity, is_fallback=is_fallback)
+    return pid, necessity, is_fallback
+
+
+def _dual_write_v4(profile_id, raw):
+    """
+    v3 登録（/seekers）と同時に、貼り付けJSONから v4(Nomic) 取り込みを非同期起動する。
+    非破壊・ベストエフォート: v4 側の失敗は v3 登録に影響させない（呼び出し側で握る）。
+    v4 形（seeker/necessity ネスト）でなく意志が空なら何もしない（旧v3.1 等はv4化しない）。
+    v3 と同じ profile_id で揃える（二層が同一キーで対応）。
+    """
+    if not is_postgres():
+        return False
+    flat = _normalize_v4_body(raw)
+    if not isinstance(flat, dict) or not (flat.get("will_text") or "").strip():
+        return False  # v4 化する意志テキストが無い → v3 のみ
+    _ingest_v4_from_flat(flat, profile_id=profile_id)
+    return True
+
+
 @app.post("/v4/seekers")
 def post_v4_seeker():
     """
@@ -311,37 +376,15 @@ def post_v4_seeker():
     if not (body.get("will_text") or "").strip():
         return jsonify({"error": "will_text が必要です（意志が空です）"}), 400
 
-    from db_v4 import receive_profile_v4, GEN_PREPARING
-    from necessity_gen import build_user_necessity
-    from pii_redaction import redact_for_storage
+    from db_v4 import GEN_PREPARING
 
     profile_id = body.get("user_id") or f"u_{uuid.uuid4().hex[:8]}"
-    profile_input = _v4_profile_input(body)
-    store = _v4_store()
-
-    # necessity_text の有無で経路を分岐（正式ルート＝各自AI生成の必要像同梱）
-    supplied = (body.get("necessity_text") or "").strip()
-    is_fallback = not supplied
-
-    necessity = None
-    if not is_fallback:
-        # A. 正式ルート: 各自AI出力を検証・クランプ（無検証で信頼しない）。
-        # src_input_hash は保存後の再生成判定（get_profile 経由）と一致させるため、
-        # 保存時と同じ supporting_redacted を与えて計算する。
-        supporting_redacted, _ = redact_for_storage(profile_input.get("supporting_raw") or {})
-        hash_profile = {**profile_input, "supporting_redacted": supporting_redacted}
-        try:
-            necessity = build_user_necessity(hash_profile, body)
-        except (ValueError, TypeError) as e:
-            return jsonify({"error": f"必要像フィールド不正: {e}"}), 400
-
     try:
-        receive_profile_v4(store, profile_id, profile_input, necessity,
-                           generation_status=GEN_PREPARING)
+        profile_id, necessity, is_fallback = _ingest_v4_from_flat(body, profile_id=profile_id)
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": f"必要像フィールド不正: {e}"}), 400
     except Exception as e:
         return jsonify({"error": f"受付失敗: {e}"}), 500
-
-    _spawn_v4_job(profile_id, profile_input, necessity, is_fallback=is_fallback)
 
     resp = {
         "id": profile_id,

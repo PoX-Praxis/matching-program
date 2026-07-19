@@ -153,6 +153,7 @@ async function loadSeekers() {
           <option value="balanced">バランス（両方）</option>
         </select>
         <button class="sm" onclick="runMatch('${sid}')">マッチング実行</button>
+        <button class="sm" onclick="runMatchV4('${sid}')" style="background:#2a7a4a">v4で照合</button>
       </td>
     </tr>`;
   }).join("");
@@ -215,6 +216,68 @@ async function runMatch(seekerId) {
       </thead>
       <tbody>${rankRows}</tbody>
     </table>`;
+}
+
+/* ── v4 マッチング（実験・Nomic 埋め込み。v3 と並存）── */
+async function runMatchV4(seekerId) {
+  const el = document.getElementById("matchResult");
+  document.getElementById("approveMsg").textContent = "";
+  el.innerHTML = "<span style='color:#888'>v4 で計算中…（初回はプールのベクトル化で時間がかかります）</span>";
+
+  let data;
+  try {
+    const res = await fetch("/v4/match", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ seeker_id: seekerId, migrate_pool: true, top_k: 20 }),
+    });
+    data = await res.json();
+    if (!res.ok) {
+      el.innerHTML = `<span class="err">v4 エラー: ${data.error || JSON.stringify(data)}</span>`;
+      return;
+    }
+  } catch (e) {
+    el.innerHTML = `<span class="err">v4 通信エラー: ${e}</span>`;
+    return;
+  }
+  lastMatch = data;   // approve が match_run_id を拾う
+
+  const myId = getMyId();
+  const f = (x) => (typeof x === "number" ? x.toFixed(3) : "-");
+  const results = data.results || [];
+  const rows = results.map((r, i) => {
+    const cid = String(r.candidate_id);
+    const cidEsc = cid.replace(/'/g, "\\'");
+    const attr = r.attribution || {};
+    const axisRaw = attr.limiting_axis || "";
+    const axisEsc = axisRaw.replace(/'/g, "\\'");
+    const dmBtn = myId
+      ? `<button class="sm" onclick="location.href='/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(cid)}'" style="margin-left:4px">DM</button>`
+      : "";
+    return `<tr>
+      <td class="center">${i + 1}</td>
+      <td><a href="/profile/${encodeURIComponent(cid)}" style="font-family:monospace;font-size:13px">${cid}</a></td>
+      <td class="center">${f(r.score)}</td>
+      <td class="center">${axisRaw || "-"}</td>
+      <td class="center">${f(attr.a_sim)}</td>
+      <td class="center">${f(attr.b_sim)}</td>
+      <td class="center">${f(attr.c_sim)}</td>
+      <td class="center">
+        <button class="sm" onclick="runApprove('${cidEsc}','${axisEsc}')">承認する</button>${dmBtn}
+      </td>
+    </tr>`;
+  }).join("");
+
+  const banner = `<div style="background:#e7f5ec;color:#1a6a3a;padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0">
+    🧪 v4（Nomic埋め込み・実験）。プール ${data.pool_size ?? "-"} 人。a=共鳴 / b=補完（必要像↔現状）/ c=意志相補。律速軸＝最も足を引っぱった経路。
+  </div>`;
+
+  el.innerHTML = banner + (results.length ? `
+    <table>
+      <thead>
+        <tr><th>順</th><th>候補 id</th><th>総合</th><th>律速軸</th><th>a</th><th>b</th><th>c</th><th>承認</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>` : "<p style='color:#888;font-size:13px'>v4 候補がまだいません（この人以外に v4 ベクトル化済みの登録が必要です）。</p>");
 }
 
 /* ── 承認 ── */

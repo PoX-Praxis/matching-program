@@ -192,6 +192,48 @@ def _v4_profile_input(body):
     }
 
 
+# ①構造化プロンプト（v4.2 統合版）が出すネストJSONの現状スロット対応（src/db.py と一致）
+_V4_STATE_MAP = {
+    "state_have":     "持っているもの",
+    "state_can_type": "できること_型",
+    "state_bound":    "縛られているもの",
+    "state_unsorted": "未分類",
+}
+
+
+def _normalize_v4_body(body):
+    """
+    ①v4.2 プロンプトのネストJSON（seeker/現状/supporting_material/necessity）を、
+    /v4/seekers が期待するフラット body へ機械的に変換する（アダプタ）。
+
+    - 既にフラットな body（seeker も necessity も無い＝curl テスト等）はそのまま返す（後方互換）。
+    - 変換は「形を整えるだけ」。値の検証・クランプ（gate_s/u→[0,1] 等）・γ算出は
+      下流の build_user_necessity / compute_gamma が従来どおり行う（無検証で信頼しない原則は不変）。
+    - necessity ブロックが無ければ necessity_text も出ない → フォールバック経路に落ちる（従来通り）。
+    """
+    if not isinstance(body, dict):
+        return body
+    if "seeker" not in body and "necessity" not in body:
+        return body  # 既にフラット
+
+    seeker = body.get("seeker") or {}
+    state = seeker.get("現状") or {}
+    nec = body.get("necessity") or {}
+
+    flat = {
+        "user_id":        body.get("user_id") or body.get("id"),
+        "will_text":      seeker.get("意志", ""),
+        "supporting_raw": body.get("supporting_material") or body.get("supporting_raw") or {},
+    }
+    for eng, jp in _V4_STATE_MAP.items():
+        flat[eng] = state.get(jp, "")
+    # necessity ブロックをトップレベルへ展開（build_user_necessity は body 直下を読む）
+    for k in _NECESSITY_FIELDS:
+        if k in nec:
+            flat[k] = nec[k]
+    return flat
+
+
 def _run_with_retry(fn, *, tries=3, base_delay=2.0):
     """指数バックオフ付きリトライ（2s→4s→8s）。最後の例外を送出する。"""
     last = None
@@ -264,8 +306,10 @@ def post_v4_seeker():
     body = request.get_json(force=True, silent=True)
     if not isinstance(body, dict):
         return jsonify({"error": "JSON が読めません"}), 400
+    # ①v4.2 プロンプトのネストJSON（seeker/現状/necessity）も受理する（アダプタで平坦化）
+    body = _normalize_v4_body(body)
     if not (body.get("will_text") or "").strip():
-        return jsonify({"error": "will_text が必要です"}), 400
+        return jsonify({"error": "will_text が必要です（意志が空です）"}), 400
 
     from db_v4 import receive_profile_v4, GEN_PREPARING
     from necessity_gen import build_user_necessity

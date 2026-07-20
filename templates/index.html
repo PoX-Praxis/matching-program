@@ -153,7 +153,7 @@ async function loadSeekers() {
           <option value="balanced">バランス（両方）</option>
         </select>
         <button class="sm" onclick="runMatch('${sid}')">マッチング実行</button>
-        <button class="sm" onclick="runMatchV4('${sid}')" style="background:#2a7a4a">v4で照合</button>
+        <button class="sm" onclick="runMatchV4('${sid}')" style="background:#2a7a4a">照合</button>
       </td>
     </tr>`;
   }).join("");
@@ -222,7 +222,7 @@ async function runMatch(seekerId) {
 async function runMatchV4(seekerId) {
   const el = document.getElementById("matchResult");
   document.getElementById("approveMsg").textContent = "";
-  el.innerHTML = "<span style='color:#888'>v4 で計算中…（初回はプールのベクトル化で時間がかかります）</span>";
+  el.innerHTML = "<span style='color:#888'>照合中…（初回はプロフィールのベクトル化で時間がかかります）</span>";
 
   let data;
   try {
@@ -232,11 +232,11 @@ async function runMatchV4(seekerId) {
     });
     data = await res.json();
     if (!res.ok) {
-      el.innerHTML = `<span class="err">v4 エラー: ${data.error || JSON.stringify(data)}</span>`;
+      el.innerHTML = `<span class="err">照合エラー: ${data.error || JSON.stringify(data)}</span>`;
       return;
     }
   } catch (e) {
-    el.innerHTML = `<span class="err">v4 通信エラー: ${e}</span>`;
+    el.innerHTML = `<span class="err">照合の通信エラー: ${e}</span>`;
     return;
   }
   lastMatch = data;   // approve が match_run_id を拾う
@@ -268,7 +268,7 @@ async function runMatchV4(seekerId) {
   }).join("");
 
   const banner = `<div style="background:#e7f5ec;color:#1a6a3a;padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0">
-    🧪 v4（Nomic埋め込み・実験）。プール ${data.pool_size ?? "-"} 人。a=共鳴 / b=補完（必要像↔現状）/ c=意志相補。律速軸＝最も足を引っぱった経路。
+    🧪 照合（意味ベクトル・実験）。プール ${data.pool_size ?? "-"} 人。a=共鳴 / b=補完（必要像↔現状）/ c=意志相補。律速軸＝最も足を引っぱった経路。
   </div>`;
 
   el.innerHTML = banner + (results.length ? `

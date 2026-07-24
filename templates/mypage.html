@@ -57,6 +57,22 @@
   .traj-arrow { color: #aaa; flex-shrink: 0; padding-top: 4px; }
   .traj-to    { background: #eaf4ea; border-radius: 4px; padding: 4px 10px; color: #1a5c1a; flex: 1; }
 
+  /* v4.3 再構成: 背景 + 意志/現状/足りないもの/本人より の縦積み */
+  .bg-text { font-size: 13px; line-height: 1.7; color: #666; margin: 10px 0 20px; }
+  .pblock { margin: 0 0 22px; }
+  .block-heading { font-size: 12px; font-weight: bold; color: #1a3a5c; letter-spacing: .04em;
+                   border-left: 4px solid #1a3a5c; padding-left: 8px; margin-bottom: 10px; }
+  .tier { margin: 0 0 10px; }
+  .tier-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 3px; }
+  .tier-text  { font-size: 13px; line-height: 1.7; margin: 0; color: #222; }
+  .slot { margin: 0 0 10px; }
+  .slot-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 3px; }
+  .slot-text  { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
+  .freetext-area { width: 100%; min-height: 90px; font-family: inherit; font-size: 13px;
+                   box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; padding: 10px; }
+  .freetext-note { font-size: 11px; color: #999; margin: 4px 0 8px; }
+  .freetext-ro { font-size: 13px; line-height: 1.7; color: #333; white-space: pre-wrap; margin: 0; }
+
   #loading { color: #888; margin-top: 40px; }
   @media (max-width: 600px) {
     .state-grid { grid-template-columns: 1fr; }
@@ -126,74 +142,124 @@ async function init() {
 
 function renderProfileView(pv) {
   const container = document.getElementById("profileBlock");
-  let html = "";
-
-  if (pv.headline) {
-    html += `<p class="headline-text">${escHtml(pv.headline)}</p>`;
-  }
-
   if (pv.schema_version === "v4") {
-    // ── v4 レイアウト: 意志（大）+ 現状（3カード）──
-    html += `<div class="will-block">
-      <div class="will-label">意志 — なぜ動くか・どこへ</div>
-      <p class="will-text">${escHtml(pv.pursuing || "—")}</p>
-    </div>`;
-
-    const slots = [
-      { label: "持っているもの", val: pv.state_have },
-      { label: "できること（型）", val: pv.state_can_type },
-      { label: "縛られているもの", val: pv.state_bound },
-    ];
-    const hasState = slots.some(s => s.val);
-    if (hasState) {
-      html += `<div class="state-grid">`;
-      for (const s of slots) {
-        html += `<div class="state-item">
-          <span class="state-label">${escHtml(s.label)}</span>
-          <p class="state-text">${escHtml(s.val || "—")}</p>
-        </div>`;
-      }
-      html += `</div>`;
-    }
-
-    const seekingText = pv.seeking && pv.seeking !== "未取得" ? pv.seeking : "";
-    const hasDetail = (pv.keys && pv.keys.length) || (pv.trajectory && pv.trajectory.length) || seekingText;
-    if (hasDetail) {
-      let inner = "";
-      if (seekingText) {
-        inner += `<div style="margin-bottom:14px">
-          <div class="keys-label">求めている（本人申告）</div>
-          <p style="font-size:13px;line-height:1.65;margin:0;color:#333">${escHtml(seekingText)}</p>
-        </div>`;
-      }
-      inner += buildKeysHtml(pv.keys);
-      inner += buildTrajHtml(pv.trajectory);
-      html += `<details class="detail-block"><summary>詳細・軌跡を見る</summary>
-        <div class="detail-inner">${inner}</div></details>`;
-    }
-
+    container.innerHTML = renderV4(pv);
   } else {
-    // ── v3 後方互換レイアウト ──
-    const badge = pv.phase_badge || {};
-    if (badge.value) {
-      html += `<div class="phase-badge">
-        <span class="phase-tag">${escHtml(badge.value)}</span>
-        ${badge.unconfirmed ? '<span class="phase-unconfirmed">AI推定・未確定</span>' : ""}
-      </div>`;
-    }
-    html += `<div class="triangle-block">
-      <div class="tri-item"><span class="tri-label">意志</span><p class="tri-text">${escHtml(pv.pursuing || "—")}</p></div>
-      <div class="tri-item"><span class="tri-label">求めている</span><p class="tri-text">${escHtml(pv.needs || "—")}</p></div>
-      <div class="tri-item"><span class="tri-label">能力</span><p class="tri-text">${escHtml(pv.offering || "—")}</p></div>
-    </div>`;
-    const hasDetail = (pv.keys && pv.keys.length) || (pv.trajectory && pv.trajectory.length);
-    if (hasDetail) {
-      html += `<details class="detail-block"><summary>注目ポイント・軌跡を見る</summary>
-        <div class="detail-inner">${buildKeysHtml(pv.keys)}${buildTrajHtml(pv.trajectory)}</div></details>`;
-    }
+    let html = "";
+    if (pv.headline) html += `<p class="headline-text">${escHtml(pv.headline)}</p>`;
+    container.innerHTML = html + renderV3(pv);
+  }
+}
+
+/* ── v4.3 レイアウト: 背景 → 意志 → 現状 → 足りないもの → 本人より ── */
+function renderV4(pv) {
+  let h = "";
+
+  // 背景（マイページでは小さく・冒頭）。無ければ headline にフォールバック
+  const bg = pv.background || pv.headline || "";
+  if (bg) h += `<p class="bg-text">${escHtml(bg)}</p>`;
+
+  // ブロック1「意志」— 上から下へ一段ずつ深く（順序固定）
+  const willWhere = pv.will_where || pv.pursuing || "";
+  h += `<section class="pblock"><div class="block-heading">意志</div>`;
+  h += tierHtml("いま目指していること", willWhere);
+  if (pv.will_why)    h += tierHtml("その根にある捉え方", pv.will_why);
+  if (pv.will_origin) h += tierHtml("そう考えるに至った経験", pv.will_origin);
+  h += `</section>`;
+
+  // ブロック2「現状」— 縦積み
+  const slots = [
+    ["持っているもの", pv.state_have],
+    ["繰り返し現れる固有の型", pv.state_can_type],
+    ["縛られているもの", pv.state_bound],
+  ];
+  if (slots.some(s => s[1]) || pv.state_unsorted) {
+    h += `<section class="pblock"><div class="block-heading">現状</div>`;
+    for (const [label, val] of slots) h += slotHtml(label, val || "—");
+    if (pv.state_unsorted) h += slotHtml("その他", pv.state_unsorted);  // 空なら非表示
+    h += `</section>`;
   }
 
-  container.innerHTML = html;
+  // ブロック3「足りないもの」— 常時表示（折りたたまない）
+  const seekingText = (pv.seeking && pv.seeking !== "未取得") ? pv.seeking : "";
+  h += `<section class="pblock"><div class="block-heading">足りないもの</div>`;
+  h += `<div class="slot"><span class="slot-label">次の一歩</span>${trajInlineHtml(pv.trajectory)}</div>`;
+  h += slotHtml("求めている", seekingText || "—");
+  h += `</section>`;
+
+  // ブロック4「本人より」— 自由記述（所有者のマイページは編集可）
+  h += freeTextEditor(pv.free_text || "");
+  return h;
+}
+
+function tierHtml(label, val) {
+  return `<div class="tier"><span class="tier-label">${escHtml(label)}</span>
+    <p class="tier-text">${escHtml(val || "—")}</p></div>`;
+}
+function slotHtml(label, val) {
+  return `<div class="slot"><span class="slot-label">${escHtml(label)}</span>
+    <p class="slot-text">${escHtml(val)}</p></div>`;
+}
+function trajInlineHtml(trajectory) {
+  if (!trajectory || !trajectory.length) return `<p class="slot-text">—</p>`;
+  return trajectory.map(t => `<div class="traj-item">
+    <span class="traj-from">${escHtml(t.from)}</span>
+    <span class="traj-arrow">→</span>
+    <span class="traj-to">${escHtml(t.to)}</span>
+  </div>`).join("");
+}
+
+function freeTextEditor(val) {
+  return `<section class="pblock"><div class="block-heading">本人より</div>
+    <textarea id="freeText" class="freetext-area"
+      placeholder="自己紹介や補足を自由に書けます（AIは生成にも編集にも関与しません）">${escHtml(val)}</textarea>
+    <div class="freetext-note">※ ここに書いた内容は、そのまま公開プロフィールに表示されます。</div>
+    <button class="sm" onclick="saveFreeText()">「本人より」を保存</button>
+    <span id="freeMsg" style="font-size:12px;margin-left:8px"></span>
+  </section>`;
+}
+
+/* 自由記述の保存。既存 overrides を取得してマージ（headline/keys/trajectory を消さない）。
+   view_overrides は表示専用のため、必要像・ベクトルの再生成は走らない。 */
+async function saveFreeText() {
+  const msg = document.getElementById("freeMsg");
+  msg.className = ""; msg.textContent = "保存中…";
+  try {
+    const cur = await fetch(`/api/profile/${encodeURIComponent(myId)}/edit`).then(r => r.json());
+    const overrides = (cur && cur.overrides) || {};
+    overrides.free_text = document.getElementById("freeText").value;
+    const res = await fetch(`/api/profile/${encodeURIComponent(myId)}/overrides`, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ overrides }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.status);
+    msg.className = "ok"; msg.textContent = "✅ 保存しました";
+  } catch (e) {
+    msg.className = "err"; msg.textContent = "保存に失敗: " + e;
+  }
+}
+
+/* ── v3 後方互換レイアウト（現状維持）── */
+function renderV3(pv) {
+  let h = "";
+  const badge = pv.phase_badge || {};
+  if (badge.value) {
+    h += `<div class="phase-badge">
+      <span class="phase-tag">${escHtml(badge.value)}</span>
+      ${badge.unconfirmed ? '<span class="phase-unconfirmed">AI推定・未確定</span>' : ""}
+    </div>`;
+  }
+  h += `<div class="triangle-block">
+    <div class="tri-item"><span class="tri-label">意志</span><p class="tri-text">${escHtml(pv.pursuing || "—")}</p></div>
+    <div class="tri-item"><span class="tri-label">求めている</span><p class="tri-text">${escHtml(pv.needs || "—")}</p></div>
+    <div class="tri-item"><span class="tri-label">能力</span><p class="tri-text">${escHtml(pv.offering || "—")}</p></div>
+  </div>`;
+  const hasDetail = (pv.keys && pv.keys.length) || (pv.trajectory && pv.trajectory.length);
+  if (hasDetail) {
+    h += `<details class="detail-block"><summary>注目ポイント・軌跡を見る</summary>
+      <div class="detail-inner">${buildKeysHtml(pv.keys)}${buildTrajHtml(pv.trajectory)}</div></details>`;
+  }
+  return h;
 }
 
 function buildKeysHtml(keys) {

@@ -71,13 +71,22 @@ def _clean_supporting_material(sm) -> dict:
 
 
 def _clean_supporting_material_v4(sm) -> dict:
-    """v4 supporting_material を7キー・型保証で整える。欠落素材は '未取得'。"""
+    """v4 supporting_material を型保証で整える。既存素材の欠落は '未取得'、
+    v4.3 追加の表示用キー（背景/意志_なぜ/意志_どこへ/経験/一行紹介）の欠落は空文字。
+
+    注意: ここに足したキーは表示・保存のみ。② 生成入力は necessity_gen の
+    _supporting_for_generation（7キー固定）だけを見るため、src_input_hash は変わらない。
+    """
     if not isinstance(sm, dict):
         sm = {}
 
     def _s(k):
         v = sm.get(k)
         return str(v) if v else "未取得"
+
+    def _s_opt(k):  # 表示用の新キー: 欠落は空文字（"未取得" を入れない）
+        v = sm.get(k)
+        return str(v) if v else ""
 
     raw_texts = sm.get("生テキスト")
     series = sm.get("系列素材")
@@ -89,6 +98,12 @@ def _clean_supporting_material_v4(sm) -> dict:
         "連言選言の素材":  _s("連言選言の素材"),
         "チャネル重み素材": _s("チャネル重み素材"),
         "系列素材":        list(series) if isinstance(series, list) else [],
+        # ── v4.3 表示用（②生成・ベクトル・照合には不関与）──
+        "背景":       _s_opt("背景"),
+        "意志_なぜ":   _s_opt("意志_なぜ"),
+        "意志_どこへ": _s_opt("意志_どこへ"),
+        "経験":       _s_opt("経験"),
+        "一行紹介":    _s_opt("一行紹介"),
     }
 
 
@@ -223,6 +238,12 @@ def build_profile_view(seeker: dict) -> dict:
             "seeking":        str(sm.get("求めている") or ""),
             "keys":           keys,
             "trajectory":     trajectory,
+            # ── v4.3 表示用（欠落は空文字。テンプレ側はフォールバックで凌ぐ）──
+            "background":  str(sm.get("背景") or "") or str(headline),
+            "will_where":  str(sm.get("意志_どこへ") or "") or will,
+            "will_why":    str(sm.get("意志_なぜ") or ""),
+            "will_origin": str(sm.get("経験") or ""),
+            "one_liner":   str(sm.get("一行紹介") or ""),
         }
     else:
         keys_raw = sm.get("attention候補") or seeker.get("attention候補") or []
@@ -275,5 +296,10 @@ def apply_overrides(pv: dict, overrides: dict) -> dict:
     if isinstance(ov_traj, list):
         by_sig = {_traj_sig(t): t for t in pv.get("trajectory", [])}
         result["trajectory"] = [by_sig[s] for s in ov_traj if s in by_sig]
+
+    # 自由記述「本人より」（表示専用・seeker/necessity に触れない）
+    free = overrides.get("free_text")
+    if isinstance(free, str):
+        result["free_text"] = free.strip()
 
     return result

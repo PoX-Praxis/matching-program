@@ -182,14 +182,32 @@ def save_view_overrides(user_id: str, overrides: dict, db_path: str = "pox.db") 
     return True
 
 
-def update_seeker_core(user_id: str, fields: dict, db_path: str = "pox.db") -> bool:
+def _core_snapshot(seeker: dict) -> tuple:
+    """意志＋現状4スロットを strip して返す（changed_core 判定用・v4再ベクトル化の対象）。"""
+    jotai = seeker.get("現状") if isinstance(seeker.get("現状"), dict) else {}
+    return (
+        str(seeker.get("意志") or "").strip(),
+        str(jotai.get("持っているもの") or "").strip(),
+        str(jotai.get("できること_型") or "").strip(),
+        str(jotai.get("縛られているもの") or "").strip(),
+        str(jotai.get("未分類") or "").strip(),
+    )
+
+
+def update_seeker_core(user_id: str, fields: dict, db_path: str = "pox.db", *, out=None) -> bool:
     """
     「中身を編集」用。v4（意志/現状4スロット）対応。
     v3ユーザーがv4フィールドで保存するとその場でv4に遅延移行する。
+
+    out に dict を渡すと out["changed_core"] に「意志/現状4スロットのいずれかが
+    変化したか」を入れる（求めている/能力/フェーズ等の v3 互換フィールドの変化は含めない。
+    実装指示書08 §3-1）。呼び出し側はこれで v4 再ベクトル化の要否を判断する。
     """
     seeker = get_seeker(user_id, db_path=db_path)
     if seeker is None:
         return False
+
+    before = _core_snapshot(seeker)   # 変更前の 意志＋現状（strip 済み）
 
     meta = seeker.get("_meta") or {}
     schema_ver = meta.get("schema_version", "v3")
@@ -241,6 +259,9 @@ def update_seeker_core(user_id: str, fields: dict, db_path: str = "pox.db") -> b
                 seeker[k] = fields[k]
 
     save_profile(user_id, seeker, db_path=db_path)
+
+    if out is not None:
+        out["changed_core"] = (_core_snapshot(seeker) != before)  # 意志/現状の実変化のみ
     return True
 
 

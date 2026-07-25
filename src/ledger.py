@@ -36,6 +36,7 @@ def approve(
     predicted_role: str = None,
     phase: str = None,
     db_path: str = "pox.db",
+    establish_hook=None,
 ) -> dict:
     """
     from_id が to_id を承認する。
@@ -97,6 +98,15 @@ def approve(
             vessel["membership_count"] = 2
             if not any(c["actor"] == joiner for c in join["contributions"]):
                 join["contributions"].append({"actor": joiner, "role": "approved"})
+            # 指示書12 §4-2: 成立の瞬間だけ、両者の最新スナップショットを結びつける
+            # （承認判定は上で確定済み。ここは副作用の追加のみ。失敗は承認を妨げない）。
+            if establish_hook is not None:
+                try:
+                    snaps = establish_hook(founder, joiner)
+                    if snaps:
+                        vessel["snapshots"] = snaps
+                except Exception:  # noqa: BLE001
+                    pass
 
         con.execute(
             "INSERT INTO vessels (vessel_id, vessel_json) VALUES (%s, %s) "

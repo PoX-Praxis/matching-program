@@ -341,7 +341,8 @@ def _run_with_retry(fn, *, tries=3, base_delay=2.0):
     raise last
 
 
-def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback, final_status=None):
+def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
+                  final_status=None, snapshot=False):
     """
     非同期ジョブ（daemon スレッド）: 必要像生成（フォールバック時のみ）＋4ベクトル生成。
     生成状態は generation_status（preparing→ready / error）で追跡する。
@@ -349,6 +350,8 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback, final_st
     - fallback 経路: ここで ② サーバー生成（ANTHROPIC_API_KEY 必須）→ 保存 → ベクトル化。
     - final_status を渡すと、ベクトル化成功後に status を ready ではなくその値へ上書きする
       （編集再ベクトル化: 新ベクトル＋旧必要像＝needs_regeneration を維持。指示書08 §3-3）。
+    - snapshot=True（登録経路のみ）: ベクトル化成功後に user_snapshots へ1点保存（指示書12 §4-1）。
+      編集・retry では False＝スナップショットを作らない。
     """
     from db_v4 import (generate_necessity_v4, vectorize_profile_v4,
                        GEN_ERROR)
@@ -369,6 +372,8 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback, final_st
                 store, profile_id, profile_input, necessity["necessity_text"]))
         if final_status is not None:  # 編集経路: ready を上書きして needs_regeneration を維持
             store.set_generation_status(profile_id, final_status, error=None)
+        if snapshot:                  # 登録経路のみ: 時点スナップショットを1点（churn は関数側で防止）
+            _save_snapshot_best_effort(profile_id, profile_input, necessity)
     except Exception as e:  # noqa: BLE001
         try:
             store.set_generation_status(profile_id, GEN_ERROR, error=str(e)[:500])
@@ -376,10 +381,31 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback, final_st
             pass
 
 
-def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback, final_status=None):
+def _save_snapshot_best_effort(profile_id, profile_input, necessity):
+    """再構造化の時点スナップショットを保存（失敗しても登録/ベクトル化には影響させない）。"""
+    try:
+        from snapshots import save_snapshot
+        nec = necessity or {}
+        save_snapshot(
+            profile_id,
+            will_text=profile_input.get("will_text", ""),
+            state={k: profile_input.get(k, "") for k in
+                   ("state_have", "state_can_type", "state_bound", "state_unsorted")},
+            supporting=profile_input.get("supporting_raw") or {},
+            necessity=nec,
+            src_input_hash=nec.get("src_input_hash"),
+            db_path=DB,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback,
+                  final_status=None, snapshot=False):
     t = threading.Thread(
         target=_v4_async_job, args=(profile_id, profile_input, necessity),
-        kwargs={"is_fallback": is_fallback, "final_status": final_status}, daemon=True)
+        kwargs={"is_fallback": is_fallback, "final_status": final_status,
+                "snapshot": snapshot}, daemon=True)
     t.start()
 
 
@@ -414,7 +440,8 @@ def _ingest_v4_from_flat(body, *, profile_id=None):
 
     receive_profile_v4(store, pid, profile_input, necessity,
                        generation_status=GEN_PREPARING)
-    _spawn_v4_job(pid, profile_input, necessity, is_fallback=is_fallback)
+    # snapshot=True: 登録/再構造化のみ時点スナップショットを残す（編集・retry は残さない）。
+    _spawn_v4_job(pid, profile_input, necessity, is_fallback=is_fallback, snapshot=True)
     return pid, necessity, is_fallback
 
 
@@ -595,8 +622,78 @@ def post_approve():
         predicted_role=body.get("predicted_role"),
         phase=None,
         db_path=DB,
+        establish_hook=_snapshot_pair_resolver,   # 成立時に両者の最新スナップショットを結合（指示書12）
     )
     return jsonify(result), 200
+
+
+def _snapshot_pair_resolver(founder, joiner):
+    """成立時: 両者の最新 snapshot_id を返す（未再構造化は None）。指示書12 §4-2。"""
+    try:
+        from snapshots import latest_snapshot_id
+        return {founder: latest_snapshot_id(founder, db_path=DB),
+                joiner:  latest_snapshot_id(joiner, db_path=DB)}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+_NEC_NUM_KEYS = ("gate_s", "gate_u", "gamma", "p_sharpness", "alpha", "beta")
+
+
+@app.get("/api/timeline/<user_id>")
+def api_timeline(user_id):
+    """
+    軌跡（指示書12 §4-3）: user_snapshots と接続イベントを時系列マージして返す。
+    - 本人（viewer==user_id）: necessity_text＋evidence_span＋数値を含む。
+    - 第三者: necessity_text のみ（evidence_span・数値は出さない・指示書11 継承）。
+    - 接続イベント（成立・解消・離脱）は完全公開＝本人・第三者とも見える。
+    viewer は簡易（クエリ id）。認証が無いため厳密でない（§7-5 の限界）。
+    """
+    viewer = request.args.get("viewer")
+    is_owner = bool(viewer) and viewer == user_id
+
+    items = []
+    try:
+        from snapshots import get_snapshots
+        snaps = get_snapshots(user_id, db_path=DB)
+    except Exception:  # noqa: BLE001
+        snaps = []
+    for s in snaps:
+        nec = s.get("necessity") or {}
+        item = {
+            "kind": "snapshot", "at": s.get("created_at"),
+            "snapshot_id": s.get("snapshot_id"),
+            "will_text": s.get("will_text", ""),
+            "state": s.get("state") or {},
+            "necessity_text": nec.get("necessity_text", ""),
+        }
+        if is_owner:   # 本人のみ: 根拠と数値
+            item["evidence_span"] = nec.get("evidence_span", "")
+            item["numbers"] = {k: nec.get(k) for k in _NEC_NUM_KEYS}
+        items.append(item)
+
+    # 接続イベント（完全公開）。既存の snapshots キー無し vessel でも壊れない。
+    try:
+        vessels = load_all_vessels(db_path=DB)
+    except Exception:  # noqa: BLE001
+        vessels = []
+    for v in vessels:
+        join = (v.get("joins") or [{}])[0]
+        founder, joiner = v.get("founder"), join.get("joiner")
+        if user_id not in (founder, joiner):
+            continue
+        other = joiner if user_id == founder else founder
+        est = join.get("established_at")
+        if est:
+            items.append({"kind": "connection", "event": "connected", "at": est,
+                          "other": other, "vessel_id": v.get("vessel_id")})
+        ts = join.get("terminal_state")
+        if ts and ts not in ("active", None) and join.get("closed_at"):
+            items.append({"kind": "connection", "event": ts, "at": join.get("closed_at"),
+                          "other": other, "vessel_id": v.get("vessel_id")})
+
+    items.sort(key=lambda x: x.get("at") or "")
+    return jsonify({"user_id": user_id, "is_owner": is_owner, "items": items})
 
 
 @app.get("/api/my/vessels")

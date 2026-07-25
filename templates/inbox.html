@@ -49,7 +49,7 @@ async function init() {
   if (!myId) return;
 
   const [ledgerRes, inboxRes] = await Promise.all([
-    fetch("/ledger"),
+    fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`),   // 当事者分のみ（全台帳公開の廃止）
     fetch(`/api/inbox?id=${encodeURIComponent(myId)}`),
   ]);
 

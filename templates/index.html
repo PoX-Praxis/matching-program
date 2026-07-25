@@ -48,7 +48,7 @@
 <h2>2. 登録済み seeker 一覧</h2>
 <button onclick="loadSeekers()">一覧を更新</button>
 <table>
-  <thead><tr><th>id</th><th>意志（抜粋）</th><th>現状（抜粋）</th><th>マッチング</th></tr></thead>
+  <thead><tr><th>id</th><th>意志（抜粋）</th><th>一行紹介</th><th>マッチング</th></tr></thead>
   <tbody id="seekerRows"><tr><td colspan="4">読み込み中...</td></tr></tbody>
 </table>
 
@@ -138,14 +138,14 @@ async function loadSeekers() {
     return;
   }
   tbody.innerHTML = rows.map(r => {
-    const will  = (r.seeker["意志"] || "").slice(0, 40) + ((r.seeker["意志"] || "").length > 40 ? "…" : "");
-    const stateRaw = r.seeker["state_have"] || (typeof r.seeker["現状"] === "string" ? r.seeker["現状"] : (r.seeker["現状"] && r.seeker["現状"]["持っているもの"]) || "") || "";
-    const phase = stateRaw.slice(0, 30) + (stateRaw.length > 30 ? "…" : "") || "-";
+    // /seekers は id・一行紹介・意志抜粋のみ返す（seeker 原文は来ない・指示書09 §3-2）
+    const will = r.will_excerpt || "—";
+    const oneLiner = r.one_liner || "—";
     const sid   = r.id.replace(/'/g, "\\'");
     return `<tr>
       <td><a href="/profile/${encodeURIComponent(r.id)}" style="font-family:monospace;font-size:13px">${r.id}</a></td>
       <td>${will}</td>
-      <td>${phase}</td>
+      <td>${oneLiner}</td>
       <td>
         <select id="want_${r.id}">
           <option value="complement">補完</option>

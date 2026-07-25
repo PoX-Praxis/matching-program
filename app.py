@@ -669,6 +669,12 @@ def about():
     return render_template("about.html")
 
 
+@app.get("/connect")
+def connect():
+    """「つながる」入口（指示書10）。v4 照合のおすすめ＋登録者一覧を出す表示ページ。"""
+    return render_template("connect.html")
+
+
 @app.get("/register")
 def register():
     return render_template("register.html")

@@ -74,6 +74,12 @@
   .freetext-ro { font-size: 13px; line-height: 1.7; color: #333; white-space: pre-wrap; margin: 0; }
   .ai-note { font-size: 10px; font-weight: normal; color: #888; background: #f0f0f0;
              border-radius: 3px; padding: 1px 6px; margin-left: 6px; letter-spacing: 0; }
+  .muted { color:#888; font-size:13px; }
+  .tl-item { display:flex; gap:10px; padding:8px 4px; border-bottom:1px solid #eee; font-size:13px; }
+  .tl-date { color:#888; font-size:12px; white-space:nowrap; min-width:88px; }
+  .tl-conn .tl-body { color:#1a6a3a; }
+  .tl-sub { margin:3px 0; font-size:12px; line-height:1.6; }
+  .tl-snap summary { cursor:pointer; color:#1a3a5c; }
 
   /* 照合の準備状態（所有者のみ・指示書08 §3-4）*/
   .v4status { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin: 12px 0 4px; }
@@ -117,6 +123,10 @@
     <tbody id="connRows"><tr><td colspan="4">まだ接続記録はありません</td></tr></tbody>
   </table>
 
+  <h2>軌跡</h2>
+  <p class="sub" style="font-size:12px;color:#888;margin:4px 0 8px">意志・現状・必要像の変化（再構造化ごと）と、接続の記録。</p>
+  <div id="timeline"><span class="muted">読み込み中…</span></div>
+
 </div>
 
 <script>
@@ -153,6 +163,38 @@ async function init() {
   renderConnections(vessels, myId);
   loadV4Status(myId);        // 照合の準備状態（所有者のみ）
   loadOwnerNecessity(myId);  // 自分の必要像（本人のみ・数値は出さない）
+  loadTimeline(myId, myId);  // 軌跡（本人ビュー）
+}
+
+/* 軌跡: スナップショット＋接続イベントを時系列表示。数値は表示しない（指示書11 §4-4 継承）。 */
+async function loadTimeline(userId, viewer) {
+  const el = document.getElementById("timeline");
+  if (!el) return;
+  let data;
+  try {
+    const q = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
+    const r = await fetch(`/api/timeline/${encodeURIComponent(userId)}${q}`);
+    data = await r.json();
+  } catch (e) { el.innerHTML = `<span class="muted">軌跡を読み込めませんでした。</span>`; return; }
+  const items = (data && data.items) || [];
+  if (!items.length) {
+    el.innerHTML = `<span class="muted">まだ軌跡はありません（再構造化・接続で増えます）。</span>`;
+    return;
+  }
+  el.innerHTML = items.map(it => {
+    const d = it.at ? new Date(it.at).toLocaleDateString("ja-JP") : "";
+    if (it.kind === "connection") {
+      const label = it.event === "connected" ? "接続成立" : escHtml(it.event || "");
+      const other = it.other || "?";
+      return `<div class="tl-item tl-conn"><span class="tl-date">${escHtml(d)}</span>
+        <span class="tl-body"><a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${label}</span></div>`;
+    }
+    const will = it.will_text ? `<div class="tl-sub"><b>意志:</b> ${escHtml(it.will_text)}</div>` : "";
+    const nec  = it.necessity_text ? `<div class="tl-sub"><b>必要としている相手:</b> ${escHtml(it.necessity_text)}</div>` : "";
+    const ev   = it.evidence_span ? `<div class="tl-sub" style="color:#888"><b>根拠:</b> ${escHtml(it.evidence_span)}</div>` : "";
+    return `<div class="tl-item tl-snap"><span class="tl-date">${escHtml(d)}</span>
+      <div class="tl-body"><details><summary>プロフィールを更新</summary>${will}${nec}${ev}</details></div></div>`;
+  }).join("");
 }
 
 /* 本人の必要像（necessity_text＋根拠 evidence_span）を表示。数値は出さない（指示書11 §4-4）。

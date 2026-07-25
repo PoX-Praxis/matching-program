@@ -20,7 +20,7 @@ from werkzeug.utils import secure_filename
 from db_connect import is_postgres
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 get_seeker, list_candidate_pool, get_profile_edit_data,
-                save_view_overrides, update_seeker_core)
+                save_view_overrides, update_seeker_core, list_public_seeker_index)
 from profile_view import parse_registration_text, normalize_to_seeker
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
@@ -59,8 +59,22 @@ def _allowed_file(filename: str) -> bool:
 
 # ── 既存ルート ────────────────────────────────────────────────
 
+def _debug_enabled():
+    """開発コンソール等のゲート。本番（POX_DEBUG 未設定/0）では無効。"""
+    return os.environ.get("POX_DEBUG", "0") == "1"
+
+
 @app.get("/")
 def index():
+    # トップは about に付け替え（旧 index コンソールは /dev に退避・指示書09 §3-5）。
+    return redirect("/about")
+
+
+@app.get("/dev")
+def dev_console():
+    """旧トップの開発コンソール。POX_DEBUG=1 のときのみ表示（本番は 404）。"""
+    if not _debug_enabled():
+        abort(404)
     return render_template("index.html")
 
 
@@ -113,7 +127,8 @@ def post_seeker():
 
 @app.get("/seekers")
 def get_seekers():
-    return jsonify(load_all_seekers(db_path=DB))
+    """公開一覧: id・一行紹介・意志抜粋のみ（seeker 原文は返さない。指示書09 §3-2）。"""
+    return jsonify(list_public_seeker_index(db_path=DB))
 
 
 @app.post("/match")
@@ -519,18 +534,34 @@ def post_approve():
     return jsonify(result), 200
 
 
+@app.get("/api/my/vessels")
+def api_my_vessels():
+    """
+    当事者本人が関わる vessel のみ返す（指示書09 §3-4）。全台帳の無認証公開を廃止し、
+    mypage/inbox がクライアント側で行っていた絞り込み（founder==id または joins[0].joiner==id）
+    をサーバー側に移す。返す vessel 構造は現状のまま（当事者には全情報が見えてよい）。
+    """
+    my_id = request.args.get("id")
+    if not my_id:
+        return jsonify({"error": "id が必要です"}), 400
+    mine = [
+        v for v in load_all_vessels(db_path=DB)
+        if v.get("founder") == my_id
+        or ((v.get("joins") or [{}])[0].get("joiner") == my_id)
+    ]
+    return jsonify(mine)
+
+
 @app.get("/ledger")
 def get_ledger():
+    """全 vessel（開発コンソール台帳用）。POX_DEBUG=1 のときのみ（本番は 404）。
+    当事者向けは /api/my/vessels を使う。"""
+    if not _debug_enabled():
+        abort(404)
     return jsonify(load_all_vessels(db_path=DB))
 
 
-@app.get("/seekers/<seeker_id>")
-def route_seeker_by_id(seeker_id):
-    rows = load_all_seekers(db_path=DB)
-    target = next((r for r in rows if r["id"] == seeker_id), None)
-    if target is None:
-        abort(404, f"seeker_id={seeker_id!r} が見つかりません")
-    return jsonify(target)
+# 旧 GET /seekers/<id>（単体 seeker 原文・消費者ゼロのオーファン）は指示書09 §3-1 で削除。
 
 
 @app.get("/api/profile/<user_id>")

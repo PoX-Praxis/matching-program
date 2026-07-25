@@ -129,7 +129,7 @@ async function init() {
 
   const [profileRes, ledgerRes] = await Promise.all([
     fetch(`/api/profile/${encodeURIComponent(myId)}`),
-    fetch("/ledger"),
+    fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`),   // 当事者分のみ（全台帳公開の廃止）
   ]);
 
   if (!profileRes.ok) {
@@ -323,9 +323,7 @@ function buildTrajHtml(trajectory) {
 }
 
 function renderConnections(vessels, myId) {
-  const mine = vessels.filter(v =>
-    v.founder === myId || (v.joins[0]?.joiner === myId)
-  );
+  const mine = vessels;   // サーバー側（/api/my/vessels）で当事者分に絞り込み済み
   const tbody = document.getElementById("connRows");
   if (!mine.length) {
     tbody.innerHTML = "<tr><td colspan='4'>まだ接続記録はありません</td></tr>";
@@ -383,7 +381,7 @@ async function doApprove(otherId) {
   } else {
     msg.className = ""; msg.textContent = `✅ 承認しました（vessel: ${data.vessel_id}）。相手の承認待ちです。`;
   }
-  const ledgerRes = await fetch("/ledger");
+  const ledgerRes = await fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`);
   renderConnections(await ledgerRes.json(), myId);
 }
 

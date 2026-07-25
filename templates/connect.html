@@ -28,13 +28,12 @@
   .notice.warn { background: #fff3cd; color: #856404; }
   .notice a { font-weight: bold; }
 
-  .dir-row { display: grid; grid-template-columns: 160px 1fr 1fr; gap: 10px; align-items: baseline;
-             padding: 9px 4px; border-bottom: 1px solid #eee; font-size: 13px; }
-  .dir-row .did { font-family: monospace; text-decoration: none; }
-  .dir-row .one { color: #333; }
-  .dir-row .will { color: #777; }
+  .dir-row { padding: 9px 4px; border-bottom: 1px solid #eee; font-size: 13px; }
+  .dir-row .did { font-family: monospace; text-decoration: none; font-weight: bold; }
+  .dir-row .one { color: #333; margin-left: 8px; }
+  .dir-row .will { color: #777; margin-top: 2px; }
+  .dir-nec, .rec-nec { color: #1a6a3a; font-size: 12px; margin-top: 3px; }
   .muted { color: #888; font-size: 13px; }
-  @media (max-width: 600px) { .dir-row { grid-template-columns: 1fr; gap: 2px; } }
 </style>
 </head>
 <body>
@@ -130,9 +129,12 @@ function renderRecs() {
     const axis = AXIS[(r.attribution || {}).limiting_axis] || {label: "", cls: ""};
     const one = dirOneLiner[cid];
     const oneHtml = one ? `<div class="oneliner">${escHtml(one)}</div>` : "";
+    const nec = dirNecessity[cid];
+    const necHtml = nec ? `<div class="rec-nec">必要としている相手: ${escHtml(nec)} <span style="color:#999">（AI推定）</span></div>` : "";
     return `<div class="card">
       <a class="cid" href="/profile/${encodeURIComponent(cid)}">${escHtml(cid)}</a>
       ${oneHtml}
+      ${necHtml}
       <div class="meta">
         <span class="score">総合 ${typeof r.score === "number" ? r.score.toFixed(2) : "—"}</span>
         ${axis.label ? `<span class="${axis.cls}">${axis.label}</span>` : ""}
@@ -157,6 +159,7 @@ async function checkMyStatus() {
 
 /* ── 登録者一覧（GET /seekers = id・一行紹介・意志抜粋のみ）── */
 let dirOneLiner = {};   // candidate_id → 一行紹介（おすすめカードにも流用）
+let dirNecessity = {};  // candidate_id → 公開necessity抜粋（おすすめカードにも流用）
 async function loadDirectory() {
   const el = document.getElementById("directory");
   let rows;
@@ -167,16 +170,20 @@ async function loadDirectory() {
     return;
   }
   rows = (rows || []).filter(r => r.id && r.id !== myId);   // 自分は除外
-  rows.forEach(r => { dirOneLiner[r.id] = r.one_liner || ""; });
+  rows.forEach(r => { dirOneLiner[r.id] = r.one_liner || ""; dirNecessity[r.id] = r.necessity_excerpt || ""; });
   if (!rows.length) {
     el.innerHTML = `<span class="muted">まだ他の登録者がいません。</span>`;
     return;
   }
-  el.innerHTML = rows.map(r => `<div class="dir-row">
-    <a class="did" href="/profile/${encodeURIComponent(r.id)}">${escHtml(r.id)}</a>
-    <span class="one">${escHtml(r.one_liner || "—")}</span>
-    <span class="will">${escHtml(r.will_excerpt || "")}</span>
-  </div>`).join("");
+  el.innerHTML = rows.map(r => {
+    const nec = r.necessity_excerpt || "";
+    return `<div class="dir-row">
+      <div><a class="did" href="/profile/${encodeURIComponent(r.id)}">${escHtml(r.id)}</a>
+        <span class="one">${escHtml(r.one_liner || "—")}</span></div>
+      <div class="will">${escHtml(r.will_excerpt || "")}</div>
+      ${nec ? `<div class="dir-nec">必要としている相手: ${escHtml(nec)} <span style="color:#999">（AI推定）</span></div>` : ""}
+    </div>`;
+  }).join("");
 }
 
 // 一覧を先に読み（一行紹介をおすすめでも使うため）→ おすすめ照合

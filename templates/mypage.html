@@ -72,6 +72,8 @@
                    box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; padding: 10px; }
   .freetext-note { font-size: 11px; color: #999; margin: 4px 0 8px; }
   .freetext-ro { font-size: 13px; line-height: 1.7; color: #333; white-space: pre-wrap; margin: 0; }
+  .ai-note { font-size: 10px; font-weight: normal; color: #888; background: #f0f0f0;
+             border-radius: 3px; padding: 1px 6px; margin-left: 6px; letter-spacing: 0; }
 
   /* 照合の準備状態（所有者のみ・指示書08 §3-4）*/
   .v4status { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin: 12px 0 4px; }
@@ -100,6 +102,7 @@
 
   <h2>プロフィール</h2>
   <div id="profileBlock"></div>
+  <div id="ownNecessity" style="display:none"></div>
 
   <div style="margin-top:12px">
     <a id="editLink" href="#" style="display:inline-block;padding:6px 18px;background:#f0f0f0;border:1px solid #ccc;color:#333;border-radius:4px;text-decoration:none;font-size:13px">プロフィールを編集する</a>
@@ -148,7 +151,31 @@ async function init() {
 
   renderProfileView(pv);
   renderConnections(vessels, myId);
-  loadV4Status(myId);   // 照合の準備状態（所有者のみ）
+  loadV4Status(myId);        // 照合の準備状態（所有者のみ）
+  loadOwnerNecessity(myId);  // 自分の必要像（本人のみ・数値は出さない）
+}
+
+/* 本人の必要像（necessity_text＋根拠 evidence_span）を表示。数値は出さない（指示書11 §4-4）。
+   公開条件に関わらず本人には見せる。necessity が無ければ非表示。 */
+async function loadOwnerNecessity(id) {
+  const el = document.getElementById("ownNecessity");
+  if (!el) return;
+  let nec;
+  try {
+    const r = await fetch(`/api/my/necessity?id=${encodeURIComponent(id)}`);
+    if (!r.ok) { el.style.display = "none"; return; }
+    nec = await r.json();
+  } catch (e) { el.style.display = "none"; return; }
+  if (!nec || !nec.necessity_text) { el.style.display = "none"; return; }
+  const ev = (nec.evidence_span || "").trim();
+  el.innerHTML = `<section class="pblock">
+    <div class="block-heading">あなたの必要像 <span class="ai-note">AIによる推定・自分だけに表示</span></div>
+    <p class="slot-text">${escHtml(nec.necessity_text)}</p>
+    ${ev ? `<div class="slot" style="margin-top:8px">
+      <span class="slot-label">この必要像の根拠（あなたの言葉から）</span>
+      <p class="slot-text">${escHtml(ev)}</p></div>` : ""}
+  </section>`;
+  el.style.display = "block";
 }
 
 /* 照合の準備状態を本人のマイページにのみ表示（指示書08 §3-4）。

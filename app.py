@@ -127,8 +127,16 @@ def post_seeker():
 
 @app.get("/seekers")
 def get_seekers():
-    """公開一覧: id・一行紹介・意志抜粋のみ（seeker 原文は返さない。指示書09 §3-2）。"""
-    return jsonify(list_public_seeker_index(db_path=DB))
+    """公開一覧: id・一行紹介・意志抜粋のみ（seeker 原文は返さない。指示書09 §3-2）。
+    公開条件を満たす necessity があれば necessity_excerpt（冒頭）も添える（指示書11 §4-5）。"""
+    rows = list_public_seeker_index(db_path=DB)
+    if is_postgres():
+        for r in rows:
+            pub = get_public_necessity(r.get("id"))   # 数値なし・日時閾値ゲート済み
+            if pub:
+                t = pub["necessity_text"]
+                r["necessity_excerpt"] = t[:60] + ("…" if len(t) > 60 else "")
+    return jsonify(rows)
 
 
 @app.post("/match")
@@ -207,6 +215,63 @@ def _v4_store():
     """v4 用 PostgresStore を返す。Postgres でなければ 503 を投げる。"""
     from db_v4 import PostgresStore
     return PostgresStore(db_path=DB)
+
+
+# ── 必要像の公開露出（指示書11）───────────────────────────────────────────────
+# 公開してよいのは necessity_text と evidence_span のみ。数値（gate/gamma/p/α/β）は
+# 公開しない。「今後の登録から」を generated_at の日時閾値で判定（既存分は非公開）。
+# evidence_span は seeker 原文の引用のため、他人向けには出さず本人表示のみ（KH 判断・§7-3）。
+_NECESSITY_PUBLIC_SINCE_DEFAULT = "2026-07-25T00:00:00+00:00"
+
+
+def _necessity_public_since():
+    from datetime import datetime, timezone
+    raw = os.environ.get("POX_NECESSITY_PUBLIC_SINCE", _NECESSITY_PUBLIC_SINCE_DEFAULT)
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        dt = datetime.fromisoformat(_NECESSITY_PUBLIC_SINCE_DEFAULT)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _fetch_necessity_public_cols(user_id):
+    """store から公開列（necessity_text/evidence_span/generated_at）のみ取得。数値は取らない。"""
+    if not is_postgres():
+        return None
+    try:
+        from db_v4 import MODEL_TAG
+        n = _v4_store().get_necessity_public(user_id, MODEL_TAG)
+    except Exception:  # noqa: BLE001（表示は best-effort・照合や保存には影響させない）
+        return None
+    if not n or not (n.get("necessity_text") or "").strip():
+        return None
+    return n
+
+
+def get_public_necessity(user_id):
+    """他人向け公開版: 日時閾値を満たすときだけ necessity_text のみ返す（数値・根拠は返さない）。"""
+    from datetime import timezone
+    n = _fetch_necessity_public_cols(user_id)
+    if n is None:
+        return None
+    gen = n.get("generated_at")
+    if gen is None:
+        return None
+    if getattr(gen, "tzinfo", None) is None:
+        gen = gen.replace(tzinfo=timezone.utc)
+    if gen < _necessity_public_since():
+        return None   # 「今後の登録から」＝閾値より前に生成された既存分は非公開
+    return {"necessity_text": n["necessity_text"]}
+
+
+def get_owner_necessity(user_id):
+    """本人向け: 公開条件に関わらず necessity_text＋evidence_span（数値は出さない・§4-4）。"""
+    n = _fetch_necessity_public_cols(user_id)
+    if n is None:
+        return None
+    return {"necessity_text": n["necessity_text"], "evidence_span": n.get("evidence_span") or ""}
 
 
 def _v4_profile_input(body):
@@ -566,11 +631,26 @@ def get_ledger():
 
 @app.get("/api/profile/<user_id>")
 def api_profile(user_id):
-    """profile_view（view_overrides 適用済み）のみ返す。seeker は絶対に返さない。"""
+    """profile_view（view_overrides 適用済み）のみ返す。seeker は絶対に返さない。
+    公開条件を満たす necessity があれば necessity_text だけをマージ（数値・evidence_span は出さない・指示書11）。"""
     pv = get_profile_view(user_id, db_path=DB)
     if pv is None:
         return jsonify({"error": "プロフィールが見つかりません"}), 404
+    pub_nec = get_public_necessity(user_id)   # None なら足さない（既存分・未生成は出ない）
+    if pub_nec:
+        pv["necessity_text"] = pub_nec["necessity_text"]
     return jsonify(pv)
+
+
+@app.get("/api/my/necessity")
+def api_my_necessity():
+    """本人向け: 自分の必要像（necessity_text＋evidence_span）を返す。数値は出さない（§4-4）。
+    公開条件に関わらず本人は自分の必要像を見られる。認証は簡易（id）＝§7-5 の限界あり。"""
+    my_id = request.args.get("id")
+    if not my_id:
+        return jsonify({"error": "id が必要です"}), 400
+    nec = get_owner_necessity(my_id)
+    return jsonify(nec or {})
 
 
 @app.get("/api/profile/<user_id>/edit")

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>つながる — PoX</title>
+<style>
+  body { font-family: sans-serif; max-width: 860px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.3rem; margin: 12px 0 4px; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
+  a { color: #1a3a5c; }
+  .sub { font-size: 13px; color: #666; margin: 4px 0 14px; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin: 10px 0 14px; flex-wrap: wrap; }
+  .toolbar label { font-size: 12px; color: #555; }
+  select { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
+
+  .card { border: 1px solid #e2e2e2; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px;
+          display: flex; flex-direction: column; gap: 4px; }
+  .card .cid { font-family: monospace; font-size: 14px; font-weight: bold; text-decoration: none; }
+  .card .oneliner { font-size: 13px; color: #333; }
+  .card .meta { font-size: 12px; color: #666; display: flex; gap: 10px; flex-wrap: wrap; }
+  .card .score { font-weight: bold; color: #1a3a5c; }
+  .axis-a { color: #1a56bb; } .axis-b { color: #1a6a3a; } .axis-c { color: #7a4a1a; }
+
+  .notice { background: #eef2ff; color: #33417a; border-radius: 6px; padding: 12px 14px;
+            font-size: 13px; line-height: 1.6; }
+  .notice.warn { background: #fff3cd; color: #856404; }
+  .notice a { font-weight: bold; }
+
+  .dir-row { display: grid; grid-template-columns: 160px 1fr 1fr; gap: 10px; align-items: baseline;
+             padding: 9px 4px; border-bottom: 1px solid #eee; font-size: 13px; }
+  .dir-row .did { font-family: monospace; text-decoration: none; }
+  .dir-row .one { color: #333; }
+  .dir-row .will { color: #777; }
+  .muted { color: #888; font-size: 13px; }
+  @media (max-width: 600px) { .dir-row { grid-template-columns: 1fr; gap: 2px; } }
+</style>
+</head>
+<body>
+{% include "_nav.html" %}
+
+<h1>つながる</h1>
+<p class="sub">あなたの必要像から、いま噛み合いそうな相手を照合します。詳細・承認は各プロフィールから。</p>
+
+<h2>あなたへのおすすめ</h2>
+<div class="toolbar" id="recToolbar" style="display:none">
+  <label for="sortMode">並べ替え：</label>
+  <select id="sortMode" onchange="renderRecs()">
+    <option value="score">総合順</option>
+    <option value="b">補完が効いた順</option>
+    <option value="a">共鳴が効いた順</option>
+  </select>
+</div>
+<div id="recStatus"></div>
+<div id="recCards"></div>
+
+<h2>登録者一覧</h2>
+<p class="sub">すべての登録者。気になる人のプロフィールから直接つながれます。</p>
+<div id="directory"><span class="muted">読み込み中…</span></div>
+
+<script>
+const myId = localStorage.getItem("pox_my_id");
+let recResults = [];   // POST /v4/match の results をキャッシュ（並べ替えは再照合しない）
+
+function escHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+const AXIS = {
+  a: {label: "共鳴が効いています", cls: "axis-a"},
+  b: {label: "補完が効いています", cls: "axis-b"},
+  c: {label: "意志の補完が効いています", cls: "axis-c"},
+};
+
+/* ── おすすめ（v4 照合）── */
+async function loadRecommendations() {
+  const status = document.getElementById("recStatus");
+  if (!myId) {
+    status.innerHTML = `<div class="notice">つながるには、まずあなたのプロフィール登録が必要です。
+      <a href="/register">プロフィールを登録する →</a></div>`;
+    return;
+  }
+  status.innerHTML = `<span class="muted">照合中…</span>`;
+
+  let res, data;
+  try {
+    res = await fetch("/v4/match", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ seeker_id: myId }),
+    });
+  } catch (e) {
+    status.innerHTML = `<div class="notice warn">照合に接続できませんでした。下の一覧から探してみてください。</div>`;
+    return;
+  }
+  if (res.status === 503) {
+    status.innerHTML = `<div class="notice">ローカル環境では照合は利用できません。下の一覧から探せます。</div>`;
+    return;
+  }
+  data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // 自分の v4 ベクトル未生成など。空扱いで一覧へ誘導。
+    status.innerHTML = `<div class="notice">まだおすすめを出せません（あなたの照合準備が整っていない可能性があります）。
+      <a href="#directory">下の一覧から探す →</a></div>`;
+    return;
+  }
+
+  recResults = Array.isArray(data.results) ? data.results.slice() : [];
+  checkMyStatus();   // 自分の準備状態を補足表示（非ブロッキング）
+
+  if (!recResults.length) {
+    status.innerHTML = `<div class="notice">まだおすすめできる相手がいません
+      （プール ${data.pool_size ?? 0} 人）。<a href="#directory">下の一覧から探してみてください →</a></div>`;
+    return;
+  }
+  status.innerHTML = "";
+  document.getElementById("recToolbar").style.display = "flex";
+  renderRecs();
+}
+
+function renderRecs() {
+  const mode = document.getElementById("sortMode").value;
+  const sorted = recResults.slice().sort((x, y) => {
+    if (mode === "a") return (y.attribution?.a_sim ?? 0) - (x.attribution?.a_sim ?? 0);
+    if (mode === "b") return (y.attribution?.b_sim ?? 0) - (x.attribution?.b_sim ?? 0);
+    return (y.score ?? 0) - (x.score ?? 0);   // 総合順（既定）
+  });
+  document.getElementById("recCards").innerHTML = sorted.map(r => {
+    const cid = String(r.candidate_id);
+    const axis = AXIS[(r.attribution || {}).limiting_axis] || {label: "", cls: ""};
+    const one = dirOneLiner[cid];
+    const oneHtml = one ? `<div class="oneliner">${escHtml(one)}</div>` : "";
+    return `<div class="card">
+      <a class="cid" href="/profile/${encodeURIComponent(cid)}">${escHtml(cid)}</a>
+      ${oneHtml}
+      <div class="meta">
+        <span class="score">総合 ${typeof r.score === "number" ? r.score.toFixed(2) : "—"}</span>
+        ${axis.label ? `<span class="${axis.cls}">${axis.label}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+/* 自分の照合準備状態（preparing のとき注意書き。非ブロッキング）*/
+async function checkMyStatus() {
+  try {
+    const r = await fetch(`/v4/seekers/${encodeURIComponent(myId)}/status`);
+    if (!r.ok) return;
+    const st = await r.json();
+    if (st.generation_status === "preparing") {
+      document.getElementById("recStatus").insertAdjacentHTML("afterbegin",
+        `<div class="notice warn" style="margin-bottom:10px">あなたの照合準備がまだ完了していません。
+         おすすめの精度は準備完了後に上がります。</div>`);
+    }
+  } catch (e) { /* 無視 */ }
+}
+
+/* ── 登録者一覧（GET /seekers = id・一行紹介・意志抜粋のみ）── */
+let dirOneLiner = {};   // candidate_id → 一行紹介（おすすめカードにも流用）
+async function loadDirectory() {
+  const el = document.getElementById("directory");
+  let rows;
+  try {
+    rows = await (await fetch("/seekers")).json();
+  } catch (e) {
+    el.innerHTML = `<span class="muted">一覧を読み込めませんでした。</span>`;
+    return;
+  }
+  rows = (rows || []).filter(r => r.id && r.id !== myId);   // 自分は除外
+  rows.forEach(r => { dirOneLiner[r.id] = r.one_liner || ""; });
+  if (!rows.length) {
+    el.innerHTML = `<span class="muted">まだ他の登録者がいません。</span>`;
+    return;
+  }
+  el.innerHTML = rows.map(r => `<div class="dir-row">
+    <a class="did" href="/profile/${encodeURIComponent(r.id)}">${escHtml(r.id)}</a>
+    <span class="one">${escHtml(r.one_liner || "—")}</span>
+    <span class="will">${escHtml(r.will_excerpt || "")}</span>
+  </div>`).join("");
+}
+
+// 一覧を先に読み（一行紹介をおすすめでも使うため）→ おすすめ照合
+loadDirectory().then(loadRecommendations);
+</script>
+</body>
+</html>

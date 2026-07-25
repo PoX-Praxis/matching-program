@@ -261,6 +261,16 @@ class MemoryStore:
         hist = self.necessity.get((profile_id, model_tag))
         return dict(hist[-1]) if hist else None
 
+    def get_necessity_public(self, profile_id, model_tag):
+        """公開/本人表示用: necessity_text・evidence_span・generated_at のみ（数値は取得しない）。"""
+        hist = self.necessity.get((profile_id, model_tag))
+        if not hist:
+            return None
+        n = hist[-1]
+        return {"necessity_text": n.get("necessity_text"),
+                "evidence_span": n.get("evidence_span"),
+                "generated_at": n.get("generated_at")}
+
     def save_vectors(self, profile_id, model_tag, vectors):
         self.vectors[(profile_id, model_tag)] = {k: list(vectors[k]) for k in _FULL_KEYS}
 
@@ -432,6 +442,20 @@ class PostgresStore:
                 "gamma": row[3], "p_sharpness": row[4], "alpha": row[5], "beta": row[6],
                 "evidence_span": row[7], "src_input_hash": row[8],
                 "generator_model_tag": row[9], "generator_name": row[10]}
+
+    def get_necessity_public(self, profile_id, model_tag):
+        """公開/本人表示用: necessity_text・evidence_span・generated_at のみを SELECT
+        （数値 gate_s/gate_u/gamma/p/α/β は取得しない＝公開経路に数値が乗らない・指示書11 §1）。"""
+        with self._get_connection(self.db_path) as con:
+            row = con.execute(
+                """SELECT necessity_text, evidence_span, generated_at
+                   FROM derived_necessity
+                   WHERE profile_id=%s AND model_tag=%s AND superseded_at IS NULL""",
+                (profile_id, model_tag),
+            ).fetchone()
+        if not row:
+            return None
+        return {"necessity_text": row[0], "evidence_span": row[1], "generated_at": row[2]}
 
     def save_vectors(self, profile_id, model_tag, v):
         cols = _FULL_KEYS  # 束2a: full のみ保存（_256 は保存しない）

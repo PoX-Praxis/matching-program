@@ -45,6 +45,8 @@
   .slot-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 3px; }
   .slot-text  { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
   .freetext-ro { font-size: 13px; line-height: 1.7; color: #333; white-space: pre-wrap; margin: 0; }
+  .ai-note { font-size: 10px; font-weight: normal; color: #888; background: #f0f0f0;
+             border-radius: 3px; padding: 1px 6px; margin-left: 6px; letter-spacing: 0; }
 
   /* shared accordion */
   details.detail-block { margin: 16px 0; border: 1px solid #e0e0e0; border-radius: 6px; }
@@ -191,8 +193,15 @@ function renderV4(pv) {
   const seekingText = (pv.seeking && pv.seeking !== "未取得") ? pv.seeking : "";
   h += `<section class="pblock"><div class="block-heading">足りないもの</div>`;
   h += `<div class="slot"><span class="slot-label">次の一歩</span>${trajInlineHtml(pv.trajectory)}</div>`;
-  h += slotHtml("求めている", seekingText || "—");
+  h += slotHtml("求めている（本人の言葉）", seekingText || "—");
   h += `</section>`;
+
+  // 必要としている相手（②生成の必要像・AIの仮説）。本人申告の「求めている」とは別物。
+  if (pv.necessity_text) {
+    h += `<section class="pblock">
+      <div class="block-heading">必要としている相手 <span class="ai-note">AIによる推定</span></div>
+      <p class="slot-text">${escHtml(pv.necessity_text)}</p></section>`;
+  }
 
   // 本人より（自由記述）— 他人ビューは読み取り専用・空なら非表示
   const free = (pv.free_text || "").trim();

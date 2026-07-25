@@ -20,7 +20,8 @@ from werkzeug.utils import secure_filename
 from db_connect import is_postgres
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 get_seeker, list_candidate_pool, get_profile_edit_data,
-                save_view_overrides, update_seeker_core, list_public_seeker_index)
+                save_view_overrides, update_seeker_core, list_public_seeker_index,
+                record_policy_consent)
 from profile_view import parse_registration_text, normalize_to_seeker
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
@@ -108,6 +109,13 @@ def post_seeker():
         user_id = f"u_{uuid.uuid4().hex[:8]}"   # UUID由来・連番ではない（不変条件4）
 
     save_profile(user_id, seeker, db_path=DB)   # seeker + profile_view を同時保存（UPSERT）
+
+    # プライバシーポリシー同意の証跡（指示書13・既存 consent とは別物・best-effort）。
+    if body.get("privacy_policy_agreed"):
+        try:
+            record_policy_consent(user_id, str(body.get("privacy_policy_version") or ""), db_path=DB)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[policy-consent] 記録skip（登録は成功）: {e}")
 
     # dual-write: v4 形の貼り付けJSONなら Nomic 取り込みも非同期起動（非破壊・ベストエフォート）。
     # v4 側で何が起きても v3 登録は成功させる（登録を止めない）。
@@ -850,6 +858,12 @@ def about():
 def connect():
     """「つながる」入口（指示書10）。v4 照合のおすすめ＋登録者一覧を出す表示ページ。"""
     return render_template("connect.html")
+
+
+@app.get("/privacy")
+def privacy():
+    """プライバシーポリシー（指示書13）。認証不要・誰でも閲覧可。"""
+    return render_template("privacy.html")
 
 
 @app.get("/register")

@@ -347,10 +347,15 @@ PoX は「意志（どこへ進みたいか）」と「現状（いま何を持�
   "supporting_material": { ... }
 }'></textarea>
 <br>
+<div id="consentRow" style="margin:14px 0;font-size:13px;line-height:1.6">
+  <label><input type="checkbox" id="policyAgree">
+    <a href="/privacy" target="_blank">プライバシーポリシー</a>を読み、特に「重要な点」（必要像の公開・接続の公開・消せない記録があること）に同意します</label>
+</div>
 <button class="submit-btn" onclick="register()">登録する</button>
 <div id="msg"></div>
 
 <script>
+const PRIVACY_POLICY_VERSION = "2026-07";   // 同意記録に紐づける版（指示書13 §3-5）
 const existingId = localStorage.getItem("pox_my_id");
 if (existingId) {
   const n = document.getElementById("existingNotice");
@@ -369,7 +374,15 @@ function copyPrompt(preId, msgId) {
 
 async function register() {
   const el = document.getElementById("msg");
-  el.className = ""; el.textContent = "登録中...";
+  el.className = ""; el.textContent = "";
+
+  // プライバシーポリシー同意ガード（既存の "consent"＝登録内容合意 とは別物）
+  if (!document.getElementById("policyAgree").checked) {
+    el.className = "err";
+    el.textContent = "プライバシーポリシーへの同意が必要です（上のチェックを入れてください）";
+    return;
+  }
+  el.textContent = "登録中...";
 
   let rawText = document.getElementById("seekerJson").value.trim();
   if (!rawText) { el.className = "err"; el.textContent = "JSON を貼り付けてください"; return; }
@@ -380,7 +393,10 @@ async function register() {
     .replace(/[‘’]/g, "'");
 
   // raw_text をサーバへ。``` 除去・パース・正規化はサーバ側が行う。
-  const payload = { raw_text: rawText };
+  // ポリシー同意は既存 consent とは別フィールドで送る（サーバー側で証跡記録）。
+  const payload = { raw_text: rawText,
+                    privacy_policy_agreed: true,
+                    privacy_policy_version: PRIVACY_POLICY_VERSION };
   if (existingId) payload.user_id = existingId;   // 既存ユーザーは上書き
 
   const res = await fetch("/seekers", {
@@ -393,7 +409,7 @@ async function register() {
     el.className = "ok";
     el.innerHTML = `✅ 登録完了！ ID: <strong>${data.id}</strong>
       &nbsp; <a href="/mypage?id=${encodeURIComponent(data.id)}">マイページを開く →</a>
-      &nbsp; <a href="/">マッチングへ →</a>`;
+      &nbsp; <a href="/connect">つながる →</a>`;
   } else {
     el.className = "err";
     el.textContent = "エラー: " + (data.error || JSON.stringify(data));

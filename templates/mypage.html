@@ -73,6 +73,14 @@
   .freetext-note { font-size: 11px; color: #999; margin: 4px 0 8px; }
   .freetext-ro { font-size: 13px; line-height: 1.7; color: #333; white-space: pre-wrap; margin: 0; }
 
+  /* 照合の準備状態（所有者のみ・指示書08 §3-4）*/
+  .v4status { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin: 12px 0 4px; }
+  .v4status.ok   { background:#e7f5ec; color:#1a6a3a; }
+  .v4status.info { background:#eef2ff; color:#33417a; }
+  .v4status.warn { background:#fff3cd; color:#856404; }
+  .v4status.err  { background:#f8d7da; color:#721c24; }
+  .v4status .restructure { margin-left:8px; font-weight:bold; color:#1a3a5c; white-space:nowrap; text-decoration:none; }
+
   #loading { color: #888; margin-top: 40px; }
   @media (max-width: 600px) {
     .state-grid { grid-template-columns: 1fr; }
@@ -87,6 +95,8 @@
 <div id="main" style="display:none">
 
   <h1 id="pageTitle"></h1>
+
+  <div id="v4Status" style="display:none"></div>
 
   <h2>プロフィール</h2>
   <div id="profileBlock"></div>
@@ -138,6 +148,40 @@ async function init() {
 
   renderProfileView(pv);
   renderConnections(vessels, myId);
+  loadV4Status(myId);   // 照合の準備状態（所有者のみ）
+}
+
+/* 照合の準備状態を本人のマイページにのみ表示（指示書08 §3-4）。
+   v4未登録・非Postgres・エラー時は黙って非表示にし、ページを壊さない。 */
+async function loadV4Status(id) {
+  const el = document.getElementById("v4Status");
+  if (!el) return;
+  let st;
+  try {
+    const r = await fetch(`/v4/seekers/${encodeURIComponent(id)}/status`);
+    if (!r.ok) { el.style.display = "none"; return; }
+    st = await r.json();
+  } catch (e) { el.style.display = "none"; return; }
+
+  const s = st.generation_status;
+  if (s === "needs_regeneration") {
+    el.className = "v4status warn";
+    el.innerHTML = "プロフィールを編集したため、必要像が古くなっています。"
+      + "より正確な照合のため、再構造化をおすすめします。"
+      + '<a href="/register" class="restructure">再構造化する →</a>';
+    el.style.display = "block";
+    return;
+  }
+  const map = {
+    preparing: ["照合の準備中です", "info"],
+    ready:     ["照合可能な状態です", "ok"],
+    error:     ["照合準備でエラーが発生しました", "err"],
+  };
+  const m = map[s];
+  if (!m) { el.style.display = "none"; return; }
+  el.className = "v4status " + m[1];
+  el.textContent = m[0];
+  el.style.display = "block";
 }
 
 function renderProfileView(pv) {

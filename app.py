@@ -261,12 +261,14 @@ def _run_with_retry(fn, *, tries=3, base_delay=2.0):
     raise last
 
 
-def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback):
+def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback, final_status=None):
     """
     非同期ジョブ（daemon スレッド）: 必要像生成（フォールバック時のみ）＋4ベクトル生成。
     生成状態は generation_status（preparing→ready / error）で追跡する。
     - user-supplied 経路: necessity は受付時に検証・保存済み → ベクトル化のみ。
     - fallback 経路: ここで ② サーバー生成（ANTHROPIC_API_KEY 必須）→ 保存 → ベクトル化。
+    - final_status を渡すと、ベクトル化成功後に status を ready ではなくその値へ上書きする
+      （編集再ベクトル化: 新ベクトル＋旧必要像＝needs_regeneration を維持。指示書08 §3-3）。
     """
     from db_v4 import (generate_necessity_v4, vectorize_profile_v4,
                        GEN_ERROR)
@@ -285,6 +287,8 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback):
         _run_with_retry(
             lambda: vectorize_profile_v4(
                 store, profile_id, profile_input, necessity["necessity_text"]))
+        if final_status is not None:  # 編集経路: ready を上書きして needs_regeneration を維持
+            store.set_generation_status(profile_id, final_status, error=None)
     except Exception as e:  # noqa: BLE001
         try:
             store.set_generation_status(profile_id, GEN_ERROR, error=str(e)[:500])
@@ -292,10 +296,10 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback):
             pass
 
 
-def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback):
+def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback, final_status=None):
     t = threading.Thread(
         target=_v4_async_job, args=(profile_id, profile_input, necessity),
-        kwargs={"is_fallback": is_fallback}, daemon=True)
+        kwargs={"is_fallback": is_fallback, "final_status": final_status}, daemon=True)
     t.start()
 
 
@@ -547,6 +551,43 @@ def api_profile_edit(user_id):
     return jsonify(data)
 
 
+def _revectorize_after_edit(profile_id):
+    """
+    「中身を編集」で意志/現状が変わったとき、登録と同じ経路で v4 ベクトルを作り直す。
+    必要像は各自AIの所有物のため **サーバー生成しない**（is_fallback=False）。
+    既存の（古い）必要像テキストで再ベクトル化し、status=needs_regeneration を維持する。
+    derived_necessity は一切触らない。指示書08 §3-2/§3-3。
+    v4 未登録・必要像未保存・非Postgres なら何もしない（v3 編集は既に保存済み）。
+    """
+    if not is_postgres():
+        return
+    from db_v4 import receive_profile_v4, GEN_NEEDS_REGEN, MODEL_TAG
+    store = _v4_store()
+    existing = store.get_profile(profile_id)
+    if existing is None:
+        return  # v4 に未登録 → 再ベクトル化対象なし
+    nec = store.get_necessity(profile_id, MODEL_TAG)
+    if not nec or not (nec.get("necessity_text") or "").strip():
+        return  # 既存必要像が無い → ② 生成はしない方針のため再ベクトル化しない
+
+    seeker = get_seeker(profile_id, db_path=DB) or {}
+    jotai = seeker.get("現状") if isinstance(seeker.get("現状"), dict) else {}
+    profile_input = {
+        "will_text":      str(seeker.get("意志") or ""),
+        "state_have":     str(jotai.get("持っているもの") or ""),
+        "state_can_type": str(jotai.get("できること_型") or ""),
+        "state_bound":    str(jotai.get("縛られているもの") or ""),
+        "state_unsorted": str(jotai.get("未分類") or ""),
+        "supporting_raw": existing.get("supporting_raw") or {},  # 既存 v4 素材を保持
+    }
+    # profiles_v4 の行を更新（will/state・necessity=None で derived_necessity 不変）→ needs_regeneration
+    receive_profile_v4(store, profile_id, profile_input, necessity=None,
+                       generation_status=GEN_NEEDS_REGEN)
+    # ベクトルのみ再計算（②生成なし）。最終 status は needs_regeneration を維持。
+    _spawn_v4_job(profile_id, profile_input, nec, is_fallback=False,
+                  final_status=GEN_NEEDS_REGEN)
+
+
 @app.post("/api/profile/<user_id>/core")
 def api_profile_core(user_id):
     """「中身を編集」。v4（意志/現状4スロット）対応。profile_view を再生成する。"""
@@ -561,9 +602,18 @@ def api_profile_core(user_id):
     for k in ("求めている", "能力", "フェーズ"):
         if k in body:
             fields[k] = body[k]
-    if not update_seeker_core(user_id, fields, db_path=DB):
+    out = {}
+    if not update_seeker_core(user_id, fields, db_path=DB, out=out):
         return jsonify({"error": "プロフィールが見つかりません"}), 404
-    return jsonify({"ok": True})
+
+    # 意志/現状が変わったら v4 を再ベクトル化＋必要像を needs_regeneration に（ベストエフォート）。
+    changed = bool(out.get("changed_core"))
+    if changed:
+        try:
+            _revectorize_after_edit(user_id)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[edit-revectorize] skip（v3編集は保存済み）: {e}")
+    return jsonify({"ok": True, "changed_core": changed})
 
 
 @app.put("/api/profile/<user_id>/overrides")

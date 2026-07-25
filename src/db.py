@@ -75,6 +75,23 @@ def load_all_seekers(db_path: str = "pox.db") -> list[dict]:
     return [{"id": row[0], "seeker": json.loads(row[1])} for row in rows]
 
 
+def record_policy_consent(user_id: str, policy_version: str, db_path: str = "pox.db") -> None:
+    """プライバシーポリシー同意の証跡を記録（既存 consent＝登録内容合意とは別物・指示書13）。
+    同一 (user_id, policy_version) は agreed_at を更新（再登録で最新化）。"""
+    now = _now()
+    with _connect(db_path) as con:
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS policy_consents "
+            "(user_id TEXT NOT NULL, policy_version TEXT NOT NULL, agreed_at TEXT NOT NULL, "
+            " PRIMARY KEY (user_id, policy_version))"
+        )
+        con.execute(
+            "INSERT INTO policy_consents (user_id, policy_version, agreed_at) VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_id, policy_version) DO UPDATE SET agreed_at = EXCLUDED.agreed_at",
+            (user_id, policy_version, now),
+        )
+
+
 def list_public_seeker_index(db_path: str = "pox.db") -> list[dict]:
     """
     公開一覧用の最小射影（指示書09 §3-2）。seeker 原文（生テキスト・素材・現状詳細・

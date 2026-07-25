@@ -44,6 +44,12 @@ _SQLITE_DDL = [
         necessity_json  TEXT,
         src_input_hash  TEXT
     )""",
+    """CREATE TABLE IF NOT EXISTS policy_consents (
+        user_id        TEXT NOT NULL,
+        policy_version TEXT NOT NULL,
+        agreed_at      TEXT NOT NULL,
+        PRIMARY KEY (user_id, policy_version)
+    )""",
     """CREATE TABLE IF NOT EXISTS messages (
         id             TEXT PRIMARY KEY,
         from_id        TEXT NOT NULL,
@@ -101,6 +107,12 @@ _PG_DDL = [
         supporting_json TEXT,
         necessity_json  TEXT,
         src_input_hash  TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS policy_consents (
+        user_id        TEXT NOT NULL,
+        policy_version TEXT NOT NULL,
+        agreed_at      TEXT NOT NULL,
+        PRIMARY KEY (user_id, policy_version)
     )""",
     """CREATE TABLE IF NOT EXISTS messages (
         id             TEXT PRIMARY KEY,

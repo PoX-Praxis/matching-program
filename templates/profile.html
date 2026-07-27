@@ -338,7 +338,9 @@ function escHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-/* 軌跡（第三者ビュー）: 接続は完全公開・snapshot の evidence_span/数値はサーバー側で出さない。 */
+/* 軌跡（第三者/当事者の相手ビュー）: 公開範囲はサーバーが閲覧者役割で絞る。
+   接続は成立/終了の「事実」のみ・理由なし。evidence_span/数値は出ない。
+   第三者に伏せられた時点は「非公開」表示（事実は残る）。 */
 async function loadTimeline(userId, viewer) {
   const el = document.getElementById("timeline");
   if (!el) return;
@@ -352,10 +354,14 @@ async function loadTimeline(userId, viewer) {
   el.innerHTML = items.map(it => {
     const d = it.at ? new Date(it.at).toLocaleDateString("ja-JP") : "";
     if (it.kind === "connection") {
-      const label = it.event === "connected" ? "接続成立" : escHtml(it.event || "");
+      const label = it.event === "established" ? "接続成立" : (it.event === "ended" ? "接続終了" : escHtml(it.event || ""));
       const other = it.other || "?";
       return `<div class="tl-item tl-conn"><span class="tl-date">${escHtml(d)}</span>
         <span class="tl-body"><a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${label}</span></div>`;
+    }
+    if (it.hidden) {
+      return `<div class="tl-item tl-snap"><span class="tl-date">${escHtml(d)}</span>
+        <div class="tl-body"><span class="muted">この時点の内容は非公開です</span></div></div>`;
     }
     const will = it.will_text ? `<div class="tl-sub"><b>意志:</b> ${escHtml(it.will_text)}</div>` : "";
     const nec  = it.necessity_text ? `<div class="tl-sub"><b>必要としている相手:</b> ${escHtml(it.necessity_text)}</div>` : "";

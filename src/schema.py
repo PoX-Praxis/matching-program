@@ -35,14 +35,16 @@ _SQLITE_DDL = [
         vessel_json TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS user_snapshots (
-        snapshot_id     TEXT PRIMARY KEY,
-        user_id         TEXT NOT NULL,
-        created_at      TEXT NOT NULL,
-        will_text       TEXT,
-        state_json      TEXT,
-        supporting_json TEXT,
-        necessity_json  TEXT,
-        src_input_hash  TEXT
+        snapshot_id      TEXT PRIMARY KEY,
+        user_id          TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        schema_version   TEXT,
+        will_text        TEXT,
+        state_json       TEXT,
+        supporting_json  TEXT,
+        necessity_json   TEXT,
+        src_input_hash   TEXT,
+        vulnerable_hidden INTEGER NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS policy_consents (
         user_id        TEXT NOT NULL,
@@ -99,14 +101,16 @@ _PG_DDL = [
         vessel_json TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS user_snapshots (
-        snapshot_id     TEXT PRIMARY KEY,
-        user_id         TEXT NOT NULL,
-        created_at      TEXT NOT NULL,
-        will_text       TEXT,
-        state_json      TEXT,
-        supporting_json TEXT,
-        necessity_json  TEXT,
-        src_input_hash  TEXT
+        snapshot_id      TEXT PRIMARY KEY,
+        user_id          TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        schema_version   TEXT,
+        will_text        TEXT,
+        state_json       TEXT,
+        supporting_json  TEXT,
+        necessity_json   TEXT,
+        src_input_hash   TEXT,
+        vulnerable_hidden INTEGER NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS policy_consents (
         user_id        TEXT NOT NULL,
@@ -163,4 +167,18 @@ def init(db_path: str = "pox.db") -> None:
     with get_connection(db_path) as con:
         for ddl in ddl_list:
             con.execute(ddl)
+        _migrate_user_snapshots(con)   # 既存テーブルに schema_version / vulnerable_hidden を後付け（指示書12改訂）
     print(f"[schema] init complete ({'postgres' if is_postgres() else f'sqlite:{db_path}'})")
+
+
+def _migrate_user_snapshots(con) -> None:
+    """user_snapshots に後付け列を idempotent に追加（PR#19 で作成済みの既存テーブル向け）。"""
+    adds = [("schema_version", "TEXT"), ("vulnerable_hidden", "INTEGER NOT NULL DEFAULT 0")]
+    if is_postgres():
+        for name, typ in adds:
+            con.execute(f"ALTER TABLE user_snapshots ADD COLUMN IF NOT EXISTS {name} {typ}")
+    else:
+        cols = {r[1] for r in con.execute("PRAGMA table_info(user_snapshots)").fetchall()}
+        for name, typ in adds:
+            if name not in cols:
+                con.execute(f"ALTER TABLE user_snapshots ADD COLUMN {name} {typ}")

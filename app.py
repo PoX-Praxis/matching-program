@@ -389,6 +389,9 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
             pass
 
 
+SNAPSHOT_SCHEMA_VERSION = "v4.3"   # スナップショットに記録するスキーマ版（指示書12改訂 §3-1）
+
+
 def _save_snapshot_best_effort(profile_id, profile_input, necessity):
     """再構造化の時点スナップショットを保存（失敗しても登録/ベクトル化には影響させない）。"""
     try:
@@ -402,6 +405,7 @@ def _save_snapshot_best_effort(profile_id, profile_input, necessity):
             supporting=profile_input.get("supporting_raw") or {},
             necessity=nec,
             src_input_hash=nec.get("src_input_hash"),
+            schema_version=SNAPSHOT_SCHEMA_VERSION,
             db_path=DB,
         )
     except Exception:  # noqa: BLE001
@@ -648,17 +652,38 @@ def _snapshot_pair_resolver(founder, joiner):
 _NEC_NUM_KEYS = ("gate_s", "gate_u", "gamma", "p_sharpness", "alpha", "beta")
 
 
+def _timeline_is_partner(user_id, viewer, vessels):
+    """viewer が user_id と成立済み接続を持つ当事者の相手か（指示書12改訂 §4-3）。"""
+    if not viewer or viewer == user_id:
+        return False
+    for v in vessels:
+        join = (v.get("joins") or [{}])[0]
+        parties = {v.get("founder"), join.get("joiner")}
+        if parties == {user_id, viewer} and join.get("established_at"):
+            return True
+    return False
+
+
 @app.get("/api/timeline/<user_id>")
 def api_timeline(user_id):
     """
-    軌跡（指示書12 §4-3）: user_snapshots と接続イベントを時系列マージして返す。
-    - 本人（viewer==user_id）: necessity_text＋evidence_span＋数値を含む。
-    - 第三者: necessity_text のみ（evidence_span・数値は出さない・指示書11 継承）。
-    - 接続イベント（成立・解消・離脱）は完全公開＝本人・第三者とも見える。
+    軌跡（指示書12改訂 §4-3）: user_snapshots と接続の履歴事実を時系列マージ。
+    閲覧者3層で絞る:
+      - 本人      : 全部（will/state/necessity_text/evidence_span/数値）
+      - 当事者の相手: will/state/necessity_text（evidence_span・数値なし。vulnerable_hidden でも中身表示）
+      - 第三者    : necessity_text のみ。vulnerable_hidden の時点は中身を出さない（存在の事実は残す）
+    接続の事実（成立・離脱）は全層に公開。**理由は一切含めない**（原則3）。
     viewer は簡易（クエリ id）。認証が無いため厳密でない（§7-5 の限界）。
     """
     viewer = request.args.get("viewer")
     is_owner = bool(viewer) and viewer == user_id
+
+    try:
+        vessels = load_all_vessels(db_path=DB)
+    except Exception:  # noqa: BLE001
+        vessels = []
+    is_partner = _timeline_is_partner(user_id, viewer, vessels)
+    viewer_role = "owner" if is_owner else ("partner" if is_partner else "third")
 
     items = []
     try:
@@ -668,23 +693,25 @@ def api_timeline(user_id):
         snaps = []
     for s in snaps:
         nec = s.get("necessity") or {}
-        item = {
-            "kind": "snapshot", "at": s.get("created_at"),
-            "snapshot_id": s.get("snapshot_id"),
-            "will_text": s.get("will_text", ""),
-            "state": s.get("state") or {},
-            "necessity_text": nec.get("necessity_text", ""),
-        }
-        if is_owner:   # 本人のみ: 根拠と数値
-            item["evidence_span"] = nec.get("evidence_span", "")
-            item["numbers"] = {k: nec.get(k) for k in _NEC_NUM_KEYS}
+        hidden = bool(s.get("vulnerable_hidden"))
+        item = {"kind": "snapshot", "at": s.get("created_at"),
+                "snapshot_id": s.get("snapshot_id"),
+                "schema_version": s.get("schema_version", "")}
+        if viewer_role == "third" and hidden:
+            item["hidden"] = True            # 存在の事実のみ・中身は出さない
+        elif viewer_role in ("owner", "partner"):
+            item["will_text"] = s.get("will_text", "")
+            item["state"] = s.get("state") or {}
+            item["necessity_text"] = nec.get("necessity_text", "")
+            item["vulnerable_hidden"] = hidden   # 本人UIのトグル表示用
+            if viewer_role == "owner":           # 根拠・数値は本人のみ
+                item["evidence_span"] = nec.get("evidence_span", "")
+                item["numbers"] = {k: nec.get(k) for k in _NEC_NUM_KEYS}
+        else:                                # 第三者・非hidden: necessity_text のみ
+            item["necessity_text"] = nec.get("necessity_text", "")
         items.append(item)
 
-    # 接続イベント（完全公開）。既存の snapshots キー無し vessel でも壊れない。
-    try:
-        vessels = load_all_vessels(db_path=DB)
-    except Exception:  # noqa: BLE001
-        vessels = []
+    # 接続の履歴事実（全層公開・理由なし）。既存の snapshots キー無し vessel でも壊れない。
     for v in vessels:
         join = (v.get("joins") or [{}])[0]
         founder, joiner = v.get("founder"), join.get("joiner")
@@ -693,15 +720,35 @@ def api_timeline(user_id):
         other = joiner if user_id == founder else founder
         est = join.get("established_at")
         if est:
-            items.append({"kind": "connection", "event": "connected", "at": est,
+            items.append({"kind": "connection", "event": "established", "at": est,
                           "other": other, "vessel_id": v.get("vessel_id")})
-        ts = join.get("terminal_state")
+        ts = join.get("terminal_state")   # 離脱・解消は「事実」として（理由は持たない）
         if ts and ts not in ("active", None) and join.get("closed_at"):
-            items.append({"kind": "connection", "event": ts, "at": join.get("closed_at"),
+            items.append({"kind": "connection", "event": "ended", "at": join.get("closed_at"),
                           "other": other, "vessel_id": v.get("vessel_id")})
 
     items.sort(key=lambda x: x.get("at") or "")
-    return jsonify({"user_id": user_id, "is_owner": is_owner, "items": items})
+    return jsonify({"user_id": user_id, "is_owner": is_owner,
+                    "viewer_role": viewer_role, "items": items})
+
+
+@app.post("/api/snapshot/<snapshot_id>/visibility")
+def api_snapshot_visibility(snapshot_id):
+    """
+    本人が時点の中身を第三者に伏せる/戻す（指示書12改訂 §4-4）。所有者一致のときのみ。
+    消すのではなく第三者表示を止めるだけ。接続の結末は対象外（伏せられない）。
+    認証は簡易（body の id）＝§7-5 の限界。
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    owner_id = body.get("id")
+    if not owner_id:
+        return jsonify({"error": "id が必要です"}), 400
+    hidden = bool(body.get("hidden"))
+    from snapshots import set_snapshot_hidden
+    ok = set_snapshot_hidden(snapshot_id, owner_id, hidden, db_path=DB)
+    if not ok:
+        return jsonify({"error": "対象のスナップショットが見つかりません（所有者のみ変更できます）"}), 404
+    return jsonify({"ok": True, "snapshot_id": snapshot_id, "vulnerable_hidden": hidden})
 
 
 @app.get("/api/my/vessels")

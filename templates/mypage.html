@@ -2,132 +2,245 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>マイページ — PoX</title>
 <style>
-  body { font-family: sans-serif; max-width: 860px; margin: 40px auto; padding: 0 16px; color: #222; }
-  a.back { font-size: 13px; color: #555; text-decoration: none; }
+  body { margin: 0; color: #14161a;
+         font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; }
+  a.back { font-size: 13px; color: #555; text-decoration: none; display:inline-block; margin:16px 0 0 18px; }
   a.back:hover { text-decoration: underline; }
-  h1  { font-size: 1.3rem; margin: 12px 0 4px; }
-  h2  { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
-  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
-  th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; }
-  th { background: #f5f5f5; width: 160px; white-space: nowrap; }
-  details > summary { cursor: pointer; color: #555; font-size: 12px; }
-  button.sm { padding: 3px 12px; font-size: 12px; cursor: pointer; }
-  .badge-ok     { background: #d4edda; color: #155724; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
-  .badge-wait   { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
-  .badge-action { background: #f8d7da; color: #721c24; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
-  #notice { margin-top: 6px; font-size: 13px; }
-  .ok  { color: #1a8a1a; font-weight: bold; }
-  .err { color: #c00; }
+  #loading { color: #888; margin: 40px 18px; }
 
-  /* v4 profile blocks */
-  .headline-text { font-size: 1.05rem; line-height: 1.7; color: #333; margin: 12px 0 16px; }
+  /* ══════════════════════════════════════════════════════════════
+     指示書14 案C — マイページ表示層。すべて .mypage 配下・mp- 接頭辞。
+     他ページのスタイルに影響を与えないためのスコープ。
+     ══════════════════════════════════════════════════════════════ */
+  .mypage{
+    --ink:#14161a;
+    --ink2:#454b54;
+    --label:#6b7280;
+    --rule:#e6e8ec;
+    --navy:#1f3a5f;
+    --pivot:#9a6b2f;
+    --pivot-bg:#fbf5ec;
+    --need-bg:#f5f8fa;
+    --step-bg:#eef4ef;
+    --step-ink:#2f5d3f;
 
-  .will-block { background: #f0f4ff; border-left: 4px solid #1a3a5c;
-                padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 12px 0 14px; }
-  .will-label { font-size: 11px; font-weight: bold; color: #1a3a5c; text-transform: uppercase;
-                letter-spacing: .05em; margin-bottom: 6px; }
-  .will-text  { font-size: 13px; line-height: 1.7; margin: 0; color: #222; }
-
-  .state-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 12px 0 16px; }
-  .state-item { background: #f7f9fc; border-radius: 6px; padding: 12px 14px; }
-  .state-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 5px; }
-  .state-text  { font-size: 13px; line-height: 1.6; margin: 0; color: #333; }
-
-  /* v3 backward compat */
-  .triangle-block { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 16px 0; }
-  .tri-item  { background: #f7f9fc; border-radius: 6px; padding: 14px 16px; }
-  .tri-label { font-size: 11px; font-weight: bold; color: #1a56bb; display: block; margin-bottom: 6px; }
-  .tri-text  { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
-  .phase-badge { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; }
-  .phase-tag   { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
-  .phase-unconfirmed { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 6px; font-size: 11px; }
-
-  /* shared accordion */
-  details.detail-block { margin: 14px 0; border: 1px solid #e0e0e0; border-radius: 6px; }
-  details.detail-block > summary { padding: 10px 14px; font-size: 13px; color: #555; user-select: none; }
-  details.detail-block > summary:hover { background: #f7f7f7; border-radius: 6px; }
-  .detail-inner { padding: 12px 16px 16px; }
-  .keys-label, .traj-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; }
-  .key-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-  .key-tag  { background: #f0f4ff; border: 1px solid #c5d3f0; color: #1a3a8c; border-radius: 20px; padding: 3px 12px; font-size: 12px; }
-  .traj-item  { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; font-size: 13px; }
-  .traj-from  { background: #f5f5f5; border-radius: 4px; padding: 4px 10px; color: #444; flex: 1; }
-  .traj-arrow { color: #aaa; flex-shrink: 0; padding-top: 4px; }
-  .traj-to    { background: #eaf4ea; border-radius: 4px; padding: 4px 10px; color: #1a5c1a; flex: 1; }
-
-  /* v4.3 再構成: 背景 + 意志/現状/足りないもの/本人より の縦積み */
-  .bg-text { font-size: 13px; line-height: 1.7; color: #666; margin: 10px 0 20px; }
-  .pblock { margin: 0 0 22px; }
-  .block-heading { font-size: 12px; font-weight: bold; color: #1a3a5c; letter-spacing: .04em;
-                   border-left: 4px solid #1a3a5c; padding-left: 8px; margin-bottom: 10px; }
-  .tier { margin: 0 0 10px; }
-  .tier-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 3px; }
-  .tier-text  { font-size: 13px; line-height: 1.7; margin: 0; color: #222; }
-  .slot { margin: 0 0 10px; }
-  .slot-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 3px; }
-  .slot-text  { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
-  .freetext-area { width: 100%; min-height: 90px; font-family: inherit; font-size: 13px;
-                   box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; padding: 10px; }
-  .freetext-note { font-size: 11px; color: #999; margin: 4px 0 8px; }
-  .freetext-ro { font-size: 13px; line-height: 1.7; color: #333; white-space: pre-wrap; margin: 0; }
-  .ai-note { font-size: 10px; font-weight: normal; color: #888; background: #f0f0f0;
-             border-radius: 3px; padding: 1px 6px; margin-left: 6px; letter-spacing: 0; }
-  .muted { color:#888; font-size:13px; }
-  .tl-item { display:flex; gap:10px; padding:8px 4px; border-bottom:1px solid #eee; font-size:13px; }
-  .tl-date { color:#888; font-size:12px; white-space:nowrap; min-width:88px; }
-  .tl-conn .tl-body { color:#1a6a3a; }
-  .tl-sub { margin:3px 0; font-size:12px; line-height:1.6; }
-  .tl-snap summary { cursor:pointer; color:#1a3a5c; }
-
-  /* 照合の準備状態（所有者のみ・指示書08 §3-4）*/
-  .v4status { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin: 12px 0 4px; }
-  .v4status.ok   { background:#e7f5ec; color:#1a6a3a; }
-  .v4status.info { background:#eef2ff; color:#33417a; }
-  .v4status.warn { background:#fff3cd; color:#856404; }
-  .v4status.err  { background:#f8d7da; color:#721c24; }
-  .v4status .restructure { margin-left:8px; font-weight:bold; color:#1a3a5c; white-space:nowrap; text-decoration:none; }
-
-  #loading { color: #888; margin-top: 40px; }
-  @media (max-width: 600px) {
-    .state-grid { grid-template-columns: 1fr; }
-    .triangle-block { grid-template-columns: 1fr; }
+    max-width:560px;
+    margin:0 auto;
+    padding:16px 18px 60px;
+    color:var(--ink);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
   }
+
+  /* ---------- ヘッダ ---------- */
+  .mypage .mp-title{font-size:22px;font-weight:700;letter-spacing:.01em;margin:20px 0 2px}
+  .mypage .mp-handle{font-size:11.5px;color:#8a9099;letter-spacing:.06em;margin:0 0 20px}
+
+  .mypage .mp-err{
+    background:#fbe9ea;color:#8c2f34;font-size:13px;line-height:1.7;
+    padding:11px 13px;border-radius:4px;margin:0 0 20px;
+  }
+
+  /* ---------- provenance 注記（固定・一度だけ） ---------- */
+  .mypage .mp-prov{
+    display:flex;gap:10px;
+    font-size:12px;line-height:1.85;color:#5b616a;
+    background:#f6f7f9;border-radius:5px;padding:12px 14px;margin:0 0 26px;
+  }
+  .mypage .mp-prov .k{flex:none;font-weight:700;color:var(--navy);letter-spacing:.04em}
+
+  /* ---------- 背景（冒頭・小） ---------- */
+  .mypage .mp-cap{font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#9aa0a8;margin:0 0 6px}
+  .mypage .mp-lead{font-size:13.5px;line-height:1.95;color:var(--ink2);margin:0 0 8px}
+
+  /* ---------- 大見出し（意志／現状／足りないもの…） ---------- */
+  .mypage .mp-h{
+    display:flex;align-items:baseline;gap:9px;
+    font-size:16px;font-weight:700;letter-spacing:.06em;color:var(--navy);
+    margin:44px 0 2px;padding-top:20px;border-top:1px solid var(--rule);
+  }
+  .mypage .mp-h .en{font-size:9.5px;font-weight:600;letter-spacing:.18em;color:#a7adb5}
+  .mypage .mp-blkcap{font-size:12px;color:#8a9099;line-height:1.7;margin:0 0 20px}
+
+  /* ---------- 小見出し＝ラベル ---------- */
+  .mypage .mp-lb{
+    font-size:11.5px;font-weight:700;letter-spacing:.1em;color:var(--label);
+    margin:24px 0 6px;
+  }
+  .mypage .mp-item:first-of-type > .mp-lb{margin-top:0}
+  .mypage .mp-lb .by{font-weight:400;letter-spacing:0;color:#a7adb5;margin-left:6px}
+
+  /* ---------- 本文 ---------- */
+  .mypage .mp-body{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--ink)}
+
+  /* ---------- 持っているもの（箇条書き化） ---------- */
+  .mypage .mp-holds{list-style:none;margin:0;padding:0}
+  .mypage .mp-holds li{
+    font-size:15.5px;line-height:1.75;padding:9px 0 9px 20px;
+    position:relative;border-bottom:1px solid #f0f2f4;
+  }
+  .mypage .mp-holds li:last-child{border-bottom:0}
+  .mypage .mp-holds li::before{
+    content:"";position:absolute;left:2px;top:16px;
+    width:5px;height:5px;border-radius:50%;background:#b9c0c8;
+  }
+
+  /* ---------- 背骨（現状の項目を「同列の材料」として束ねる） ---------- */
+  .mypage .mp-spine{position:relative;padding-left:22px;margin-top:4px}
+  .mypage .mp-spine::before{
+    content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:#dfe3e8;
+  }
+  .mypage .mp-spine .mp-item{position:relative}
+  .mypage .mp-spine .mp-item::before{
+    content:"";position:absolute;left:-21px;margin-top:9px;
+    width:7px;height:7px;border-radius:50%;background:#c6ccd3;
+  }
+
+  /* ---------- 転回点（縛られているもの） ---------- */
+  .mypage .mp-pivot{
+    margin:26px 0 6px;padding:18px 18px 16px;
+    background:var(--pivot-bg);border-radius:6px;border-left:3px solid var(--pivot);
+  }
+  .mypage .mp-pivot .mp-lb{color:var(--pivot);margin:0 0 8px}
+  .mypage .mp-turn{
+    display:block;margin-top:12px;font-size:12px;font-weight:700;
+    letter-spacing:.06em;color:var(--pivot);
+  }
+  .mypage .mp-down{text-align:center;color:#c6ccd3;font-size:15px;line-height:1;margin:14px 0 0}
+
+  /* ---------- 次の一歩 ---------- */
+  .mypage .mp-step{margin:0 0 10px}
+  .mypage .mp-goal{
+    font-size:13px;line-height:1.7;color:var(--ink2);
+    padding-left:12px;border-left:2px solid #d9dde2;
+  }
+  .mypage .mp-need{
+    font-size:14.5px;line-height:1.8;color:var(--step-ink);
+    background:var(--step-bg);padding:10px 13px;margin-top:6px;border-radius:3px;
+  }
+
+  /* ---------- 本人より ---------- */
+  .mypage textarea{
+    width:100%;min-height:88px;box-sizing:border-box;
+    border:1px solid #d5d8dd;border-radius:5px;padding:12px;
+    font:inherit;font-size:14.5px;line-height:1.8;background:#fcfcfd;
+  }
+  .mypage .mp-tiny{font-size:11.5px;color:#8a9099;line-height:1.8;margin:8px 0 0}
+  .mypage .mp-btn{
+    display:inline-block;border:1px solid #cfd3d9;border-radius:4px;background:#fff;
+    font-size:12px;padding:7px 13px;margin-top:12px;color:var(--ink2);cursor:pointer;
+    text-decoration:none;
+  }
+  .mypage .mp-btn:focus-visible,
+  .mypage textarea:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+
+  /* ---------- 必要像（面で分離） ---------- */
+  .mypage .mp-needblock{background:var(--need-bg);border-radius:6px;padding:20px 18px;margin-top:22px}
+  .mypage .mp-needblock .mp-h{margin:0 0 2px;padding-top:0;border-top:0}
+  .mypage .mp-needblock .mp-body{font-size:15px}
+  .mypage .mp-evi{
+    font-size:13.5px;line-height:1.95;color:var(--ink2);
+    border-left:2px solid #c8d2da;padding-left:12px;margin:0;
+  }
+
+  /* ---------- 接続（表をやめてカード） ---------- */
+  .mypage .mp-card{border:1px solid var(--rule);border-radius:6px;padding:14px;margin-bottom:10px}
+  .mypage .mp-card .row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:3px 0}
+  .mypage .mp-card .row .k{
+    color:var(--label);font-size:11.5px;font-weight:700;letter-spacing:.06em;flex:none;
+  }
+
+  /* ---------- 軌跡（2レーン） ---------- */
+  .mypage .mp-lanes{
+    display:grid;grid-template-columns:1fr 1fr;gap:1px;
+    background:var(--rule);border:1px solid var(--rule);border-radius:6px;
+    overflow:hidden;margin-top:14px;
+  }
+  .mypage .mp-lane{background:#fff;padding:14px 12px;min-height:96px}
+  .mypage .mp-lane h4{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--label);margin:0 0 10px}
+  .mypage .mp-lane p{font-size:12.5px;line-height:1.8;color:#9aa0a8;margin:0}
+  .mypage .mp-lanenote{font-size:11.5px;line-height:1.8;color:#9aa0a8;margin:10px 0 0}
+
+  /* ---------- 空状態 ---------- */
+  .mypage .mp-empty{font-size:13.5px;line-height:1.8;color:#8a9099;padding:18px 0}
+
+  /* ---------- 軌跡レーン内の点（指示書12 の内容をレーンに流す） ---------- */
+  .mypage .mp-tl{margin:0 0 12px}
+  .mypage .mp-tl:last-child{margin-bottom:0}
+  .mypage .mp-tl .d{color:#9aa0a8;font-size:11px;display:block;margin-bottom:2px}
+  .mypage .mp-tl details > summary{cursor:pointer;color:var(--navy);font-size:12.5px}
+  .mypage .mp-tl .sub{font-size:12px;line-height:1.7;color:var(--ink2);margin:3px 0}
+  .mypage .mp-tl .sub.ev{color:#8a9099}
+  .mypage .mp-tl a{color:var(--step-ink);text-decoration:none}
+
+  /* ---------- 照合の準備状態（指示書08。本改修の対象外・枠だけ .mypage に載せる） ---------- */
+  .mypage .v4status{padding:10px 14px;border-radius:6px;font-size:13px;margin:0 0 20px}
+  .mypage .v4status.ok   {background:#e7f5ec;color:#1a6a3a}
+  .mypage .v4status.info {background:#eef2ff;color:#33417a}
+  .mypage .v4status.warn {background:#fff3cd;color:#856404}
+  .mypage .v4status.err  {background:#f8d7da;color:#721c24}
+  .mypage .v4status .restructure{margin-left:8px;font-weight:700;color:var(--navy);white-space:nowrap;text-decoration:none}
+
+  /* ---------- 接続状態バッジ（既存の意味を維持） ---------- */
+  .mypage .badge-ok     {background:#d4edda;color:#155724;border-radius:3px;padding:2px 8px;font-size:12px}
+  .mypage .badge-wait   {background:#fff3cd;color:#856404;border-radius:3px;padding:2px 8px;font-size:12px}
+  .mypage .badge-action {background:#f8d7da;color:#721c24;border-radius:3px;padding:2px 8px;font-size:12px}
+  .mypage #notice{margin:0 0 10px;font-size:13px}
+  .mypage .ok  { color:#1a8a1a; font-weight:bold; }
+  .mypage .err { color:#c00; }
+  .mypage .muted { color:#8a9099; font-size:12.5px; }
+
+  /* ---------- v3 後方互換（旧スキーマのプロフィールのみ） ---------- */
+  .mypage .triangle-block { display:grid; grid-template-columns:1fr; gap:12px; margin:16px 0; }
+  .mypage .tri-item  { background:#f7f9fc; border-radius:6px; padding:14px 16px; }
+  .mypage .tri-label { font-size:11px; font-weight:bold; color:#1a56bb; display:block; margin-bottom:6px; }
+  .mypage .tri-text  { font-size:13px; line-height:1.65; margin:0; color:#333; }
+  .mypage .phase-badge { display:inline-flex; align-items:center; gap:6px; margin-bottom:16px; }
+  .mypage .phase-tag   { background:#e8f0fe; color:#1a56bb; border-radius:3px; padding:2px 8px; font-size:12px; }
+  .mypage .phase-unconfirmed { background:#fff3cd; color:#856404; border-radius:3px; padding:2px 6px; font-size:11px; }
 </style>
 </head>
 <body>
 {% include "_nav.html" %}
 <a href="/" class="back">← トップに戻る</a>
 <div id="loading">読み込み中...</div>
-<div id="main" style="display:none">
 
-  <h1 id="pageTitle"></h1>
+<main id="main" class="mypage" style="display:none">
 
-  <div id="v4Status" style="display:none"></div>
+  <h1 id="mpTitle" class="mp-title"></h1>
+  <p id="mpHandle" class="mp-handle"></p>
 
-  <h2>プロフィール</h2>
-  <div id="profileBlock"></div>
-  <div id="ownNecessity" style="display:none"></div>
+  <!-- 照合の準備状態（所有者のみ・指示書08。本改修では位置だけ整える） -->
+  <div id="v4Status" class="v4status" style="display:none"></div>
 
-  <div style="margin-top:12px">
-    <a id="editLink" href="#" style="display:inline-block;padding:6px 18px;background:#f0f0f0;border:1px solid #ccc;color:#333;border-radius:4px;text-decoration:none;font-size:13px">プロフィールを編集する</a>
+  <!-- provenance 注記（固定・一度だけ・§3-5） -->
+  <div class="mp-prov">
+    <span class="k">読み方</span>
+    <span>以下は、あなたが話した内容をAIが構造化したものです。「本人より」と「求めている」はあなた自身の言葉です。</span>
   </div>
 
-  <h2>接続状況</h2>
+  <!-- 背景 → 意志 → 現状 → 転回点 → 足りないもの → 本人より（renderV4 が流し込む） -->
+  <div id="profileBlock"></div>
+
+  <!-- あなたの必要像（本人のみ） -->
+  <div id="ownNecessity" style="display:none"></div>
+
+  <a id="editLink" class="mp-btn" href="#">プロフィールを編集する</a>
+
+  <!-- 接続（§3-8 カード化） -->
+  <h2 class="mp-h">接続<span class="en">VESSELS</span></h2>
   <div id="notice"></div>
-  <table>
-    <thead>
-      <tr><th>vessel</th><th>相手</th><th>状態</th><th>アクション</th></tr>
-    </thead>
-    <tbody id="connRows"><tr><td colspan="4">まだ接続記録はありません</td></tr></tbody>
-  </table>
+  <div id="connCards"></div>
 
-  <h2>軌跡</h2>
-  <p class="sub" style="font-size:12px;color:#888;margin:4px 0 8px">意志・現状・必要像の変化（再構造化ごと）と、接続の記録。</p>
+  <!-- 軌跡（§3-9 2レーン） -->
+  <h2 class="mp-h">軌跡<span class="en">TRAJECTORY</span></h2>
+  <p class="mp-blkcap">自分の変化と、接続の記録。</p>
   <div id="timeline"><span class="muted">読み込み中…</span></div>
+  <p class="mp-lanenote">並び順は時間順であり、因果ではありません。</p>
 
-</div>
+</main>
 
 <script>
 const params = new URLSearchParams(location.search);
@@ -147,7 +260,7 @@ async function init() {
 
   if (!profileRes.ok) {
     document.getElementById("loading").innerHTML =
-      `<span style="color:#c00">プロフィール "${myId}" が見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
+      `<span style="color:#c00">プロフィール "${escHtml(myId)}" が見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
     return;
   }
 
@@ -156,7 +269,10 @@ async function init() {
 
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display    = "block";
-  document.getElementById("pageTitle").textContent = myId;
+
+  // §3-4 表示名 → 現状 display_name フィールドは存在しないため ID にフォールバック（§6-1 で報告）。
+  document.getElementById("mpTitle").textContent  = myId;
+  document.getElementById("mpHandle").textContent = `${myId} ・ マイページ`;
   document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
 
   renderProfileView(pv);
@@ -166,65 +282,147 @@ async function init() {
   loadTimeline(myId, myId);  // 軌跡（本人ビュー）
 }
 
-/* 軌跡: スナップショット＋接続の事実を時系列表示。本人は根拠まで＋伏せトグル。
-   接続は成立/終了の「事実」のみ（理由は無い）。数値はUIに出さない（指示書11 §4-4 継承）。 */
-function tlDate(at) { return at ? new Date(at).toLocaleDateString("ja-JP") : ""; }
-function tlConnLabel(ev) {
-  return ev === "established" ? "接続成立" : (ev === "ended" ? "接続終了" : escHtml(ev || ""));
-}
-async function loadTimeline(userId, viewer) {
-  const el = document.getElementById("timeline");
-  if (!el) return;
-  let data;
-  try {
-    const q = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
-    data = await (await fetch(`/api/timeline/${encodeURIComponent(userId)}${q}`)).json();
-  } catch (e) { el.innerHTML = `<span class="muted">軌跡を読み込めませんでした。</span>`; return; }
-  const items = (data && data.items) || [];
-  if (!items.length) {
-    el.innerHTML = `<span class="muted">まだ軌跡はありません（再構造化・接続で増えます）。</span>`;
-    return;
+/* ══ プロフィール本体 ══════════════════════════════════════════════ */
+function renderProfileView(pv) {
+  const container = document.getElementById("profileBlock");
+  if (pv.schema_version === "v4") {
+    container.innerHTML = renderV4(pv);
+  } else {
+    container.innerHTML = renderV3(pv);
   }
-  const owner = data.viewer_role === "owner";
-  el.innerHTML = items.map(it => {
-    const d = tlDate(it.at);
-    if (it.kind === "connection") {
-      const other = it.other || "?";
-      return `<div class="tl-item tl-conn"><span class="tl-date">${escHtml(d)}</span>
-        <span class="tl-body"><a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${tlConnLabel(it.event)}</span></div>`;
-    }
-    if (it.hidden) {
-      return `<div class="tl-item tl-snap"><span class="tl-date">${escHtml(d)}</span>
-        <div class="tl-body"><span class="muted">この時点の内容は非公開です</span></div></div>`;
-    }
-    const will = it.will_text ? `<div class="tl-sub"><b>意志:</b> ${escHtml(it.will_text)}</div>` : "";
-    const nec  = it.necessity_text ? `<div class="tl-sub"><b>必要としている相手:</b> ${escHtml(it.necessity_text)}</div>` : "";
-    const ev   = it.evidence_span ? `<div class="tl-sub" style="color:#888"><b>根拠:</b> ${escHtml(it.evidence_span)}</div>` : "";
-    let toggle = "";
-    if (owner && it.snapshot_id) {
-      toggle = `<div class="tl-sub"><label style="font-size:12px;color:#666">
-        <input type="checkbox" ${it.vulnerable_hidden ? "checked" : ""}
-          onchange="toggleHidden('${it.snapshot_id}', this.checked, this)">
-        この時点の内容を他の人に見せない（接続の成立/終了の事実は残ります）</label></div>`;
-    }
-    return `<div class="tl-item tl-snap"><span class="tl-date">${escHtml(d)}</span>
-      <div class="tl-body"><details><summary>プロフィールを更新</summary>${will}${nec}${ev}${toggle}</details></div></div>`;
+}
+
+/* ── v4.3 レイアウト（案C）: 背景 → 意志 → 現状 → 転回点 → 足りないもの → 本人より ── */
+function renderV4(pv) {
+  let h = "";
+
+  // 背景（冒頭・小）。無ければ headline にフォールバック
+  const bg = pv.background || pv.headline || "";
+  h += `<p class="mp-cap">背景</p><p class="mp-lead">${escHtml(bg || "—")}</p>`;
+
+  // ── 意志 ──（本人ビューは空欄を「—」で見せてよい：§3-10）
+  h += `<h2 class="mp-h">意志<span class="en">WILL</span></h2>`;
+  h += `<p class="mp-blkcap">どこへ向かい、なぜそう考えるに至ったか。</p>`;
+  h += mpItem("いま目指していること", pv.will_where || pv.pursuing);
+  h += mpItem("その根にある捉え方", pv.will_why);
+  h += mpItem("そう考えるに至った経験", pv.will_origin);
+
+  // ── 現状（背骨）── 縛られているものは転回点へ抜くので含めない
+  h += `<h2 class="mp-h">現状<span class="en">STATE</span></h2>`;
+  h += `<p class="mp-blkcap">いま手にしているもの。</p>`;
+  h += `<div class="mp-spine">`;
+  h += `<div class="mp-item"><div class="mp-lb">持っているもの</div>${holdsHtml(pv.state_have)}</div>`;
+  h += mpItem("繰り返し現れる固有の型", pv.state_can_type);
+  h += mpItem("その他", pv.state_unsorted);
+  h += `</div>`;
+
+  // ── 転回点（縛られているもの）── constraint が空なら丸ごと出さない（§3-6）
+  const constraint = (pv.state_bound || "").trim();
+  if (constraint) {
+    h += `<div class="mp-pivot">
+      <div class="mp-lb">縛られているもの</div>
+      <p class="mp-body">${escHtml(constraint)}</p>
+      <span class="mp-turn">── だから、他者が必要 ──</span>
+    </div>
+    <div class="mp-down">▼</div>`;
+  }
+
+  // ── 足りないもの ──
+  h += `<h2 class="mp-h">足りないもの<span class="en">GAP</span></h2>`;
+  h += `<p class="mp-blkcap">次に踏む一歩と、そのために必要な相手。</p>`;
+  h += `<div class="mp-item"><div class="mp-lb">次の一歩</div>${stepsHtml(pv.trajectory)}</div>`;
+  const seekingText = (pv.seeking && pv.seeking !== "未取得") ? pv.seeking : "";
+  h += `<div class="mp-item"><div class="mp-lb">求めている<span class="by">本人の言葉</span></div>
+    <p class="mp-body">${escHtml(seekingText || "—")}</p></div>`;
+
+  // ── 本人より（自由記述・編集可）──
+  h += freeTextEditor(pv.free_text || "");
+  return h;
+}
+
+function mpItem(label, val) {
+  return `<div class="mp-item"><div class="mp-lb">${escHtml(label)}</div>
+    <p class="mp-body">${escHtml(val || "—")}</p></div>`;
+}
+
+/* §3-3 「持っているもの」を表示時に分割して箇条書きに。保存内容（state_json）は不変。
+   全角「／」半角「/」の両方で分割し、前後空白と末尾の句点を落とし、空要素は捨てる。
+   区切りが無ければ1要素のリストになる。 */
+function splitHolds(s) {
+  return String(s || "")
+    .split(/[／/]/)
+    .map(x => x.trim().replace(/。+$/, "").trim())
+    .filter(x => x.length);
+}
+function holdsHtml(s) {
+  const items = splitHolds(s);
+  if (!items.length) return `<p class="mp-body">—</p>`;
+  return `<ul class="mp-holds">${items.map(i => `<li>${escHtml(i)}</li>`).join("")}</ul>`;
+}
+
+/* 次の一歩: trajectory の {from,to} を 目標/必要 の対に。to が空なら必要行を出さない（§6-6）。 */
+function stepsHtml(trajectory) {
+  if (!trajectory || !trajectory.length) return `<p class="mp-body">—</p>`;
+  return trajectory.map(t => {
+    const goal = escHtml(t.from || "");
+    const need = (t.to || "").trim();
+    return `<div class="mp-step">
+      <div class="mp-goal">目標：${goal}</div>
+      ${need ? `<div class="mp-need">${escHtml(need)}</div>` : ""}
+    </div>`;
   }).join("");
 }
 
-/* 脆弱な時点を第三者に伏せる/戻す（消さない・当事者相手には見える）。 */
-async function toggleHidden(sid, hidden, cb) {
-  try {
-    const r = await fetch(`/api/snapshot/${encodeURIComponent(sid)}/visibility`, {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ id: myId, hidden }),
-    });
-    if (!r.ok) throw new Error();
-  } catch (e) { cb.checked = !hidden; alert("変更に失敗しました"); }
+function freeTextEditor(val) {
+  return `<h2 class="mp-h">本人より<span class="en">本人の言葉</span></h2>
+    <p class="mp-blkcap">AIは生成にも編集にも関与しません。</p>
+    <textarea id="freeText" placeholder="自己紹介や補足を自由に書けます">${escHtml(val)}</textarea>
+    <p class="mp-tiny">ここに書いた内容は、そのまま公開プロフィールに表示されます。</p>
+    <button class="mp-btn" onclick="saveFreeText()">「本人より」を保存</button>
+    <span id="freeMsg" style="font-size:12px;margin-left:8px"></span>`;
 }
 
-/* 本人の必要像（necessity_text＋根拠 evidence_span）を表示。数値は出さない（指示書11 §4-4）。
-   公開条件に関わらず本人には見せる。necessity が無ければ非表示。 */
+/* 自由記述の保存。既存 overrides を取得してマージ（headline/keys/trajectory を消さない）。
+   view_overrides は表示専用のため、必要像・ベクトルの再生成は走らない。 */
+async function saveFreeText() {
+  const msg = document.getElementById("freeMsg");
+  msg.className = ""; msg.textContent = "保存中…";
+  try {
+    const cur = await fetch(`/api/profile/${encodeURIComponent(myId)}/edit`).then(r => r.json());
+    const overrides = (cur && cur.overrides) || {};
+    overrides.free_text = document.getElementById("freeText").value;
+    const res = await fetch(`/api/profile/${encodeURIComponent(myId)}/overrides`, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ overrides }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.status);
+    msg.className = "ok"; msg.textContent = "✅ 保存しました";
+  } catch (e) {
+    msg.className = "err"; msg.textContent = "保存に失敗: " + e;
+  }
+}
+
+/* ── v3 後方互換レイアウト（旧スキーマのプロフィールのみ） ── */
+function renderV3(pv) {
+  let h = "";
+  if (pv.headline) h += `<p class="mp-lead">${escHtml(pv.headline)}</p>`;
+  const badge = pv.phase_badge || {};
+  if (badge.value) {
+    h += `<div class="phase-badge">
+      <span class="phase-tag">${escHtml(badge.value)}</span>
+      ${badge.unconfirmed ? '<span class="phase-unconfirmed">AI推定・未確定</span>' : ""}
+    </div>`;
+  }
+  h += `<div class="triangle-block">
+    <div class="tri-item"><span class="tri-label">意志</span><p class="tri-text">${escHtml(pv.pursuing || "—")}</p></div>
+    <div class="tri-item"><span class="tri-label">求めている</span><p class="tri-text">${escHtml(pv.needs || "—")}</p></div>
+    <div class="tri-item"><span class="tri-label">能力</span><p class="tri-text">${escHtml(pv.offering || "—")}</p></div>
+  </div>`;
+  h += freeTextEditor(pv.free_text || "");
+  return h;
+}
+
+/* ══ 必要像（本人のみ・数値は出さない：指示書11 §4-4） ══════════════ */
 async function loadOwnerNecessity(id) {
   const el = document.getElementById("ownNecessity");
   if (!el) return;
@@ -236,18 +434,17 @@ async function loadOwnerNecessity(id) {
   } catch (e) { el.style.display = "none"; return; }
   if (!nec || !nec.necessity_text) { el.style.display = "none"; return; }
   const ev = (nec.evidence_span || "").trim();
-  el.innerHTML = `<section class="pblock">
-    <div class="block-heading">あなたの必要像 <span class="ai-note">AIによる推定・自分だけに表示</span></div>
-    <p class="slot-text">${escHtml(nec.necessity_text)}</p>
-    ${ev ? `<div class="slot" style="margin-top:8px">
-      <span class="slot-label">この必要像の根拠（あなたの言葉から）</span>
-      <p class="slot-text">${escHtml(ev)}</p></div>` : ""}
-  </section>`;
+  el.innerHTML = `<div class="mp-needblock">
+    <h2 class="mp-h">あなたの必要像<span class="en">自分だけに表示</span></h2>
+    <p class="mp-blkcap">AIがあなたの言葉から推定した、あなたに必要な相手の像。</p>
+    <p class="mp-body">${escHtml(nec.necessity_text)}</p>
+    ${ev ? `<div class="mp-lb">この推定の根拠（あなたの言葉から）</div>
+      <p class="mp-evi">${escHtml(ev)}</p>` : ""}
+  </div>`;
   el.style.display = "block";
 }
 
-/* 照合の準備状態を本人のマイページにのみ表示（指示書08 §3-4）。
-   v4未登録・非Postgres・エラー時は黙って非表示にし、ページを壊さない。 */
+/* ══ 照合の準備状態（指示書08 §3-4。本改修の対象外・枠のみ .mypage に載せる） ══ */
 async function loadV4Status(id) {
   const el = document.getElementById("v4Status");
   if (!el) return;
@@ -279,153 +476,16 @@ async function loadV4Status(id) {
   el.style.display = "block";
 }
 
-function renderProfileView(pv) {
-  const container = document.getElementById("profileBlock");
-  if (pv.schema_version === "v4") {
-    container.innerHTML = renderV4(pv);
-  } else {
-    let html = "";
-    if (pv.headline) html += `<p class="headline-text">${escHtml(pv.headline)}</p>`;
-    container.innerHTML = html + renderV3(pv);
-  }
-}
-
-/* ── v4.3 レイアウト: 背景 → 意志 → 現状 → 足りないもの → 本人より ── */
-function renderV4(pv) {
-  let h = "";
-
-  // 背景（マイページでは小さく・冒頭）。無ければ headline にフォールバック
-  const bg = pv.background || pv.headline || "";
-  if (bg) h += `<p class="bg-text">${escHtml(bg)}</p>`;
-
-  // ブロック1「意志」— 上から下へ一段ずつ深く（順序固定）
-  const willWhere = pv.will_where || pv.pursuing || "";
-  h += `<section class="pblock"><div class="block-heading">意志</div>`;
-  h += tierHtml("いま目指していること", willWhere);
-  if (pv.will_why)    h += tierHtml("その根にある捉え方", pv.will_why);
-  if (pv.will_origin) h += tierHtml("そう考えるに至った経験", pv.will_origin);
-  h += `</section>`;
-
-  // ブロック2「現状」— 縦積み
-  const slots = [
-    ["持っているもの", pv.state_have],
-    ["繰り返し現れる固有の型", pv.state_can_type],
-    ["縛られているもの", pv.state_bound],
-  ];
-  if (slots.some(s => s[1]) || pv.state_unsorted) {
-    h += `<section class="pblock"><div class="block-heading">現状</div>`;
-    for (const [label, val] of slots) h += slotHtml(label, val || "—");
-    if (pv.state_unsorted) h += slotHtml("その他", pv.state_unsorted);  // 空なら非表示
-    h += `</section>`;
-  }
-
-  // ブロック3「足りないもの」— 常時表示（折りたたまない）
-  const seekingText = (pv.seeking && pv.seeking !== "未取得") ? pv.seeking : "";
-  h += `<section class="pblock"><div class="block-heading">足りないもの</div>`;
-  h += `<div class="slot"><span class="slot-label">次の一歩</span>${trajInlineHtml(pv.trajectory)}</div>`;
-  h += slotHtml("求めている", seekingText || "—");
-  h += `</section>`;
-
-  // ブロック4「本人より」— 自由記述（所有者のマイページは編集可）
-  h += freeTextEditor(pv.free_text || "");
-  return h;
-}
-
-function tierHtml(label, val) {
-  return `<div class="tier"><span class="tier-label">${escHtml(label)}</span>
-    <p class="tier-text">${escHtml(val || "—")}</p></div>`;
-}
-function slotHtml(label, val) {
-  return `<div class="slot"><span class="slot-label">${escHtml(label)}</span>
-    <p class="slot-text">${escHtml(val)}</p></div>`;
-}
-function trajInlineHtml(trajectory) {
-  if (!trajectory || !trajectory.length) return `<p class="slot-text">—</p>`;
-  return trajectory.map(t => `<div class="traj-item">
-    <span class="traj-from">${escHtml(t.from)}</span>
-    <span class="traj-arrow">→</span>
-    <span class="traj-to">${escHtml(t.to)}</span>
-  </div>`).join("");
-}
-
-function freeTextEditor(val) {
-  return `<section class="pblock"><div class="block-heading">本人より</div>
-    <textarea id="freeText" class="freetext-area"
-      placeholder="自己紹介や補足を自由に書けます（AIは生成にも編集にも関与しません）">${escHtml(val)}</textarea>
-    <div class="freetext-note">※ ここに書いた内容は、そのまま公開プロフィールに表示されます。</div>
-    <button class="sm" onclick="saveFreeText()">「本人より」を保存</button>
-    <span id="freeMsg" style="font-size:12px;margin-left:8px"></span>
-  </section>`;
-}
-
-/* 自由記述の保存。既存 overrides を取得してマージ（headline/keys/trajectory を消さない）。
-   view_overrides は表示専用のため、必要像・ベクトルの再生成は走らない。 */
-async function saveFreeText() {
-  const msg = document.getElementById("freeMsg");
-  msg.className = ""; msg.textContent = "保存中…";
-  try {
-    const cur = await fetch(`/api/profile/${encodeURIComponent(myId)}/edit`).then(r => r.json());
-    const overrides = (cur && cur.overrides) || {};
-    overrides.free_text = document.getElementById("freeText").value;
-    const res = await fetch(`/api/profile/${encodeURIComponent(myId)}/overrides`, {
-      method: "PUT", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ overrides }),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.status);
-    msg.className = "ok"; msg.textContent = "✅ 保存しました";
-  } catch (e) {
-    msg.className = "err"; msg.textContent = "保存に失敗: " + e;
-  }
-}
-
-/* ── v3 後方互換レイアウト（現状維持）── */
-function renderV3(pv) {
-  let h = "";
-  const badge = pv.phase_badge || {};
-  if (badge.value) {
-    h += `<div class="phase-badge">
-      <span class="phase-tag">${escHtml(badge.value)}</span>
-      ${badge.unconfirmed ? '<span class="phase-unconfirmed">AI推定・未確定</span>' : ""}
-    </div>`;
-  }
-  h += `<div class="triangle-block">
-    <div class="tri-item"><span class="tri-label">意志</span><p class="tri-text">${escHtml(pv.pursuing || "—")}</p></div>
-    <div class="tri-item"><span class="tri-label">求めている</span><p class="tri-text">${escHtml(pv.needs || "—")}</p></div>
-    <div class="tri-item"><span class="tri-label">能力</span><p class="tri-text">${escHtml(pv.offering || "—")}</p></div>
-  </div>`;
-  const hasDetail = (pv.keys && pv.keys.length) || (pv.trajectory && pv.trajectory.length);
-  if (hasDetail) {
-    h += `<details class="detail-block"><summary>注目ポイント・軌跡を見る</summary>
-      <div class="detail-inner">${buildKeysHtml(pv.keys)}${buildTrajHtml(pv.trajectory)}</div></details>`;
-  }
-  return h;
-}
-
-function buildKeysHtml(keys) {
-  if (!keys || !keys.length) return "";
-  return `<div><div class="keys-label">注目ポイント</div>
-    <div class="key-tags">${keys.map(k => `<span class="key-tag">${escHtml(k)}</span>`).join("")}</div></div>`;
-}
-
-function buildTrajHtml(trajectory) {
-  if (!trajectory || !trajectory.length) return "";
-  return `<div><div class="traj-label">現在の軌跡</div>
-    ${trajectory.map(t => `<div class="traj-item">
-      <span class="traj-from">${escHtml(t.from)}</span>
-      <span class="traj-arrow">→</span>
-      <span class="traj-to">${escHtml(t.to)}</span>
-    </div>`).join("")}</div>`;
-}
-
+/* ══ 接続（§3-8 カード化。空状態は「つながる」への導線） ══════════════ */
 function renderConnections(vessels, myId) {
   const mine = vessels;   // サーバー側（/api/my/vessels）で当事者分に絞り込み済み
-  const tbody = document.getElementById("connRows");
+  const el = document.getElementById("connCards");
   if (!mine.length) {
-    tbody.innerHTML = "<tr><td colspan='4'>まだ接続記録はありません</td></tr>";
+    el.innerHTML = `<p class="mp-empty">まだ接続はありません。<a href="/connect">「つながる」</a>から相手を探せます。</p>`;
     return;
   }
 
-  tbody.innerHTML = mine.map(v => {
+  el.innerHTML = mine.map(v => {
     const j        = v.joins[0] || {};
     const other    = v.founder === myId ? (j.joiner || "-") : v.founder;
     const approvers = new Set((j.approvals || []).map(a => a.from));
@@ -440,24 +500,23 @@ function renderConnections(vessels, myId) {
     } else if (!iApproved && theyApproved) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
-      action = `<button class="sm" onclick="doApprove('${eid}')">承認する</button>`;
+      action = `<button class="mp-btn" onclick="doApprove('${eid}')">承認する</button>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
     }
 
     const dmHref = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(other)}`;
-    const otherLink = other !== "-"
-      ? `<a href="/profile/${encodeURIComponent(other)}" style="font-family:monospace">${escHtml(other)}</a>`
+    const otherCell = other !== "-"
+      ? `<a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a>
+         <a href="${dmHref}" style="margin-left:10px;font-size:12px;color:#1f3a5f">DM →</a>`
       : "-";
-    const dmBtn = other !== "-"
-      ? `<a href="${dmHref}" style="margin-left:8px;font-size:12px;color:#1a3a5c">DM →</a>`
-      : "";
-    return `<tr>
-      <td><code style="font-size:11px">${escHtml(v.vessel_id)}</code></td>
-      <td>${otherLink}${dmBtn}</td>
-      <td>${badge}</td>
-      <td>${action}</td>
-    </tr>`;
+
+    return `<div class="mp-card">
+      <div class="row"><span class="k">相手</span><span>${otherCell}</span></div>
+      <div class="row"><span class="k">状態</span><span>${badge}</span></div>
+      <div class="row"><span class="k">vessel</span><span><code style="font-size:11px">${escHtml(v.vessel_id)}</code></span></div>
+      ${action ? `<div class="row"><span class="k">操作</span><span>${action}</span></div>` : ""}
+    </div>`;
   }).join("");
 }
 
@@ -478,6 +537,73 @@ async function doApprove(otherId) {
   }
   const ledgerRes = await fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`);
   renderConnections(await ledgerRes.json(), myId);
+}
+
+/* ══ 軌跡（§3-9 2レーン）══════════════════════════════════════════
+   「自分の変化」と「接続」を並走させる。中身の描画は指示書12 の timeline に従い、
+   接続は成立/終了の「事実」のみ（理由は無い）。数値はUIに出さない（指示書11 §4-4 継承）。
+   注記「並び順は時間順であり、因果ではありません」は静的HTMLに固定。 */
+function tlDate(at) { return at ? new Date(at).toLocaleDateString("ja-JP") : ""; }
+function tlConnLabel(ev) {
+  return ev === "established" ? "接続成立" : (ev === "ended" ? "接続終了" : escHtml(ev || ""));
+}
+async function loadTimeline(userId, viewer) {
+  const el = document.getElementById("timeline");
+  if (!el) return;
+  let data;
+  try {
+    const q = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
+    data = await (await fetch(`/api/timeline/${encodeURIComponent(userId)}${q}`)).json();
+  } catch (e) { el.innerHTML = `<span class="muted">軌跡を読み込めませんでした。</span>`; return; }
+
+  const items = (data && data.items) || [];
+  const owner = data.viewer_role === "owner";
+  const changeLane = [];
+  const connLane   = [];
+
+  for (const it of items) {
+    const d = tlDate(it.at);
+    if (it.kind === "connection") {
+      const other = it.other || "?";
+      connLane.push(`<div class="mp-tl"><span class="d">${escHtml(d)}</span>
+        <a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${tlConnLabel(it.event)}</div>`);
+      continue;
+    }
+    // snapshot（自分の変化レーン）
+    if (it.hidden) {
+      changeLane.push(`<div class="mp-tl"><span class="d">${escHtml(d)}</span>
+        <span class="muted">この時点の内容は非公開です</span></div>`);
+      continue;
+    }
+    const will = it.will_text ? `<div class="sub"><b>意志:</b> ${escHtml(it.will_text)}</div>` : "";
+    const nec  = it.necessity_text ? `<div class="sub"><b>必要としている相手:</b> ${escHtml(it.necessity_text)}</div>` : "";
+    const ev   = it.evidence_span ? `<div class="sub ev"><b>根拠:</b> ${escHtml(it.evidence_span)}</div>` : "";
+    let toggle = "";
+    if (owner && it.snapshot_id) {
+      toggle = `<div class="sub"><label style="font-size:11.5px;color:#666">
+        <input type="checkbox" ${it.vulnerable_hidden ? "checked" : ""}
+          onchange="toggleHidden('${it.snapshot_id}', this.checked, this)">
+        この時点の内容を他の人に見せない</label></div>`;
+    }
+    changeLane.push(`<div class="mp-tl"><span class="d">${escHtml(d)}</span>
+      <details><summary>プロフィールを更新</summary>${will}${nec}${ev}${toggle}</details></div>`);
+  }
+
+  el.innerHTML = `<div class="mp-lanes">
+    <div class="mp-lane"><h4>自分の変化</h4>${changeLane.length ? changeLane.join("") : "<p>まだありません</p>"}</div>
+    <div class="mp-lane"><h4>接続</h4>${connLane.length ? connLane.join("") : "<p>まだありません</p>"}</div>
+  </div>`;
+}
+
+/* 脆弱な時点を第三者に伏せる/戻す（消さない・当事者相手には見える）。 */
+async function toggleHidden(sid, hidden, cb) {
+  try {
+    const r = await fetch(`/api/snapshot/${encodeURIComponent(sid)}/visibility`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ id: myId, hidden }),
+    });
+    if (!r.ok) throw new Error();
+  } catch (e) { cb.checked = !hidden; alert("変更に失敗しました"); }
 }
 
 function escHtml(s) {

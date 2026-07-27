@@ -166,35 +166,61 @@ async function init() {
   loadTimeline(myId, myId);  // 軌跡（本人ビュー）
 }
 
-/* 軌跡: スナップショット＋接続イベントを時系列表示。数値は表示しない（指示書11 §4-4 継承）。 */
+/* 軌跡: スナップショット＋接続の事実を時系列表示。本人は根拠まで＋伏せトグル。
+   接続は成立/終了の「事実」のみ（理由は無い）。数値はUIに出さない（指示書11 §4-4 継承）。 */
+function tlDate(at) { return at ? new Date(at).toLocaleDateString("ja-JP") : ""; }
+function tlConnLabel(ev) {
+  return ev === "established" ? "接続成立" : (ev === "ended" ? "接続終了" : escHtml(ev || ""));
+}
 async function loadTimeline(userId, viewer) {
   const el = document.getElementById("timeline");
   if (!el) return;
   let data;
   try {
     const q = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
-    const r = await fetch(`/api/timeline/${encodeURIComponent(userId)}${q}`);
-    data = await r.json();
+    data = await (await fetch(`/api/timeline/${encodeURIComponent(userId)}${q}`)).json();
   } catch (e) { el.innerHTML = `<span class="muted">軌跡を読み込めませんでした。</span>`; return; }
   const items = (data && data.items) || [];
   if (!items.length) {
     el.innerHTML = `<span class="muted">まだ軌跡はありません（再構造化・接続で増えます）。</span>`;
     return;
   }
+  const owner = data.viewer_role === "owner";
   el.innerHTML = items.map(it => {
-    const d = it.at ? new Date(it.at).toLocaleDateString("ja-JP") : "";
+    const d = tlDate(it.at);
     if (it.kind === "connection") {
-      const label = it.event === "connected" ? "接続成立" : escHtml(it.event || "");
       const other = it.other || "?";
       return `<div class="tl-item tl-conn"><span class="tl-date">${escHtml(d)}</span>
-        <span class="tl-body"><a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${label}</span></div>`;
+        <span class="tl-body"><a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${tlConnLabel(it.event)}</span></div>`;
+    }
+    if (it.hidden) {
+      return `<div class="tl-item tl-snap"><span class="tl-date">${escHtml(d)}</span>
+        <div class="tl-body"><span class="muted">この時点の内容は非公開です</span></div></div>`;
     }
     const will = it.will_text ? `<div class="tl-sub"><b>意志:</b> ${escHtml(it.will_text)}</div>` : "";
     const nec  = it.necessity_text ? `<div class="tl-sub"><b>必要としている相手:</b> ${escHtml(it.necessity_text)}</div>` : "";
     const ev   = it.evidence_span ? `<div class="tl-sub" style="color:#888"><b>根拠:</b> ${escHtml(it.evidence_span)}</div>` : "";
+    let toggle = "";
+    if (owner && it.snapshot_id) {
+      toggle = `<div class="tl-sub"><label style="font-size:12px;color:#666">
+        <input type="checkbox" ${it.vulnerable_hidden ? "checked" : ""}
+          onchange="toggleHidden('${it.snapshot_id}', this.checked, this)">
+        この時点の内容を他の人に見せない（接続の成立/終了の事実は残ります）</label></div>`;
+    }
     return `<div class="tl-item tl-snap"><span class="tl-date">${escHtml(d)}</span>
-      <div class="tl-body"><details><summary>プロフィールを更新</summary>${will}${nec}${ev}</details></div></div>`;
+      <div class="tl-body"><details><summary>プロフィールを更新</summary>${will}${nec}${ev}${toggle}</details></div></div>`;
   }).join("");
+}
+
+/* 脆弱な時点を第三者に伏せる/戻す（消さない・当事者相手には見える）。 */
+async function toggleHidden(sid, hidden, cb) {
+  try {
+    const r = await fetch(`/api/snapshot/${encodeURIComponent(sid)}/visibility`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ id: myId, hidden }),
+    });
+    if (!r.ok) throw new Error();
+  } catch (e) { cb.checked = !hidden; alert("変更に失敗しました"); }
 }
 
 /* 本人の必要像（necessity_text＋根拠 evidence_span）を表示。数値は出さない（指示書11 §4-4）。

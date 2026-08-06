@@ -67,8 +67,9 @@ def _debug_enabled():
 
 @app.get("/")
 def index():
-    # トップはランディングページ（指示書15）。旧 index コンソールは /dev に退避（指示書09 §3-5）。
-    return render_template("landing.html")
+    # トップは「PoXとは」(about) に付け替え（指示書09 §3-5）。LP 相当の原稿は about に統合済み（指示書15）。
+    # 旧 index コンソールは /dev に退避。
+    return redirect("/about")
 
 
 @app.get("/dev")

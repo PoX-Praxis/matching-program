@@ -58,13 +58,21 @@ def test_get_seekers_returns_projection_only(monkeypatch=None):
         appmod.list_public_seeker_index = real
 
 
-def test_root_serves_landing_page():
-    # 指示書15 §4-1: / は LP を表示する（指示書09 の「/ を about に」を上書き）。
-    # 旧コンソールは /dev + POX_DEBUG ゲートのまま。
+def test_root_redirects_to_about():
+    # 指示書09 §3-5: / は /about へリダイレクト。LP 相当の原稿は about に統合（指示書15）。
     r = _client().get("/")
-    assert r.status_code == 200
-    body = r.get_data(as_text=True)
+    assert r.status_code in (301, 302)
+    assert "/about" in r.headers.get("Location", "")
+
+
+def test_about_carries_landing_copy():
+    # 指示書15: 新原稿が「PoXとは」に全面差し替えられている。
+    body = _client().get("/about").get_data(as_text=True)
     assert "まだ形になっていないことに、必要な人を。" in body
+    assert "1｜誰のためのものか" in body
+    # §3 削除対象（旧・機能紹介）が残っていない
+    assert "誰でも、どんな目的でも使えます" not in body
+    assert "コミュニティ機能" not in body
 
 
 def test_dev_console_gated_by_debug():

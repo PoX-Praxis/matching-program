@@ -2,109 +2,224 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PoXとは — PoX</title>
 <style>
-  body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #222; }
-  h1 { font-size: 1.6rem; margin-bottom: 8px; }
-  h2 { font-size: 1.1rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 36px; }
-  p { line-height: 1.7; }
-  .flow-step { display: flex; gap: 16px; align-items: flex-start; margin: 16px 0; }
-  .step-num { background: #1a3a5c; color: white; border-radius: 50%; width: 32px; height: 32px;
-              display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
-  .step-body h3 { margin: 0 0 4px; font-size: 1rem; }
-  .step-body p  { margin: 0; font-size: 14px; color: #555; }
-  .cta { text-align: center; margin: 48px 0; }
-  .cta a { background: #1a3a5c; color: white; padding: 12px 32px; border-radius: 6px;
-            text-decoration: none; font-size: 1rem; font-weight: bold; }
-  .cta a:hover { background: #2a5a8c; }
-  ul { line-height: 1.9; }
+  /* ══════════════════════════════════════════════════════════════
+     指示書15 —「PoXとは」全面差し替え。大見出し／小見出し／本文の3階層
+     （指示書14 と同じ考え方）。すべて .about 配下・ab- 接頭辞にスコープし
+     他ページへ影響しない。スマートフォン幅を基準に設計。
+     ══════════════════════════════════════════════════════════════ */
+  body{margin:0}
+
+  .about{
+    --ink:#14161a;
+    --ink2:#454b54;
+    --sub:#1f3a5f;
+    --label:#6b7280;
+    --rule:#e6e8ec;
+    --accent:#1f3a5f;
+    --accent-bg:#f5f8fa;
+
+    max-width:600px;
+    margin:0 auto;
+    padding:8px 20px 72px;
+    color:var(--ink);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+    line-height:1.9;
+  }
+
+  /* ---------- 冒頭（見出しなし） ---------- */
+  .about .ab-hero{padding:40px 0 8px}
+  .about .ab-lede{
+    font-size:26px;font-weight:700;line-height:1.5;letter-spacing:.01em;
+    margin:0 0 24px;color:var(--ink);
+  }
+  .about .ab-hero p{font-size:15.5px;line-height:1.95;color:var(--ink2);margin:0 0 16px}
+
+  /* ---------- CTA ---------- */
+  .about .ab-cta{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 8px}
+  .about .ab-btn{
+    display:inline-block;text-decoration:none;text-align:center;
+    font-size:15px;font-weight:700;letter-spacing:.04em;
+    padding:13px 26px;border-radius:6px;cursor:pointer;
+  }
+  .about .ab-btn.primary{background:var(--accent);color:#fff;border:1px solid var(--accent)}
+  .about .ab-btn.ghost{background:#fff;color:var(--accent);border:1px solid #c3ccd6}
+  .about .ab-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* ---------- セクション（大見出し） ---------- */
+  .about .ab-sec{margin:52px 0 0;padding-top:30px;border-top:1px solid var(--rule)}
+  .about .ab-h{
+    font-size:19px;font-weight:700;letter-spacing:.02em;color:var(--sub);
+    line-height:1.6;margin:0 0 22px;
+  }
+
+  /* ---------- 小見出し＋本文（3階層の下2つ） ---------- */
+  .about .ab-item{margin:0 0 26px}
+  .about .ab-item:last-child{margin-bottom:0}
+  .about .ab-subh{
+    font-size:16px;font-weight:700;line-height:1.7;color:var(--ink);margin:0 0 6px;
+  }
+  .about .ab-body{font-size:15px;line-height:1.95;color:var(--ink2);margin:0}
+
+  /* 見出しなしの締め段落 */
+  .about .ab-close{
+    font-size:15.5px;font-weight:600;line-height:1.95;color:var(--ink);
+    margin:30px 0 0;padding-left:14px;border-left:3px solid var(--accent);
+  }
+
+  /* ---------- 箇条書き（1｜誰のためのものか） ---------- */
+  .about .ab-list{list-style:none;margin:0;padding:0}
+  .about .ab-list li{
+    font-size:15.5px;line-height:1.8;color:var(--ink2);
+    padding:11px 0 11px 22px;position:relative;border-bottom:1px solid #f0f2f4;
+  }
+  .about .ab-list li:last-child{border-bottom:0}
+  .about .ab-list li::before{
+    content:"";position:absolute;left:3px;top:19px;
+    width:6px;height:6px;border-radius:50%;background:#b9c0c8;
+  }
+
+  /* ---------- 使い方の番号ステップ ---------- */
+  .about .ab-step{margin:0 0 22px}
+  .about .ab-step:last-of-type{margin-bottom:0}
+  .about .ab-step .n{font-size:16px;font-weight:700;color:var(--ink);margin:0 0 5px}
+  .about .ab-step .ab-body{font-size:15px}
+  .about .ab-note{
+    font-size:13.5px;line-height:1.9;color:#6b7280;
+    background:var(--accent-bg);border-radius:6px;padding:14px 16px;margin:26px 0 0;
+  }
+
+  /* ---------- 情報開示・なぜ作ったか ---------- */
+  .about .ab-plain{font-size:15px;line-height:1.95;color:var(--ink2);margin:0 0 14px}
+  .about .ab-plain:last-child{margin-bottom:0}
+  .about .ab-plain a{color:var(--accent);font-weight:600}
+
+  /* ---------- 末尾ブロック ---------- */
+  .about .ab-final{margin-top:52px;padding-top:30px;border-top:1px solid var(--rule)}
+  .about .ab-final .ab-plain{color:#6b7280;font-size:14px;margin-top:20px}
 </style>
 </head>
 <body>
 {% include "_nav.html" %}
 
-<h1>PoX とは</h1>
-<p>PoX（Proof of X）は、あなたの<strong>意志</strong>と<strong>現状</strong>から人を捉え、いま本当に動けるパートナーを接続するプラットフォームです。</p>
-<p>誰でも、どんな目的でも使えます。何かに向かって動いている人なら、立場も分野も問いません。</p>
+<main class="about">
 
-<p>こんな人に：</p>
-<ul>
-  <li>一緒に事業を立ち上げる共同創業者を探したい</li>
-  <li>作品を共同制作する相手を見つけたい</li>
-  <li>次のキャリアで組みたい人と出会いたい</li>
-  <li>研究やプロジェクトの協力者がほしい</li>
-</ul>
-<p>…など、「次の状態へ進むために、誰かと組みたい」すべての人に。</p>
+  <!-- ── 冒頭（見出しなし） ── -->
+  <section class="ab-hero">
+    <p class="ab-lede">まだ形になっていないことに、必要な人を。</p>
+    <p>PoX（Proof of X）は、一緒に動く相手を見つけるためのサービスです。あなたが何を目指し、どこに立っているかから、いま必要な相手を探します。</p>
+    <p>いつも使っている ChatGPT や Claude に、少し話すだけ。<br>書き方も、探す相手も、考えなくていい。</p>
+    <div class="ab-cta">
+      <a class="ab-btn primary" href="/register">はじめる</a>
+      <a class="ab-btn ghost" href="#how">どう動くか見る</a>
+    </div>
+  </section>
 
-<h2>PoX でできること</h2>
+  <!-- ── 1｜誰のためのものか ── -->
+  <section class="ab-sec">
+    <h2 class="ab-h">1｜誰のためのものか</h2>
+    <ul class="ab-list">
+      <li>共同創業者を探している人</li>
+      <li>立ち上げたばかりで、次に誰が要るか決めかねている人</li>
+      <li>分野をまたいで組みたい人</li>
+      <li>抱えている問題を解ける人が、どこかにいるはずだと思っている人</li>
+      <li>手を組む相手が要るが、その相手を何と呼べばいいか分からない人</li>
+    </ul>
+  </section>
 
-<p><strong>自分を言葉にしなくていい</strong><br>
-AIがインタビューして、あなたを構造化してくれます。気の利いた自己PRを書く必要はありません。</p>
+  <!-- ── 2｜これまで、なぜ届かなかったのか ── -->
+  <section class="ab-sec">
+    <h2 class="ab-h">2｜これまで、なぜ届かなかったのか</h2>
+    <div class="ab-item">
+      <p class="ab-subh">探せるのは、名前を知っているものだけです。</p>
+      <p class="ab-body">検索は、誰を探すかを先に決めてから使う道具。向かう先が分かっていることと、そのために誰が必要かが分かっていることは、別のことです。</p>
+    </div>
+    <div class="ab-item">
+      <p class="ab-subh">差し出されるのは、記録に残っている人だけです。</p>
+      <p class="ab-body">これまでのマッチングが照らし合わせているのは、経歴、実績、成立してきた組み合わせ——すべて過去形です。</p>
+    </div>
+    <div class="ab-item">
+      <p class="ab-subh">そして、うまく書けた人だけが機能します。</p>
+      <p class="ab-body">自分を的確に説明できる人ほど、良い相手に届きます。同じ経験を持っていても、書き方ひとつで結果が変わる。</p>
+    </div>
+    <p class="ab-close">だから、やろうとしていることが新しいほど、どれも効かなくなる。いちばん人を必要としているときに、いちばん届かない。</p>
+  </section>
 
-<p><strong>「合う理由」で繋がれる</strong><br>
-肩書きやフォロワー数ではなく、向かいたい先と今の状況が噛み合う相手と出会えます。</p>
+  <!-- ── 3｜PoX が扱うのは、過去ではなく、向かう先です ── -->
+  <section class="ab-sec">
+    <h2 class="ab-h">3｜PoX が扱うのは、過去ではなく、向かう先です</h2>
+    <div class="ab-item">
+      <p class="ab-subh">書く力は、要りません</p>
+      <p class="ab-body">用意されたプロンプトを、お使いの AI に渡すだけ。問いに答えていけば、意志と現状が形になります。あなたのことをよく知っている AI ほど、深く引き出せます。</p>
+    </div>
+    <div class="ab-item">
+      <p class="ab-subh">「誰が要るか」も、書かなくていい</p>
+      <p class="ab-body">何に向かっているかが分かれば、必要な相手の像は PoX が導き出します。探す負担は、あなたの側にありません。</p>
+    </div>
+    <div class="ab-item">
+      <p class="ab-subh">似ている人ではなく、噛み合う人</p>
+      <p class="ab-body">肩書きや業界で絞り込まないので、自分では探しに行かなかったであろう相手も候補に入ります。</p>
+    </div>
+    <div class="ab-item">
+      <p class="ab-subh">すぐに見つからなくても、消えません</p>
+      <p class="ab-body">あなたの「足りないもの」は残り続け、後から現れた人にも届きます。</p>
+    </div>
+    <div class="ab-item">
+      <p class="ab-subh">満たせないときは、そう言います</p>
+      <p class="ab-body">無理に近い人を出しません。何が足りていないかが分かります。</p>
+    </div>
+    <div class="ab-item">
+      <p class="ab-subh">決めるのは、あなたです</p>
+      <p class="ab-body">両方が承認して初めて、つながります。片方だけでは成立しません。</p>
+    </div>
+  </section>
 
-<p><strong>一方通行で終わらない</strong><br>
-相互に承認した相手とだけ繋がります。売り込みDMの山に埋もれません。</p>
+  <!-- ── 4｜使い方 ── -->
+  <section class="ab-sec" id="how">
+    <h2 class="ab-h">4｜使い方</h2>
+    <div class="ab-step">
+      <p class="n">① プロンプトをコピーする</p>
+      <p class="ab-body">PoX が用意した質問セットです。</p>
+    </div>
+    <div class="ab-step">
+      <p class="n">② お使いの AI に渡して、答える</p>
+      <p class="ab-body">ChatGPT でも Claude でも構いません。3分ほどの対話で、あなたのプロフィールが出力されます。</p>
+    </div>
+    <div class="ab-step">
+      <p class="n">③ 貼り付ける</p>
+      <p class="ab-body">出力をそのまま PoX へ。内容は自分で確認・修正できます。</p>
+    </div>
+    <div class="ab-step">
+      <p class="n">④ 受け取って、承認する</p>
+      <p class="ab-body">必要な相手の像が導き出され、噛み合う人が差し出されます。両方が承認したら、つながります。</p>
+    </div>
+    <p class="ab-note">AI をお使いでない方は、PoX 上でも同じ質問に答えられます。</p>
+  </section>
 
-<h2>従来のマッチングと何が違うか</h2>
-<p>経歴や肩書き、キーワード検索で人を探す仕組みは、「その人が過去に何をしたか」で繋ぎます。PoX が見るのは、<strong>どこへ向かいたいか（意志）</strong>と、<strong>いま何を持ち、何に縛られているか（現状）</strong>。だから「実績は地味でも、今まさに動ける相手」が見つかります。</p>
-<p>固定された肩書きやステータスではなく、いまのあなたそのもので照合される。これが PoX の違いです。</p>
+  <!-- ── 5｜差し出す情報について ── -->
+  <section class="ab-sec">
+    <h2 class="ab-h">5｜差し出す情報について</h2>
+    <p class="ab-plain">必要な相手の像は、ほかの利用者にも見えます。接続した記録は消せません。</p>
+    <p class="ab-plain">詳しくは<a href="/privacy">プライバシーポリシー</a>をご確認ください。</p>
+  </section>
 
-<h2>接続の仕組み</h2>
-<p>PoX は、あなたの意志と現状から「いま必要な相手の像」を推論します。これはあなたが書くものではなく、システムが導きます。</p>
-<p>その像をもとに、候補者を照合します。志が響き合う相手（共鳴）、足りないものを補い合う相手（補完）、その両方を満たす相手。あなたが相手に「同じ志」まで求めているのか、「できること」だけを求めているのかも、語りの中から汲み取られます。</p>
-<p>単なる人脈交換ではなく、<strong>相互承認によって初めて接続が成立</strong>する。これが PoX の核心です。</p>
+  <!-- ── 6｜なぜ作ったか ── -->
+  <section class="ab-sec">
+    <h2 class="ab-h">6｜なぜ作ったか</h2>
+    <p class="ab-plain">必要な人はどこかにいるはずなのに、そこへ届かない。問題は人がいないことではなく、接続する仕組みがないことだと考えています。これを構造の側で解くために、PoX を作りました。</p>
+  </section>
 
-<h2>使い方・フロー</h2>
+  <!-- ── 7｜（見出しなし） ── -->
+  <section class="ab-final">
+    <div class="ab-cta">
+      <a class="ab-btn primary" href="/register">はじめる</a>
+    </div>
+    <p class="ab-plain">PoX は開発中で、機能は順次増えています。</p>
+    <!-- TODO: 指示書09・14 の適用後、「PoX に関わりたい方は、［作っている人のプロフィール］をご覧ください。」を7節末尾に設置する。遷移先は運営者の公開プロフィール -->
+  </section>
 
-<div class="flow-step">
-  <div class="step-num">1</div>
-  <div class="step-body">
-    <h3>AI に自分を構造化してもらう</h3>
-    <p>「意志」と「現状」を自分の言葉で正確に語るのは難しいものです。普段使っている AI（ChatGPT・Claude など）にインタビューしてもらい、構造化された JSON を生成します。そのまま貼り付けるだけで登録完了です。</p>
-  </div>
-</div>
-
-<div class="flow-step">
-  <div class="step-num">2</div>
-  <div class="step-body">
-    <h3>マッチングを実行</h3>
-    <p>システムが候補者をスコアリング。共鳴・補完・その両方の観点から、いま動けそうな相手を導きます。</p>
-  </div>
-</div>
-
-<div class="flow-step">
-  <div class="step-num">3</div>
-  <div class="step-body">
-    <h3>気になる相手に「承認」を送る</h3>
-    <p>マッチング結果から候補者を承認します。承認はあなたの意思表示です。</p>
-  </div>
-</div>
-
-<div class="flow-step">
-  <div class="step-num">4</div>
-  <div class="step-body">
-    <h3>相互承認で接続成立</h3>
-    <p>相手も承認すると「接続成立」。vessel（繋がりの記録）が台帳に刻まれます。</p>
-  </div>
-</div>
-
-<div class="flow-step">
-  <div class="step-num">5</div>
-  <div class="step-body">
-    <h3>DM とコミュニティで深める</h3>
-    <p>接続後はダイレクトメッセージやコミュニティで関係を深められます。</p>
-  </div>
-</div>
-
-<h2>コミュニティ機能</h2>
-<p>テーマ別のコミュニティを作成・参加できます。founder が承認した人だけが参加でき、コミュニティチャットで情報共有が可能です。</p>
-
-<div class="cta">
-  <a href="/register">プロフィールを登録する →</a>
-</div>
-<p style="font-size:13px;color:#666;margin-top:10px">登録の前に <a href="/privacy">プライバシーポリシー</a> をご確認ください（必要像の公開・接続の公開・消せない記録があることなど、重要な点があります）。</p>
-
+</main>
 </body>
 </html>

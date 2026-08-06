@@ -70,9 +70,13 @@ def test_about_carries_landing_copy():
     body = _client().get("/about").get_data(as_text=True)
     assert "まだ形になっていないことに、必要な人を。" in body
     assert "1｜誰のためのものか" in body
+    # 5「つながった後」に接続の後段としてコミュニティを統合（指示書15 改訂）
+    assert "5｜つながった後" in body
+    assert "参加できるのは、作成者が承認した人だけです。" in body
     # §3 削除対象（旧・機能紹介）が残っていない
     assert "誰でも、どんな目的でも使えます" not in body
-    assert "コミュニティ機能" not in body
+    assert "コミュニティ機能" not in body        # 旧・節見出しは残っていない
+    assert "founder" not in body                  # §5: 内部用語を出さない
 
 
 def test_dev_console_gated_by_debug():

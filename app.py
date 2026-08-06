@@ -67,8 +67,8 @@ def _debug_enabled():
 
 @app.get("/")
 def index():
-    # トップは about に付け替え（旧 index コンソールは /dev に退避・指示書09 §3-5）。
-    return redirect("/about")
+    # トップはランディングページ（指示書15）。旧 index コンソールは /dev に退避（指示書09 §3-5）。
+    return render_template("landing.html")
 
 
 @app.get("/dev")

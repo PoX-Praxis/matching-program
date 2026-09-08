@@ -694,6 +694,67 @@ def retry_v4_seeker(profile_id):
     }), 202
 
 
+def _seeker_live_necessity_id(seeker_id, *, db_path=None):
+    """seeker 本人の、ベクトル化済みで生きている最新の必要像 id（無ければ None・§7-5）。"""
+    dbp = db_path or DB
+    try:
+        from necessities import get_live_necessities, query_vectors
+        live = [n for n in get_live_necessities(seeker_id, db_path=dbp)
+                if query_vectors(n["necessity_id"], db_path=dbp)]
+        if not live:
+            return None
+        return max(live, key=lambda n: n["n"])["necessity_id"]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _match_by_necessity(store, necessity_id, *, model_tag, top_k=None, write_ledger=True,
+                        db_path=None):
+    """必要像を query 単位として候補をランキング（§7-5）。matcher 内部は不変（rank_candidates）。
+
+    必要像レコード（query 側2本＋数値）＋ owner 主体の will_passage（1:1）で seeker 束を組む。
+    未ベクトル化・owner 束欠落など前提が欠ければ LookupError（呼び出し側が人起点へフォールバック）。
+    """
+    dbp = db_path or DB
+    from necessities import get_necessity, query_vectors
+    from matching_necessity import rank_for_necessity
+
+    nec = get_necessity(necessity_id, db_path=dbp)
+    if not nec:
+        raise LookupError("necessity が見つかりません")
+    qv = query_vectors(necessity_id, db_path=dbp)
+    if not qv:
+        raise LookupError("necessity が未ベクトル化です")
+    owner = nec["owner_ref"]
+    owner_bundle = store.get_bundle(owner, model_tag)
+    if not owner_bundle or "will_passage" not in (owner_bundle.get("vectors") or {}):
+        raise LookupError("owner の主体ベクトルがありません")
+    owner_wp = owner_bundle["vectors"]["will_passage"]
+
+    cand_ids = store.candidate_ids(owner, model_tag)
+    cand_bundles = store.get_bundles(cand_ids, model_tag)
+    cand_list = [(cid, b["vectors"]) for cid, b in cand_bundles.items()]
+
+    numbers = {k: nec.get(k) for k in ("gate_s", "gate_u", "p_sharpness", "alpha", "beta")}
+    results = rank_for_necessity(numbers, qv, owner_wp, cand_list, top_k=top_k)
+
+    if write_ledger:
+        for r in results:
+            attr = r["attribution"]
+            try:
+                store.write_ledger(owner, r["candidate_id"], "match_ranked", {
+                    "score": r["score"], "limiting_axis": attr["limiting_axis"],
+                    "a_sim": attr["a_sim"], "b_sim": attr["b_sim"], "c_sim": attr["c_sim"],
+                    "model_tag": model_tag, "necessity_id": necessity_id,
+                    "query_unit": "necessity",
+                })
+            except Exception:  # noqa: BLE001
+                pass
+
+    return {"seeker_id": owner, "necessity_id": necessity_id, "query_unit": "necessity",
+            "model_tag": model_tag, "results": results, "pool_size": len(cand_list)}
+
+
 @app.post("/v4/match")
 def post_v4_match():
     """
@@ -713,6 +774,7 @@ def post_v4_match():
     migrate_pool = bool(body.get("migrate_pool"))
 
     from db_v4 import match_v4
+    from embedding_config import MODEL_TAG
     from migrate_v4 import ensure_migrated
     store = _v4_store()
     loader = lambda uid: get_seeker(uid, db_path=DB)
@@ -727,12 +789,25 @@ def post_v4_match():
     except Exception as e:
         return jsonify({"error": f"移行失敗: {e}"}), 500
 
-    try:
-        out = match_v4(store, seeker_id, top_k=top_k)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 404
-    except Exception as e:
-        return jsonify({"error": f"照合失敗: {e}"}), 500
+    # §7-5: query 単位を必要像へ。明示 necessity_id か、seeker 本人の生きた必要像があれば
+    # 必要像起点で照合し、無い/未ベクトル化なら人起点へフォールバック（個人は同一結果）。
+    nec_id = body.get("necessity_id") or _seeker_live_necessity_id(seeker_id, db_path=DB)
+    out = None
+    if nec_id:
+        try:
+            out = _match_by_necessity(store, nec_id, model_tag=MODEL_TAG, top_k=top_k)
+        except LookupError:
+            out = None
+        except Exception as e:  # noqa: BLE001
+            return jsonify({"error": f"照合失敗: {e}"}), 500
+    if out is None:
+        try:
+            out = match_v4(store, seeker_id, top_k=top_k)
+            out["query_unit"] = "person"
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+        except Exception as e:
+            return jsonify({"error": f"照合失敗: {e}"}), 500
 
     out["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
     return jsonify(out)

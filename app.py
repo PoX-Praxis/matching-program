@@ -163,17 +163,28 @@ def ledger_verify(date):
     return jsonify(anchor.verify_date(date, db_path=DB)), 200
 
 
+def _anchor_token_ok():
+    """POX_ANCHOR_TOKEN が設定され、X-Anchor-Token ヘッダが一致するか（外部スケジューラ用）。"""
+    tok = os.environ.get("POX_ANCHOR_TOKEN", "")
+    return bool(tok) and request.headers.get("X-Anchor-Token", "") == tok
+
+
 @app.post("/ledger/anchor")
 def ledger_anchor():
     """日次 root を計算して anchor.published を追記する（§6）。
 
-    バッチ（1日1回）から叩く想定。手動実行は POX_DEBUG=1 のときのみ許可する。
-    date を省略すると当日（UTC）。既にその日があれば冪等にスキップ。
+    起動経路は2つ:
+      - Render Cron（render.yaml pox-anchor）や任意ランナーが scripts/daily_anchor.py を実行。
+      - 無料の外部スケジューラ（cron-job.org / GitHub Actions 等）がこの endpoint を叩く。
+        その場合は X-Anchor-Token ヘッダに POX_ANCHOR_TOKEN を付ける。POX_DEBUG=1 でも可。
+    date を省略すると run_daily（最後のアンカー翌日〜当日をバックフィル）。date 指定は単日。
     """
-    if not _debug_enabled():
+    if not (_debug_enabled() or _anchor_token_ok()):
         abort(404)
     body = request.get_json(force=True, silent=True) or {}
-    return jsonify(anchor.publish_anchor(body.get("date"), db_path=DB)), 200
+    if body.get("date"):
+        return jsonify(anchor.publish_anchor(body["date"], db_path=DB)), 200
+    return jsonify(anchor.run_daily(db_path=DB)), 200
 
 
 @app.post("/seekers")

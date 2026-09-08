@@ -1288,6 +1288,94 @@ def api_approve_member(community_id):
     return jsonify(result), 200
 
 
+@app.post("/api/community/<community_id>/intent/propose")
+def api_intent_propose(community_id):
+    """意志形成を提起（§5-3）。提起者は ctx の active メンバーであること。AI 非依存。"""
+    body = request.get_json(force=True, silent=True) or {}
+    proposer = (body.get("proposer") or "").strip()
+    if not proposer:
+        return jsonify({"error": "proposer が必要です"}), 400
+    from member_ledger import active_members_from_events
+    if proposer not in active_members_from_events(community_id, db_path=DB):
+        return jsonify({"error": "提起はコミュニティのメンバーのみ"}), 403
+    from intent_ledger import propose_intent
+    return jsonify(propose_intent(
+        community_id, proposer, body=body.get("body") or "",
+        declaration=body.get("declaration") or "",
+        ruleset_version=body.get("ruleset_version") or "r1", db_path=DB)), 200
+
+
+@app.post("/api/intent/<intent_id>/agree")
+def api_intent_agree(intent_id):
+    body = request.get_json(force=True, silent=True) or {}
+    subject = (body.get("subject") or "").strip()
+    if not subject:
+        return jsonify({"error": "subject が必要です"}), 400
+    from intent_ledger import agree_intent
+    r = agree_intent(intent_id, subject, db_path=DB)
+    if r.get("error"):
+        return jsonify(r), 404
+    return jsonify(r), 200
+
+
+@app.post("/api/intent/<intent_id>/complete")
+def api_intent_complete(intent_id):
+    body = request.get_json(force=True, silent=True) or {}
+    by = (body.get("by") or "").strip()
+    if not by:
+        return jsonify({"error": "by が必要です"}), 400
+    from intent_ledger import complete_intent
+    r = complete_intent(intent_id, by, result=body.get("result") or "", db_path=DB)
+    if r.get("error") == "not_found":
+        return jsonify(r), 404
+    if r.get("error"):
+        return jsonify(r), 409       # not_agreed / cancelled
+    return jsonify(r), 200
+
+
+@app.post("/api/intent/<intent_id>/cancel")
+def api_intent_cancel(intent_id):
+    body = request.get_json(force=True, silent=True) or {}
+    by = (body.get("by") or "").strip()
+    if not by:
+        return jsonify({"error": "by が必要です"}), 400
+    from intent_ledger import cancel_intent
+    r = cancel_intent(intent_id, by, reason=body.get("reason") or "", db_path=DB)
+    if r.get("error") == "not_found":
+        return jsonify(r), 404
+    return jsonify(r), 200
+
+
+@app.post("/api/intent/<intent_id>/participant/join")
+def api_intent_participant_join(intent_id):
+    body = request.get_json(force=True, silent=True) or {}
+    participant = (body.get("participant") or "").strip()
+    if not participant:
+        return jsonify({"error": "participant が必要です"}), 400
+    from intent_ledger import join_participant
+    r = join_participant(intent_id, participant,
+                         introduced_by=body.get("introduced_by"),
+                         approved_by=body.get("approved_by"), db_path=DB)
+    if r.get("error"):
+        return jsonify(r), 404
+    return jsonify(r), 200
+
+
+@app.get("/api/intent/<intent_id>")
+def api_intent_get(intent_id):
+    from intent_ledger import get_intent
+    r = get_intent(intent_id, db_path=DB)
+    if not r:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(r), 200
+
+
+@app.get("/api/community/<community_id>/intents")
+def api_community_intents(community_id):
+    from intent_ledger import list_intents
+    return jsonify({"ctx": community_id, "intents": list_intents(community_id, db_path=DB)}), 200
+
+
 @app.post("/api/community/<community_id>/leave")
 def api_leave_community(community_id):
     """自主離脱（member.left）。自分自身のみ（追い出しは不可・§2-1）。"""

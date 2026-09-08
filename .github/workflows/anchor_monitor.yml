@@ -1,0 +1,33 @@
+name: anchor-monitor
+
+# 停止検知（指示書20 §3-2）。週1回 /ledger/anchor/status?strict=1 を取得し、
+# days_behind>=2 のとき 503 が返る → --fail でジョブが失敗 → GitHub が管理者へメール通知。
+# 成功時は何も言わない設計でよい（失敗＝通知が唯一の経路）。
+# ⚠️ この監視ジョブ自体も GitHub Actions のため 60日無活動で止まりうる。より確実な検知は
+#    cron-job.org 側で status?strict=1 を叩く外形監視（docs/migration_v2_ledger.md 参照）。
+
+on:
+  schedule:
+    - cron: "0 1 * * 1"        # 毎週月曜 01:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: GET /ledger/anchor/status?strict=1 (fail if days_behind >= 2)
+        env:
+          URL: ${{ secrets.POX_ANCHOR_URL }}
+        run: |
+          set -euo pipefail
+          # status URL は POX_ANCHOR_URL（.../ledger/anchor）に /status を足す
+          http=$(curl --fail --show-error --silent --location \
+            --retry 3 --retry-all-errors --retry-delay 20 \
+            --connect-timeout 30 --max-time 120 \
+            "${URL}/status?strict=1" \
+            -o status.json -w "%{http_code}")
+          echo "HTTP $http"
+          echo "----- status body -----"
+          cat status.json || true
+          echo

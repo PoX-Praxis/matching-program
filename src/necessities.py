@@ -271,3 +271,60 @@ def delete_evidence(necessity_id: str, db_path: str = "pox.db") -> bool:
     with _connect(db_path) as con:
         con.execute("DELETE FROM necessity_evidence WHERE necessity_id=%s", (necessity_id,))
     return True
+
+
+def get_necessity(necessity_id: str, db_path: str = "pox.db") -> dict | None:
+    with _connect(db_path) as con:
+        r = con.execute(
+            "SELECT necessity_id, owner_ref, owner_kind, n, will_text, necessity_text, "
+            "gate_s, gate_u, p_sharpness, alpha, beta, evidence_commit, content_hash, "
+            "origin, generator, prev_necessity, created_at FROM necessities "
+            "WHERE necessity_id=%s", (necessity_id,),
+        ).fetchone()
+    return _row_to_dict(r) if r else None
+
+
+# ── ベクトル化（§7-4）───────────────────────────────────────────────────────
+# モデルと prefix は入力経路によらず同一（§2-3）。build_vectors と同じ embed() を通す。
+# 必要像レコードが担ぐのは query 側の2本: will_symmetric（意志・対称の複製）と
+# necessity_query（必要像）。will_passage / state_passage は主体レコード側（1:1）。
+
+def _default_embed(text, role):
+    """embedding_service.embed の full ベクトルを返す（build_vectors と同一の redact→embed）。"""
+    from embedding_service import embed as _embed
+    from pii_redaction import redact_text
+    full, _short = _embed(redact_text(text or ""), role)
+    return full
+
+
+def vectorize_necessity(necessity_id: str, *, embed_fn=None, db_path: str = "pox.db") -> dict | None:
+    """必要像レコードの will_symmetric / necessity_query を生成して保存する（§7-4）。
+
+    embed_fn(text, role)->list を注入するとテストで実サービスを使わない。
+    既定は embedding_service.embed（BACKEND に従う。本番は nomic）。
+    照合の骨格・prefix・MRL には触れない（同一 embed を呼ぶだけ）。
+    """
+    rec = get_necessity(necessity_id, db_path=db_path)
+    if rec is None:
+        return None
+    ef = embed_fn or _default_embed
+    will_sym = ef(rec["will_text"], "symmetric")     # a チャネル用（対称の複製）
+    nq = ef(rec["necessity_text"], "query")          # b チャネル用（必要像）
+    with _connect(db_path) as con:
+        con.execute(
+            "UPDATE necessities SET will_vec=%s, necessity_vec=%s WHERE necessity_id=%s",
+            (json.dumps(will_sym), json.dumps(nq), necessity_id),
+        )
+    return {"necessity_id": necessity_id, "dim": len(nq)}
+
+
+def query_vectors(necessity_id: str, db_path: str = "pox.db") -> dict | None:
+    """照合の query 側2本を返す（未ベクトル化なら None）。"""
+    with _connect(db_path) as con:
+        r = con.execute(
+            "SELECT will_vec, necessity_vec FROM necessities WHERE necessity_id=%s",
+            (necessity_id,),
+        ).fetchone()
+    if not r or r[0] is None or r[1] is None:
+        return None
+    return {"will_symmetric": json.loads(r[0]), "necessity_query": json.loads(r[1])}

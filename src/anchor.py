@@ -188,12 +188,31 @@ def _yesterday_utc() -> str:
     return (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
 
 
+def has_ledger_events(db_path: str = "pox.db") -> bool:
+    """台帳に1件でもイベントがあるか。停止検知の「空デプロイ vs 未起動」判定に使う。"""
+    return le.get_last_event(db_path=db_path) is not None
+
+
+def is_stale(db_path: str = "pox.db") -> bool:
+    """停止として警報すべき状態か（指示書20 §3・是正版）。
+
+    - days_behind >= 2（刻み損ね）→ True
+    - アンカー皆無だが **イベントは存在する**（使い始めているのにアンカーが無い＝異常）→ True
+    - アンカー皆無かつ **台帳が空**（未使用のデプロイ直後）→ False（誤警報しない）
+    """
+    st = anchor_status(db_path=db_path)
+    behind = st["days_behind"]
+    if behind is not None:
+        return behind >= 2
+    return has_ledger_events(db_path=db_path)   # アンカー皆無: イベントがあれば異常
+
+
 def anchor_status(db_path: str = "pox.db") -> dict:
     """最終アンカーの状態（指示書20 §3-1）。停止検知の外形監視に使う。
 
     days_behind = (今日 UTC − last_anchor_date) の日数。run_daily は前日までを刻むので、
     毎日回っていれば **正常時は 1**。2 以上なら刻み損ねている。アンカー皆無なら None
-    （まだ一度も走っていない＝「遅れ」は定義できないので strict でも警報にしない）。
+    （警報の可否は is_stale が台帳の空/非空で判断する）。
     """
     with _connect(db_path) as con:
         r = con.execute(

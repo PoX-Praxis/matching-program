@@ -479,6 +479,8 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
             store.set_generation_status(profile_id, final_status, error=None)
         if snapshot:                  # 登録経路のみ: 時点スナップショットを1点（churn は関数側で防止）
             _save_snapshot_best_effort(profile_id, profile_input, necessity)
+        # 主体の構造化時点を台帳へ（指示書17 §5-2/§5-3・best-effort・churn は関数側で防止）。
+        _publish_profile_structured_best_effort(profile_id, profile_input)
         # 必要像を 1:N 台帳へ記録＋ベクトル化（指示書17 §7・best-effort・churn は関数側で防止）。
         _publish_necessity_best_effort(profile_id, profile_input, necessity)
     except Exception as e:  # noqa: BLE001
@@ -509,6 +511,19 @@ def _save_snapshot_best_effort(profile_id, profile_input, necessity):
         )
     except Exception:  # noqa: BLE001
         pass
+
+
+def _publish_profile_structured_best_effort(profile_id, profile_input):
+    """構造化プロフィールの時点を台帳へ記録（指示書17 §5-2/§5-3・best-effort）。
+
+    失敗しても登録・照合・ベクトル化本体に影響させない。churn は関数側で防止。
+    individual のため members_after_hash は None。
+    """
+    try:
+        from subject_ledger import publish_profile_structured
+        publish_profile_structured(profile_id, profile_input, actor=profile_id, db_path=DB)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[profile.structured] 記録skip（本体は成功）: {e}")
 
 
 def _publish_necessity_best_effort(profile_id, profile_input, necessity):

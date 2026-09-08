@@ -24,7 +24,7 @@ from canon import sha256_hex
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 get_seeker, list_candidate_pool, get_profile_edit_data,
                 save_view_overrides, update_seeker_core, list_public_seeker_index,
-                record_policy_consent)
+                record_policy_consent, set_profile_visibility, get_profile_visibility)
 from profile_view import parse_registration_text, normalize_to_seeker
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
@@ -963,6 +963,33 @@ def api_snapshot_visibility(snapshot_id):
     if not ok:
         return jsonify({"error": "対象のスナップショットが見つかりません（所有者のみ変更できます）"}), 404
     return jsonify({"ok": True, "snapshot_id": snapshot_id, "vulnerable_hidden": hidden})
+
+
+_VISIBILITY_SCOPES = ("public", "private")
+
+
+@app.post("/api/profile/<user_id>/visibility")
+def api_profile_visibility(user_id):
+    """本人がプロフィールの公開範囲を変更（指示書17 §5: visibility.changed）。
+
+    本人のみ（body の id が path と一致）＝§7-5 の簡易認証の限界。scope は public|private。
+    profiles.visibility を更新し、visibility.changed を台帳へ（churn は関数側で防止）。
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    owner_id = (body.get("id") or "").strip()
+    scope = (body.get("scope") or "").strip()
+    if owner_id != user_id:
+        return jsonify({"error": "本人のみ変更できます"}), 403
+    if scope not in _VISIBILITY_SCOPES:
+        return jsonify({"error": f"scope は {'/'.join(_VISIBILITY_SCOPES)}"}), 400
+    if not set_profile_visibility(user_id, scope, db_path=DB):
+        return jsonify({"error": "プロフィールが見つかりません"}), 404
+    try:
+        from subject_ledger import publish_visibility_changed
+        publish_visibility_changed(user_id, scope, actor=user_id, db_path=DB)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[visibility.changed] 記録skip（変更は成功）: {e}")
+    return jsonify({"ok": True, "id": user_id, "scope": scope}), 200
 
 
 @app.get("/api/my/vessels")

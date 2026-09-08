@@ -1288,6 +1288,19 @@ def api_approve_member(community_id):
     return jsonify(result), 200
 
 
+@app.post("/api/community/<community_id>/leave")
+def api_leave_community(community_id):
+    """自主離脱（member.left）。自分自身のみ（追い出しは不可・§2-1）。"""
+    body = request.get_json(force=True, silent=True)
+    if body is None:
+        return jsonify({"error": "JSON が読めません"}), 400
+    member_id = (body.get("member_id") or "").strip()
+    if not member_id:
+        return jsonify({"error": "member_id が必要です"}), 400
+    from community import leave_community
+    return jsonify(leave_community(community_id, member_id, db_path=DB)), 200
+
+
 @app.post("/api/community/<community_id>/message")
 def api_community_message(community_id):
     body = request.get_json(force=True, silent=True)

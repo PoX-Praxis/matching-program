@@ -38,6 +38,10 @@ def create_community(founder: str, name: str, description: str, db_path: str = "
             "INSERT INTO community_members (community_id, member_id, status, joined_at) VALUES (%s, %s, 'active', %s)",
             (cid, founder, created_at),
         )
+    # 台帳: 創設者を最初のメンバーとして member.joined（指示書17 §5-3）。
+    from member_ledger import publish_member_joined
+    publish_member_joined(cid, founder, introduced_by=None, approved_by=[founder],
+                          members_before=[], members_after=[founder], db_path=db_path)
     return {"id": cid, "name": name, "description": description or "", "founder": founder, "created_at": created_at}
 
 
@@ -88,11 +92,52 @@ def request_join(community_id: str, member_id: str, db_path: str = "pox.db") -> 
 
 def approve_member(community_id: str, member_id: str, db_path: str = "pox.db") -> dict:
     with _connect(db_path) as con:
+        cur = con.execute(
+            "SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
+            (community_id, member_id),
+        ).fetchone()
+        if cur and cur[0] == "active":
+            return {"community_id": community_id, "member_id": member_id, "status": "active"}
+        before = [r[0] for r in con.execute(
+            "SELECT member_id FROM community_members WHERE community_id=%s AND status='active'",
+            (community_id,)).fetchall()]
+        founder = con.execute(
+            "SELECT founder FROM communities WHERE id=%s", (community_id,)).fetchone()
         con.execute(
             "UPDATE community_members SET status='active' WHERE community_id=%s AND member_id=%s",
             (community_id, member_id),
         )
+    # 台帳: 承認で active になった瞬間だけ member.joined（成立の前段=申請は載せない・§1-3）。
+    from member_ledger import publish_member_joined
+    approver = founder[0] if founder else None
+    publish_member_joined(
+        community_id, member_id, introduced_by=None,
+        approved_by=[approver] if approver else [],
+        members_before=before, members_after=before + [member_id], db_path=db_path)
     return {"community_id": community_id, "member_id": member_id, "status": "active"}
+
+
+def leave_community(community_id: str, member_id: str, db_path: str = "pox.db") -> dict:
+    """自主離脱（member.left）。追い出し（他者による除去）は実装しない（§2-1）。"""
+    with _connect(db_path) as con:
+        cur = con.execute(
+            "SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
+            (community_id, member_id),
+        ).fetchone()
+        if not cur or cur[0] != "active":
+            return {"community_id": community_id, "member_id": member_id, "status": "not_member"}
+        before = [r[0] for r in con.execute(
+            "SELECT member_id FROM community_members WHERE community_id=%s AND status='active'",
+            (community_id,)).fetchall()]
+        con.execute(
+            "DELETE FROM community_members WHERE community_id=%s AND member_id=%s",
+            (community_id, member_id),
+        )
+    after = [m for m in before if m != member_id]
+    from member_ledger import publish_member_left
+    publish_member_left(community_id, member_id, members_before=before,
+                        members_after=after, db_path=db_path)
+    return {"community_id": community_id, "member_id": member_id, "status": "left"}
 
 
 def get_members(community_id: str, db_path: str = "pox.db") -> list:

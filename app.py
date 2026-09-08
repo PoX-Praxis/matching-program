@@ -163,6 +163,22 @@ def ledger_verify(date):
     return jsonify(anchor.verify_date(date, db_path=DB)), 200
 
 
+@app.get("/ledger/anchor/status")
+def ledger_anchor_status():
+    """最終アンカーの状態（指示書20 §3-1）。認証不要（公開情報）。
+
+    strict=1（true/yes）のとき days_behind>=2 なら 503 を返す＝外形監視で停止を検知できる
+    （cron-job.org が HTTP 失敗としてメール通知できる）。days_behind が None（アンカー皆無）
+    や 1 以下なら 200。
+    """
+    st = anchor.anchor_status(db_path=DB)
+    strict = (request.args.get("strict") or "").lower() in ("1", "true", "yes")
+    behind = st.get("days_behind")
+    if strict and behind is not None and behind >= 2:
+        return jsonify(st), 503
+    return jsonify(st), 200
+
+
 def _anchor_token_ok():
     """POX_ANCHOR_TOKEN が設定され、X-Anchor-Token ヘッダが一致するか（外部スケジューラ用）。
 

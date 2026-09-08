@@ -188,6 +188,29 @@ def _yesterday_utc() -> str:
     return (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
 
 
+def anchor_status(db_path: str = "pox.db") -> dict:
+    """最終アンカーの状態（指示書20 §3-1）。停止検知の外形監視に使う。
+
+    days_behind = (今日 UTC − last_anchor_date) の日数。run_daily は前日までを刻むので、
+    毎日回っていれば **正常時は 1**。2 以上なら刻み損ねている。アンカー皆無なら None
+    （まだ一度も走っていない＝「遅れ」は定義できないので strict でも警報にしない）。
+    """
+    with _connect(db_path) as con:
+        r = con.execute(
+            "SELECT date, anchor_seq FROM anchors ORDER BY anchor_seq DESC LIMIT 1"
+        ).fetchone()
+    if not r:
+        return {"last_anchor_date": None, "last_anchor_seq": None, "days_behind": None}
+    last_date, last_seq = r[0], r[1]
+    today = datetime.now(timezone.utc).date()
+    try:
+        days_behind = (today - _date.fromisoformat(last_date)).days
+    except Exception:  # noqa: BLE001
+        days_behind = None
+    return {"last_anchor_date": last_date, "last_anchor_seq": last_seq,
+            "days_behind": days_behind}
+
+
 def run_daily(db_path: str = "pox.db", up_to: str = None, max_days: int = 400) -> dict:
     """**完了した日**を up_to まで順に publish する（§6）。
 

@@ -1,0 +1,42 @@
+name: daily-anchor
+
+# 日次 root バッチ（指示書20）。POST /ledger/anchor を毎日叩く。
+# run_daily はバックフィル冪等なので、cron-job.org との二重化・遅延・二重実行があっても安全。
+# ⚠️ GitHub Actions の schedule は「60日間コミットが無いと自動無効化」される。単独に頼らず
+#    cron-job.org と二重化し、停止検知（anchor-monitor.yml / status?strict=1）を必ず併用すること。
+
+on:
+  schedule:
+    - cron: "10 0 * * *"      # 毎日 00:10 UTC（cron-job.org は 00:20 とずらす）
+  workflow_dispatch: {}        # 手動起動（停止時の復旧手段。必ず有効にする）
+
+# 同時実行を1本に絞る（重ならないように。冪等なので重なっても壊れないが無駄を避ける）
+concurrency:
+  group: daily-anchor
+  cancel-in-progress: false
+
+jobs:
+  anchor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /ledger/anchor (retry for Render cold start)
+        env:
+          URL: ${{ secrets.POX_ANCHOR_URL }}
+          TOKEN: ${{ secrets.POX_ANCHOR_TOKEN }}
+        run: |
+          set -euo pipefail
+          # --fail: 2xx 以外で失敗 / --retry 3 + --retry-all-errors: Render のスリープ起動に備える
+          # 本文はログに出す（何日分アンカーされたかを後から追える）
+          http=$(curl --fail --show-error --silent --location \
+            --retry 3 --retry-all-errors --retry-delay 20 \
+            --connect-timeout 30 --max-time 120 \
+            -X POST "$URL" \
+            -H "X-Anchor-Token: $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            -o response.json -w "%{http_code}")
+          echo "HTTP $http"
+          echo "----- response body -----"
+          cat response.json || true
+          echo

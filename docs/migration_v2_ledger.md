@@ -53,11 +53,34 @@
 - **本方針では一括投入は無い**（identity 移行をしないため）。よって「一括投入中に新規イベントを待たせる」オペレーションは不要。
 - 将来、何らかの一括投入を行う場合は、`ledger_events.append_event` が唯一の書き込み経路（プロセス内 Lock＋Postgres advisory lock）である前提を守り、投入も同経路を通すこと。別経路で `ledger_events` に直接 INSERT しない。
 
-### 2-4. 日次 root バッチ
+### 2-4. 日次 root バッチ（指示書20・二重化＋停止検知）
 
-- 有料 Render Cron（`render.yaml` の `pox-anchor`）**または**無料の外部スケジューラから
-  `POST /ledger/anchor`（ヘッダ `X-Anchor-Token: <POX_ANCHOR_TOKEN>`）を1日1回。
-- **完了日（前日 UTC）まで**をアンカー（当日は翌日確定）。空の日も空 root。落ちた日はバックフィル。
+**方式: GitHub Actions と cron-job.org の二重化。** どちらも `POST /ledger/anchor` を毎日叩く。
+`run_daily` はバックフィル冪等なので二重に叩いても害はない（既アンカー日はスキップ）。片方が
+止まってももう片方が刻む。Render Cron（`render.yaml` の `pox-anchor`）は有料のため使わない
+（定義は残置可）。**完了日（前日 UTC）まで**をアンカー・空の日も空 root・落ちた日はバックフィル。
+
+**運営が設定するもの:**
+
+1. **GitHub repository secrets**（2件）
+   - `POX_ANCHOR_TOKEN` … Render に設定したものと同値
+   - `POX_ANCHOR_URL` … `https://pox-box.onrender.com/ledger/anchor`
+   - workflow は導入済み: `.github/workflows/daily_anchor.yml`（毎日 00:10 UTC・手動起動可・
+     2xx 以外で失敗・Render コールドスタートに備えリトライ3回）／
+     `.github/workflows/anchor_monitor.yml`（週1・`status?strict=1` を叩き 503 で失敗＝メール通知）
+
+2. **cron-job.org のジョブ**（2件・GitHub の60日無活動停止や Render 障害から独立に検知）
+   | ジョブ | メソッド/URL | 間隔 | ヘッダ |
+   |---|---|---|---|
+   | アンカー | `POST /ledger/anchor` | 毎日 00:20 UTC | `X-Anchor-Token: <値>` |
+   | 監視 | `GET /ledger/anchor/status?strict=1` | 毎日 06:00 UTC | なし |
+   - アンカーは GitHub（00:10）とずらして 00:20（同時でも単一ライターで直列化され壊れないが、無駄な競合回避）。
+   - 監視ジョブは**失敗時（＝503）にメール通知**する設定にする。`days_behind>=2` で 503 が返る。
+
+**停止検知の要点:** `GET /ledger/anchor/status` は `{last_anchor_date, last_anchor_seq, days_behind}`
+を返す（認証不要）。`days_behind` は「今日 UTC − 最終アンカー日」の日数で、毎日刻めていれば
+**正常時は 1**。`?strict=1` を付けると `days_behind>=2` で 503。アンカー皆無（未起動）は `days_behind=null`
+で 200（誤警報しない）。**二重化しても、この監視が失敗通知を出せることが最重要**（刻み損ねに気づく唯一の経路）。
 
 ---
 

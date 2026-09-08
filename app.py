@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session
 from werkzeug.utils import secure_filename
 from db_connect import is_postgres
-import auth, mailer
+import auth, mailer, anchor
 from ledger_events import append_event
 from canon import sha256_hex
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
@@ -154,6 +154,25 @@ def auth_verify():
 def auth_logout():
     session.pop("subject_id", None)
     return jsonify({"ok": True}), 200
+
+
+@app.get("/ledger/verify/<date>")
+def ledger_verify(date):
+    """日次アンカーの検証（§6-3）。保存 root をその日のイベントから再計算して照合。"""
+    return jsonify(anchor.verify_date(date, db_path=DB)), 200
+
+
+@app.post("/ledger/anchor")
+def ledger_anchor():
+    """日次 root を計算して anchor.published を追記する（§6）。
+
+    バッチ（1日1回）から叩く想定。手動実行は POX_DEBUG=1 のときのみ許可する。
+    date を省略すると当日（UTC）。既にその日があれば冪等にスキップ。
+    """
+    if not _debug_enabled():
+        abort(404)
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(anchor.publish_anchor(body.get("date"), db_path=DB)), 200
 
 
 @app.post("/seekers")

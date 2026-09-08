@@ -35,6 +35,32 @@ def _vessel_id(a: str, b: str) -> str:
     return "v_" + "_".join(sorted([a, b]))
 
 
+def _is_grounded(payload: dict) -> bool:
+    """接続の根拠が内容で固定されているか（指示書18 §1-4）。
+
+    是正後（新形）: 両者の a_ref/b_ref.profile_snapshot_hash が非 null（＝profile.structured の
+    content_hash）。necessity_hash は null 可（必要像が無い主体もあるため）。
+    是正前（旧形）: necessity_hash が空文字 "" という sentinel を持つ（新形は "" を書かない）。
+    """
+    a_ref = payload.get("a_ref") or {}
+    b_ref = payload.get("b_ref") or {}
+    if a_ref.get("necessity_hash") == "" or b_ref.get("necessity_hash") == "":
+        return False   # 旧形（是正前）＝根拠が固定されていない
+    return bool(a_ref.get("profile_snapshot_hash")) and bool(b_ref.get("profile_snapshot_hash"))
+
+
+def grounding_report(db_path: str = "pox.db") -> dict:
+    """connection.established の件数と、根拠あり/なしの内訳（指示書18 §9-3）。"""
+    total = grounded = ungrounded = 0
+    for e in le.get_events(type_="connection.established", db_path=db_path):
+        total += 1
+        if _is_grounded(e["payload"]):
+            grounded += 1
+        else:
+            ungrounded += 1
+    return {"total": total, "grounded": grounded, "ungrounded": ungrounded}
+
+
 def _connect(db_path: str = "pox.db"):
     con = get_connection(db_path)
     if not is_postgres():
@@ -44,6 +70,12 @@ def _connect(db_path: str = "pox.db"):
             "necessity_id TEXT, status TEXT NOT NULL DEFAULT 'pending', "
             "created_at TEXT NOT NULL, responded_at TEXT)"
         )
+        # チャネル来歴（指示書18 §3）。台帳に載せず通常DBに保持（照合の内部値・削除可能）。
+        for col in ("predicted_role", "channel", "match_run_id"):
+            try:
+                con.execute(f"ALTER TABLE connection_requests ADD COLUMN {col} TEXT")
+            except Exception:  # noqa: BLE001（既存なら無視）
+                pass
         # 旧接続データの読み取り互換のため（書き込みはしない）。
         con.execute(
             "CREATE TABLE IF NOT EXISTS vessels "
@@ -60,14 +92,27 @@ def approve(
     to_id: str,
     match_run_id: str = None,
     predicted_role: str = None,
+    channel: str = None,
     phase: str = None,
     db_path: str = "pox.db",
     establish_hook=None,
+    ref_resolver=None,
+    require_grounding: bool = False,
 ) -> dict:
     """
     from_id が to_id を承認する（成立の前段は connection_requests）。
     双方向が揃うと connection.established を台帳へ追記して成立させる。
-    戻り値: {"vessel_id", "established": bool}。
+
+    指示書18 §1: 接続の根拠を内容で固定する。
+      - ref_resolver(subject) -> {"profile_snapshot_hash", "necessity_hash"} を渡すと、
+        a_ref/b_ref をその値（profile.structured の content_hash / necessity.published の
+        event_hash・無ければ None）で埋める。未指定なら両方 None（テスト/レガシー）。
+      - require_grounding=True かつ、いずれかの profile_snapshot_hash が None なら
+        **成立させない**（根拠のない接続を作らない・§1-3）。申請は pending のまま残り、
+        両者に profile.structured が揃った後の再承認で成立する。
+
+    §3: predicted_role / channel / match_run_id は台帳に載せず connection_requests に保持。
+    戻り値: {"vessel_id", "established": bool[, "reason"]}。
     """
     vid = _vessel_id(from_id, to_id)
 
@@ -76,7 +121,7 @@ def approve(
         return {"vessel_id": vid, "established": True}
 
     with _connect(db_path) as con:
-        # この向きの承認を記録（重複させない）。
+        # この向きの承認を記録（重複させない）。チャネル来歴も保持（§3）。
         row = con.execute(
             "SELECT id FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
             "AND status='pending'",
@@ -85,11 +130,12 @@ def approve(
         if not row:
             con.execute(
                 "INSERT INTO connection_requests "
-                "(id, from_subject, to_subject, necessity_id, status, created_at, responded_at) "
-                "VALUES (%s,%s,%s,%s,'pending',%s,NULL)",
-                (f"cr_{uuid.uuid4().hex[:10]}", from_id, to_id, None, _now()),
+                "(id, from_subject, to_subject, necessity_id, status, created_at, responded_at, "
+                " predicted_role, channel, match_run_id) "
+                "VALUES (%s,%s,%s,%s,'pending',%s,NULL,%s,%s,%s)",
+                (f"cr_{uuid.uuid4().hex[:10]}", from_id, to_id, None, _now(),
+                 predicted_role, channel, match_run_id),
             )
-        # 双方向の承認時刻を取得。
         recip = con.execute(
             "SELECT created_at FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
             "AND status='pending'",
@@ -104,15 +150,30 @@ def approve(
     if not recip:
         return {"vessel_id": vid, "established": False}
 
-    # ── 成立 ── 双方向が揃った。connection.established を台帳へ（唯一の追記経路）。
+    # ── 双方向が揃った ── 根拠の解決とゲート（§1）。
     a, b = sorted([from_id, to_id])
     at_from = mine[0] if mine else _now()
     at_recip = recip[0]
-    # 起点（founder）= 先に承認を出した側。
-    founder = to_id if at_recip <= at_from else from_id
+    founder = to_id if at_recip <= at_from else from_id   # 先に承認した側が起点
     other = b if founder == a else a
-    approved_at = {from_id: at_from, to_id: at_recip}
 
+    def _resolve(x):
+        if ref_resolver is None:
+            return {"profile_snapshot_hash": None, "necessity_hash": None}
+        try:
+            r = ref_resolver(x) or {}
+        except Exception:  # noqa: BLE001
+            r = {}
+        return {"profile_snapshot_hash": r.get("profile_snapshot_hash"),
+                "necessity_hash": r.get("necessity_hash")}
+
+    a_ref, b_ref = _resolve(a), _resolve(b)
+    # §1-3: 新規接続は両者に profile.structured（根拠）が要る。無ければ成立させない。
+    if require_grounding and (a_ref["profile_snapshot_hash"] is None
+                              or b_ref["profile_snapshot_hash"] is None):
+        return {"vessel_id": vid, "established": False, "reason": "missing_profile_structured"}
+
+    # スナップショット結合（指示書12・timeline 用）。a_ref/b_ref とは別の情報。
     snaps = None
     if establish_hook is not None:
         try:
@@ -121,21 +182,18 @@ def approve(
             snaps = None
     snaps = snaps or {}
 
-    def _ref(x):
-        # profile_snapshot_hash は現状スナップショットID を担ぐ（§9 で報告。content-hash 化は
-        # profile.structured のイベント化＝後続段で）。necessity_hash は空（必要像イベントは段階5）。
-        return {"profile_snapshot_hash": snaps.get(x) or "", "necessity_hash": ""}
-
     as_of_seq = (le.get_last_event(db_path=db_path) or {}).get("seq", 0)
     payload = {
         "a": a, "b": b, "initiator": founder,
-        "a_ref": _ref(a), "b_ref": _ref(b),
+        "a_ref": a_ref, "b_ref": b_ref,           # §1: content_hash / event_hash（無ければ null）
         "as_of_seq": as_of_seq,
-        "approved_at": {a: approved_at.get(a, ""), b: approved_at.get(b, "")},
+        "approved_at": {a: {from_id: at_from, to_id: at_recip}.get(a, ""),
+                        b: {from_id: at_from, to_id: at_recip}.get(b, "")},
         "contributions": [
             {"actor": founder, "role": "founded"},
             {"actor": other, "role": "approved"},
         ],
+        "snapshots": {k: v for k, v in snaps.items() if v} or None,   # timeline 用（指示書12）
     }
     le.append_event(from_id, "connection.established", payload, db_path=db_path)
 
@@ -197,12 +255,17 @@ def _derive_from_events(db_path: str = "pox.db") -> dict:
                     "contributions": p.get("contributions") or [],
                 }],
             }
-            snaps = {k: v for k, v in (
-                (a, (p.get("a_ref") or {}).get("profile_snapshot_hash")),
-                (b, (p.get("b_ref") or {}).get("profile_snapshot_hash")),
-            ) if v}
+            # timeline 用スナップショット結合（指示書12）: 新形は payload["snapshots"]、
+            # 旧形（是正前）は a_ref/b_ref に snapshot_id が入っていたのでそこから拾う。
+            snaps = p.get("snapshots")
+            if not snaps:
+                snaps = {k: v for k, v in (
+                    (a, (p.get("a_ref") or {}).get("profile_snapshot_hash")),
+                    (b, (p.get("b_ref") or {}).get("profile_snapshot_hash")),
+                ) if v}
             if snaps:
                 vessel["snapshots"] = snaps
+            vessel["grounded"] = _is_grounded(p)     # §1-4: 根拠あり/なしを識別可能に
             out[vid] = vessel
         elif t == "connection.closed":
             v = out.get(vid)

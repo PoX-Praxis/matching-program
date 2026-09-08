@@ -50,6 +50,24 @@ def _connect(db_path: str = "pox.db"):
     return con
 
 
+def _reject_floats(obj, path="payload"):
+    """payload に float が混ざっていたら例外（指示書18 §6-1）。
+
+    正準化は JCS 実用サブセットで、実数の ECMAScript 直列化に非対応。将来 payload に
+    実数が入ると静かにハッシュが揺れるため、書き込み時点で弾く。bool は int の一種だが
+    許容（True/False は JSON でも安定）。数値素材は necessities 側の列に置き台帳へは
+    content_hash として畳む設計（§7-2）なので、台帳イベントに実数は不要。
+    """
+    if isinstance(obj, float):
+        raise ValueError(f"台帳 payload に float は不可（{path}）。数値は content_hash に畳むこと")
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _reject_floats(v, f"{path}.{k}")
+    elif isinstance(obj, (list, tuple)):
+        for i, v in enumerate(obj):
+            _reject_floats(v, f"{path}[{i}]")
+
+
 def append_event(actor: str, type_: str, payload: dict, db_path: str = "pox.db") -> dict:
     """台帳への唯一の書き込み経路。event_hash を返す（§4-4）。
 
@@ -58,6 +76,7 @@ def append_event(actor: str, type_: str, payload: dict, db_path: str = "pox.db")
     """
     if not isinstance(payload, dict):
         raise ValueError("payload は dict でなければならない")
+    _reject_floats(payload)   # 指示書18 §6-1: JCS 実用サブセットは実数を扱わない
     with _write_lock:
         with _connect(db_path) as con:
             if is_postgres():

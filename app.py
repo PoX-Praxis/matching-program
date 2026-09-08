@@ -862,9 +862,12 @@ def post_approve():
         to_id=to_id,
         match_run_id=body.get("match_run_id"),
         predicted_role=body.get("predicted_role"),
+        channel=body.get("channel"),
         phase=None,
         db_path=DB,
         establish_hook=_snapshot_pair_resolver,   # 成立時に両者の最新スナップショットを結合（指示書12）
+        ref_resolver=_conn_ref_resolver,          # 接続の根拠（指示書18 §1）
+        require_grounding=True,                    # 両者に profile.structured が無ければ成立させない（§1-3）
     )
     return jsonify(result), 200
 
@@ -877,6 +880,18 @@ def _snapshot_pair_resolver(founder, joiner):
                 joiner:  latest_snapshot_id(joiner, db_path=DB)}
     except Exception:  # noqa: BLE001
         return None
+
+
+def _conn_ref_resolver(subject):
+    """接続の根拠（指示書18 §1-2）: profile.structured の content_hash と
+    necessity.published の event_hash（無ければ None）。null と空文字を区別する。"""
+    try:
+        from subject_ledger import latest_profile_content_hash
+        from necessities import latest_published_event_hash
+        return {"profile_snapshot_hash": latest_profile_content_hash(subject, db_path=DB),
+                "necessity_hash": latest_published_event_hash(subject, db_path=DB)}
+    except Exception:  # noqa: BLE001
+        return {"profile_snapshot_hash": None, "necessity_hash": None}
 
 
 _NEC_NUM_KEYS = ("gate_s", "gate_u", "gamma", "p_sharpness", "alpha", "beta")

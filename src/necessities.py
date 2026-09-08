@@ -229,6 +229,15 @@ def _row_to_dict(r) -> dict:
     return dict(zip(cols, r))
 
 
+def latest_published_event_hash(owner_ref: str, db_path: str = "pox.db"):
+    """owner の最新 necessity.published の **event_hash**（無ければ None）。接続の根拠解決用（§1-2）。"""
+    last = None
+    for e in le.get_events(type_="necessity.published", db_path=db_path):
+        if e["payload"].get("owner_ref") == owner_ref:
+            last = e["event_hash"]
+    return last
+
+
 def get_necessities(owner_ref: str, db_path: str = "pox.db") -> list[dict]:
     with _connect(db_path) as con:
         rows = con.execute(

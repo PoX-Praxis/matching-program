@@ -56,6 +56,9 @@ def _keystream(nonce: bytes, length: int) -> bytes:
 
 
 def encrypt_email(email: str) -> str:
+    # ⚠️ プロトタイプ限りの実装（指示書18 §6-2）。HMAC-SHA256 CTR キーストリームは
+    # 機密性のみで **認証タグを持たない**。本番強度にするには AEAD（例: cryptography の
+    # Fernet / AES-GCM）へ差し替えること。ここを本番強度と誤認しないこと。
     nonce = secrets.token_bytes(16)
     data = email.encode("utf-8")
     ks = _keystream(nonce, len(data))

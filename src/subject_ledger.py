@@ -9,16 +9,40 @@ PoX 台帳 — 主体・存在に関する追記イベント（指示書17 §5�
 content_hash は正準化＋SHA-256（canon）。evidence コミットメントのような salt を持たない
 純粋な内容ハッシュなので、churn 判定は content_hash 直比較でよい。
 """
-from canon import content_hash as _content_hash
+from canon import canonicalize, sha256_hex
 import ledger_events as le
 
 _STATE_KEYS = ("state_have", "state_can_type", "state_bound", "state_unsorted")
+# supporting_material 側の「表示される宣言」キー（指示書18 §2-2）。
+# 生テキスト(raw)・evidence・②生成素材（意志要求の素材 等）・系列素材は含めない。
+_DECLARE_SM_KEYS = ("背景", "一行紹介", "意志_どこへ", "意志_なぜ", "経験", "要約文")
 
 
 def profile_content_hash(profile_input: dict) -> str:
-    """意志＋現状4スロットの内容ハッシュ（本文は台帳に載せない・§4-2）。"""
-    state = {k: (profile_input.get(k) or "") for k in _STATE_KEYS}
-    return _content_hash(profile_input.get("will_text") or "", state)
+    """**表示される宣言のすべて**の内容ハッシュ（指示書18 §2）。本文は台帳に載せない（§4-2）。
+
+    正準化規則（canon_version="c1"）:
+      - 対象キー（完全列挙）: will_text / state_have / state_can_type / state_bound /
+        state_unsorted /（supporting_raw 内）背景 / 一行紹介 / 意志_どこへ / 意志_なぜ /
+        経験 / 要約文。
+      - 欠損キーは **空文字 ""** として必ず含める（除外しない＝欠損と空を同一視・ハッシュ安定）。
+      - 値は str へ強制。キー順序は JCS（昇順）で正準化 → SHA-256。
+      - 除外: 生テキスト(raw)・evidence_span（永久化しないもの）／gate/α/β/γ 等の内部数値・
+        match_run_id（宣言ではないもの）。
+    """
+    sm = profile_input.get("supporting_raw") or {}
+    fields = {"will_text": str(profile_input.get("will_text") or "")}
+    for k in _STATE_KEYS:
+        fields[k] = str(profile_input.get(k) or "")
+    for k in _DECLARE_SM_KEYS:
+        fields[k] = str(sm.get(k) or "")
+    return sha256_hex(canonicalize(fields))
+
+
+def latest_profile_content_hash(subject_id: str, db_path: str = "pox.db"):
+    """subject の最新 profile.structured の content_hash（無ければ None）。接続の根拠解決用（§1-2）。"""
+    mine = _mine(subject_id, db_path)
+    return mine[-1]["payload"].get("content_hash") if mine else None
 
 
 def _mine(subject_id: str, db_path: str):

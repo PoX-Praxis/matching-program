@@ -123,6 +123,25 @@ _SQLITE_DDL = [
         prev_anchor   TEXT,
         external_ref  TEXT
     )""",
+    # 通常DB（削除自由・§5-7）。成立の前段（片方向の承認・招待）はここに置き、台帳に載せない。
+    """CREATE TABLE IF NOT EXISTS connection_requests (
+        id           TEXT PRIMARY KEY,
+        from_subject TEXT NOT NULL,
+        to_subject   TEXT NOT NULL,
+        necessity_id TEXT,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        created_at   TEXT NOT NULL,
+        responded_at TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS invitations (
+        id           TEXT PRIMARY KEY,
+        ctx          TEXT NOT NULL,
+        inviter      TEXT NOT NULL,
+        invitee      TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        created_at   TEXT NOT NULL,
+        responded_at TEXT
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -245,6 +264,24 @@ _PG_DDL = [
         root          TEXT NOT NULL,
         prev_anchor   TEXT,
         external_ref  TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS connection_requests (
+        id           TEXT PRIMARY KEY,
+        from_subject TEXT NOT NULL,
+        to_subject   TEXT NOT NULL,
+        necessity_id TEXT,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        created_at   TEXT NOT NULL,
+        responded_at TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS invitations (
+        id           TEXT PRIMARY KEY,
+        ctx          TEXT NOT NULL,
+        inviter      TEXT NOT NULL,
+        invitee      TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        created_at   TEXT NOT NULL,
+        responded_at TEXT
     )""",
 ]
 

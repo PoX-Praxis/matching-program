@@ -40,7 +40,7 @@ def test_endpoint_status_and_strict():
     db = _db()
     appmod.DB = db
     c = appmod.app.test_client()
-    # アンカー皆無: strict でも 200（まだ走っていないだけ・警報にしない）
+    # 空の台帳（イベントもアンカーも無い）: strict でも 200（未使用デプロイ・誤警報しない）
     assert c.get("/ledger/anchor/status?strict=1").status_code == 200
     # 前日まで刻めば days_behind=1 → strict 200
     anchor.publish_anchor(anchor._yesterday_utc(), db_path=db)
@@ -53,6 +53,24 @@ def test_endpoint_status_and_strict():
     assert c.get("/ledger/anchor/status").status_code == 200
     r = c.get("/ledger/anchor/status?strict=1")
     assert r.status_code == 503 and r.get_json()["days_behind"] >= 2
+
+
+def test_events_without_anchor_is_stale():
+    # 是正: イベントはあるのにアンカーが1件も無い（スケジューラ設定忘れ）→ strict 503
+    db = _db()
+    appmod.DB = db
+    c = appmod.app.test_client()
+    le.append_event("u1", "subject.created", {"subject_id": "u1", "kind": "individual"}, db_path=db)
+    st = c.get("/ledger/anchor/status").get_json()
+    assert st["last_anchor_date"] is None and st["days_behind"] is None
+    assert c.get("/ledger/anchor/status").status_code == 200          # 非 strict は 200
+    assert c.get("/ledger/anchor/status?strict=1").status_code == 503  # 使用中なのにアンカー無し＝異常
+    assert anchor.is_stale(db_path=db) is True
+
+
+def test_empty_ledger_is_not_stale():
+    db = _db()
+    assert anchor.is_stale(db_path=db) is False       # 空の台帳＝正常
 
 
 # ── §6 二重起動の安全性 ──────────────────────────────────────────────────────

@@ -173,8 +173,8 @@ def ledger_anchor_status():
     """
     st = anchor.anchor_status(db_path=DB)
     strict = (request.args.get("strict") or "").lower() in ("1", "true", "yes")
-    behind = st.get("days_behind")
-    if strict and behind is not None and behind >= 2:
+    # 是正（指示書20 追補）: アンカー皆無でもイベントがあれば異常＝503。空の台帳のみ 200。
+    if strict and anchor.is_stale(db_path=DB):
         return jsonify(st), 503
     return jsonify(st), 200
 

@@ -44,7 +44,8 @@ if not app.secret_key:
     app.logger.warning("[auth] POX_SECRET_KEY 未設定。開発用の既定鍵で起動（本番では必ず設定すること）")
 
 # 規約（プライバシーポリシー）の版。terms.accepted に記録（§3-3）。
-TERMS_VERSION = "2026-08"
+# ポリシー本文（最終更新）と揃える。本文差し替えは terms_hash が別途検出する。
+TERMS_VERSION = "2026-09"
 
 # Postgres 接続時は起動時にスキーマを初期化（冪等・再デプロイ安全）
 if is_postgres():

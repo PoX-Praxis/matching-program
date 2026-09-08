@@ -184,22 +184,29 @@ def _earliest_event_date(db_path: str = "pox.db"):
     return (ev[0]["at"] or "")[:10] or None
 
 
-def run_daily(db_path: str = "pox.db", today: str = None, max_days: int = 400) -> dict:
-    """未アンカーの日を today（UTC）まで順に publish する（§6）。
+def _yesterday_utc() -> str:
+    return (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
 
-    最後のアンカーの翌日から today まで**連続して**空でない/空を問わず記録するので、
-    バッチが数日落ちても gap ができない（§6-1「飛ばしを検出可能に」を実運用で担保）。
-    初回（アンカー皆無）は最古イベントの日から、イベントも無ければ today 1日ぶんだけ。
-    冪等: 既にある日は publish_anchor 側でスキップ。
+
+def run_daily(db_path: str = "pox.db", up_to: str = None, max_days: int = 400) -> dict:
+    """**完了した日**を up_to まで順に publish する（§6）。
+
+    up_to は「アンカーしてよい最後の完了日」で、既定は **前日（UTC）**。当日を含めない
+    のは、当日はまだイベントが増えうるため root が後から変わり verify が壊れるから。
+    バッチが日次で回れば、常に「昨日まで」を確定させ、今日は明日確定する（1日遅れ・正しい）。
+
+    最後のアンカーの翌日から up_to まで**連続して**（空の日も空 root で）記録するので、
+    バッチが数日落ちても gap ができない（§6-1）。初回（アンカー皆無）は最古イベントの日から、
+    イベントも無ければ up_to 1日ぶん。冪等: 既にある日は publish_anchor 側でスキップ。
     """
-    today = today or _today_utc()
+    up_to = up_to or _yesterday_utc()
+    end = _date.fromisoformat(up_to)
     last = _last_anchor_date(db_path)
     if last:
         start = _date.fromisoformat(last) + timedelta(days=1)
     else:
         e = _earliest_event_date(db_path)
-        start = _date.fromisoformat(e) if e else _date.fromisoformat(today)
-    end = _date.fromisoformat(today)
+        start = _date.fromisoformat(e) if e else end
 
     results, d, guard = [], start, 0
     while d <= end and guard < max_days:

@@ -12,7 +12,7 @@ PoX ③ 最小プラットフォーム
       ANTHROPIC_API_KEY=xxx python app.py  ← 実LLM判定
       POX_DB=/path/to/pox.db python app.py ← DB パス変更
 """
-import sys, os, uuid
+import sys, os, uuid, secrets
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session
@@ -164,9 +164,14 @@ def ledger_verify(date):
 
 
 def _anchor_token_ok():
-    """POX_ANCHOR_TOKEN が設定され、X-Anchor-Token ヘッダが一致するか（外部スケジューラ用）。"""
+    """POX_ANCHOR_TOKEN が設定され、X-Anchor-Token ヘッダが一致するか（外部スケジューラ用）。
+
+    タイミング攻撃を避けるため secrets.compare_digest で定数時間比較する。
+    """
     tok = os.environ.get("POX_ANCHOR_TOKEN", "")
-    return bool(tok) and request.headers.get("X-Anchor-Token", "") == tok
+    if not tok:
+        return False
+    return secrets.compare_digest(request.headers.get("X-Anchor-Token", ""), tok)
 
 
 @app.post("/ledger/anchor")

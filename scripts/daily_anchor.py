@@ -7,7 +7,8 @@ Render Cron（render.yaml の pox-anchor）や任意のスケジューラから:
 
 - DATABASE_URL があれば Postgres（本番）、無ければ SQLite（POX_DB / 既定 pox.db）。
 - schema.init() を先に呼びテーブル存在を保証（Web が未起動でも動く・冪等）。
-- run_daily は最後のアンカーの翌日〜今日を連続記録（欠けた日はバックフィル・gap 無し）。
+- run_daily は最後のアンカーの翌日〜**前日（UTC）**を連続記録（当日は含めない＝同日
+  イベントで root が後から変わるのを防ぐ／欠けた日はバックフィル・gap 無し）。
 - Nomic・認証には一切依存しない。
 """
 import os

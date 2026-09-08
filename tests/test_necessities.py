@@ -80,9 +80,9 @@ def test_self_declared_gate_u_persisted_clamped():
 
 def test_liveness_supersede_and_retire():
     db = _db()
-    nec = {"necessity_text": "x", "will_text": "w"}
-    r1 = N.publish_necessity("u3", "subject", nec, db_path=db)
-    r2 = N.publish_necessity("u3", "subject", nec, db_path=db)
+    r1 = N.publish_necessity("u3", "subject", {"necessity_text": "x", "will_text": "w"}, db_path=db)
+    r2 = N.publish_necessity("u3", "subject", {"necessity_text": "y", "will_text": "w"}, db_path=db)
+    assert r2["necessity_id"] != r1["necessity_id"]              # 内容が違えば新レコード
     assert N.is_live(r1["necessity_id"], db_path=db) is False    # 後続に置換された
     assert N.is_live(r2["necessity_id"], db_path=db) is True     # 最新は生きている
     live = N.get_live_necessities("u3", db_path=db)
@@ -91,6 +91,16 @@ def test_liveness_supersede_and_retire():
     N.retire_necessity(r2["necessity_id"], reason="やめた", db_path=db)
     assert N.is_live(r2["necessity_id"], db_path=db) is False
     assert le.verify_chain(db_path=db)["ok"] is True
+
+
+def test_churn_skips_identical_content():
+    db = _db()
+    nec = {"necessity_text": "同じ", "will_text": "w", "evidence_span": "根拠", "gate_s": 0.5}
+    r1 = N.publish_necessity("u5", "subject", nec, db_path=db)
+    r2 = N.publish_necessity("u5", "subject", dict(nec), db_path=db)   # 同一内容（salt は別でも）
+    assert r2["skipped"] is True and r2["necessity_id"] == r1["necessity_id"]
+    assert len(N.get_necessities("u5", db_path=db)) == 1
+    assert len(le.get_events(type_="necessity.published", db_path=db)) == 1
 
 
 def test_evidence_delete_makes_commitment_unopenable():

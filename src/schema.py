@@ -142,6 +142,39 @@ _SQLITE_DDL = [
         created_at   TEXT NOT NULL,
         responded_at TEXT
     )""",
+
+    # ── 必要像の 1:N 化（指示書17 §7）────────────────────────────
+    # 必要像は主体にも意志形成にも従属しない独立レコード（(C)案）。owner_ref は
+    # subject_id でも intent_id でもよい（owner_kind で区別）。
+    # will_vec / necessity_vec はベクトル化配線が入るまで TEXT(JSON) で保持（§9 で報告。
+    # pgvector 化は照合切替＝後続段で。次元の早期固定を避ける）。
+    """CREATE TABLE IF NOT EXISTS necessities (
+        necessity_id    TEXT PRIMARY KEY,
+        owner_ref       TEXT NOT NULL,
+        owner_kind      TEXT NOT NULL,
+        n               INTEGER NOT NULL,
+        will_text       TEXT NOT NULL,
+        will_vec        TEXT,
+        necessity_text  TEXT NOT NULL,
+        necessity_vec   TEXT,
+        gate_s          REAL,
+        gate_u          REAL,
+        p_sharpness     REAL,
+        alpha           REAL,
+        beta            REAL,
+        evidence_commit TEXT,
+        content_hash    TEXT NOT NULL,
+        origin          TEXT NOT NULL,
+        generator       TEXT,
+        prev_necessity  TEXT,
+        created_at      TEXT NOT NULL
+    )""",
+    # evidence_span の平文と salt（削除可能・§7-2）。salt を消せばコミットメントは開けなくなる。
+    """CREATE TABLE IF NOT EXISTS necessity_evidence (
+        necessity_id  TEXT PRIMARY KEY,
+        evidence_span TEXT,
+        salt          TEXT
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -282,6 +315,33 @@ _PG_DDL = [
         status       TEXT NOT NULL DEFAULT 'pending',
         created_at   TEXT NOT NULL,
         responded_at TEXT
+    )""",
+    # ── 必要像の 1:N 化（指示書17 §7）。SQLite 版と同一（vec は TEXT/JSON で保持）──
+    """CREATE TABLE IF NOT EXISTS necessities (
+        necessity_id    TEXT PRIMARY KEY,
+        owner_ref       TEXT NOT NULL,
+        owner_kind      TEXT NOT NULL,
+        n               INTEGER NOT NULL,
+        will_text       TEXT NOT NULL,
+        will_vec        TEXT,
+        necessity_text  TEXT NOT NULL,
+        necessity_vec   TEXT,
+        gate_s          REAL,
+        gate_u          REAL,
+        p_sharpness     REAL,
+        alpha           REAL,
+        beta            REAL,
+        evidence_commit TEXT,
+        content_hash    TEXT NOT NULL,
+        origin          TEXT NOT NULL,
+        generator       TEXT,
+        prev_necessity  TEXT,
+        created_at      TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS necessity_evidence (
+        necessity_id  TEXT PRIMARY KEY,
+        evidence_span TEXT,
+        salt          TEXT
     )""",
 ]
 

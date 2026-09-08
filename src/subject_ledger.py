@@ -50,3 +50,21 @@ def publish_profile_structured(subject_id: str, profile_input: dict, *,
         "prev_snapshot": prev_snapshot, "members_after_hash": members_after_hash,
     }, db_path=db_path)
     return {"skipped": False, "content_hash": ch, "n": n, "prev_snapshot": prev_snapshot}
+
+
+def publish_visibility_changed(subject_id: str, scope: str, *, actor: str = None,
+                               skip_if_unchanged: bool = True,
+                               db_path: str = "pox.db") -> dict:
+    """公開範囲の変更を台帳へ記録（§5-1/§5-3: visibility.changed {subject_id, scope}）。
+
+    直前の visibility.changed と scope が同一なら churn スキップ。
+    """
+    if skip_if_unchanged:
+        mine = [e for e in le.get_events(type_="visibility.changed", db_path=db_path)
+                if e["payload"].get("subject_id") == subject_id]
+        if mine and mine[-1]["payload"].get("scope") == scope:
+            return {"skipped": True, "scope": scope}
+    le.append_event(actor or subject_id, "visibility.changed", {
+        "subject_id": subject_id, "scope": scope,
+    }, db_path=db_path)
+    return {"skipped": False, "scope": scope}

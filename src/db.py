@@ -187,6 +187,26 @@ def get_profile_edit_data(user_id: str, db_path: str = "pox.db") -> dict | None:
     return None
 
 
+def get_profile_visibility(user_id: str, db_path: str = "pox.db") -> str | None:
+    """profiles.visibility を返す（行が無ければ None）。"""
+    with _connect(db_path) as con:
+        row = con.execute(
+            "SELECT visibility FROM profiles WHERE user_id = %s", (user_id,)
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_profile_visibility(user_id: str, scope: str, db_path: str = "pox.db") -> bool:
+    """profiles.visibility を更新（本人のプロフィール公開範囲・指示書17 §5）。行が無ければ False。"""
+    now = _now()
+    with _connect(db_path) as con:
+        cur = con.execute(
+            "UPDATE profiles SET visibility = %s, updated_at = %s WHERE user_id = %s",
+            (scope, now, user_id),
+        )
+        return bool(cur.rowcount)
+
+
 def save_view_overrides(user_id: str, overrides: dict, db_path: str = "pox.db") -> bool:
     """
     view_overrides のみ更新（表示専用・profile_view 再生成なし §5.1）。

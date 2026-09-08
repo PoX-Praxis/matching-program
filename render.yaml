@@ -29,6 +29,26 @@ services:
       - key: POX_DEBUG
         value: "0"
 
+  ## 日次 root バッチ（指示書17 §6）。1日1回 UTC 00:10 に scripts/daily_anchor.py を実行。
+  ## イベントゼロの日も空 root を記録し、落ちた日は次回にバックフィルされる（gap 無し）。
+  ## ⚠️ Render の Cron Job は有料プラン機能です。無料で回すなら本サービスは使わず、
+  ##    無料の外部スケジューラ（cron-job.org / GitHub Actions 等）から
+  ##    POST /ledger/anchor に X-Anchor-Token: <POX_ANCHOR_TOKEN> を付けて叩く運用でも可。
+  - type: cron
+    name: pox-anchor
+    runtime: python
+    plan: starter
+    schedule: "10 0 * * *"     # 毎日 00:10 UTC
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python scripts/daily_anchor.py"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pox-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.12"
+
 databases:
   - name: pox-db
     plan: free               # ⚠️ 30 日失効。常設運用は "starter" ($7/月) を推奨。

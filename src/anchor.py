@@ -18,7 +18,7 @@ root の計算だけ先に始める（§0）。
 是認ログを含めるのは、含めないと署名を後から捏造・削除できるため。
 """
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as _date, timedelta
 
 from db_connect import get_connection, is_postgres
 from canon import canonicalize, sha256_hex
@@ -167,3 +167,44 @@ def verify_date(date: str, db_path: str = "pox.db") -> dict:
         "from_seq": stored["from_seq"], "to_seq": stored["to_seq"],
         "prev_anchor": stored["prev_anchor"], "external_ref": stored["external_ref"],
     }
+
+
+# ── 日次バッチ（1日1回・欠けた日はバックフィル）────────────────────────────────
+
+def _last_anchor_date(db_path: str = "pox.db"):
+    with _connect(db_path) as con:
+        r = con.execute("SELECT date FROM anchors ORDER BY date DESC LIMIT 1").fetchone()
+    return r[0] if r else None
+
+
+def _earliest_event_date(db_path: str = "pox.db"):
+    ev = le.get_events(db_path=db_path)
+    if not ev:
+        return None
+    return (ev[0]["at"] or "")[:10] or None
+
+
+def run_daily(db_path: str = "pox.db", today: str = None, max_days: int = 400) -> dict:
+    """未アンカーの日を today（UTC）まで順に publish する（§6）。
+
+    最後のアンカーの翌日から today まで**連続して**空でない/空を問わず記録するので、
+    バッチが数日落ちても gap ができない（§6-1「飛ばしを検出可能に」を実運用で担保）。
+    初回（アンカー皆無）は最古イベントの日から、イベントも無ければ today 1日ぶんだけ。
+    冪等: 既にある日は publish_anchor 側でスキップ。
+    """
+    today = today or _today_utc()
+    last = _last_anchor_date(db_path)
+    if last:
+        start = _date.fromisoformat(last) + timedelta(days=1)
+    else:
+        e = _earliest_event_date(db_path)
+        start = _date.fromisoformat(e) if e else _date.fromisoformat(today)
+    end = _date.fromisoformat(today)
+
+    results, d, guard = [], start, 0
+    while d <= end and guard < max_days:
+        results.append(publish_anchor(d.isoformat(), db_path=db_path))
+        d += timedelta(days=1)
+        guard += 1
+    return {"from": start.isoformat(), "to": end.isoformat(),
+            "count": len(results), "results": results}

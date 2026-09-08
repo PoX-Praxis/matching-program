@@ -127,13 +127,16 @@ def _latest_for_owner(con, owner_ref: str):
 
 def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
                       origin: str = "generated", generator: str = "",
-                      actor: str = None, db_path: str = "pox.db") -> dict:
+                      actor: str = None, skip_if_unchanged: bool = True,
+                      db_path: str = "pox.db") -> dict:
     """必要像を1件発行する。necessities 行を書き、necessity.published を台帳へ追記する。
 
     - owner_kind: 'subject' | 'intent'
     - origin: 'generated' | 'self_declared'（self_declared は gate_u をクランプ）
     - n は owner ごとの単調カウンタ、prev_necessity は同 owner の直前 necessity。
-    戻り値: {"necessity_id", "n", "content_hash", "prev_necessity"}。
+    - skip_if_unchanged: 直前と content_hash が同一なら行も台帳も足さない（churn 防止。
+      編集の再ベクトル化で必要像本文が変わらないケースを弾く）。
+    戻り値: {"necessity_id", "n", "content_hash", "prev_necessity", "skipped"}。
     """
     if owner_kind not in ("subject", "intent"):
         raise ValueError("owner_kind は 'subject' | 'intent'")
@@ -153,9 +156,26 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
     content_hash = compute_content_hash(necessity_text, numbers, ev_commit)
 
     with _connect(db_path) as con:
-        prev = _latest_for_owner(con, owner_ref)
-        prev_id = prev[0] if prev else None
-        n = (prev[1] + 1) if prev else 1
+        latest = con.execute(
+            "SELECT necessity_id, n, content_hash FROM necessities WHERE owner_ref=%s "
+            "ORDER BY n DESC LIMIT 1", (owner_ref,),
+        ).fetchone()
+        # churn 判定: salt はレコード毎に乱数のため content_hash 直比較はできない。
+        # 「直前レコードの salt」で新内容のハッシュを再計算し、一致＝同一内容として弾く。
+        if skip_if_unchanged and latest:
+            prev_salt = con.execute(
+                "SELECT salt FROM necessity_evidence WHERE necessity_id=%s", (latest[0],)
+            ).fetchone()
+            if prev_salt and prev_salt[0] is not None:
+                same = compute_content_hash(
+                    necessity_text, numbers,
+                    evidence_commitment(evidence_span, prev_salt[0])) == latest[2]
+                if same:
+                    return {"necessity_id": latest[0], "n": latest[1],
+                            "content_hash": latest[2], "prev_necessity": None,
+                            "skipped": True}
+        prev_id = latest[0] if latest else None
+        n = (latest[1] + 1) if latest else 1
         con.execute(
             "INSERT INTO necessities (necessity_id, owner_ref, owner_kind, n, will_text, "
             "will_vec, necessity_text, necessity_vec, gate_s, gate_u, p_sharpness, alpha, beta, "
@@ -180,7 +200,7 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
     }, db_path=db_path)
 
     return {"necessity_id": necessity_id, "n": n,
-            "content_hash": content_hash, "prev_necessity": prev_id}
+            "content_hash": content_hash, "prev_necessity": prev_id, "skipped": False}
 
 
 def retire_necessity(necessity_id: str, reason: str = "", *, actor: str = None,

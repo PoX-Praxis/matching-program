@@ -479,6 +479,8 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
             store.set_generation_status(profile_id, final_status, error=None)
         if snapshot:                  # 登録経路のみ: 時点スナップショットを1点（churn は関数側で防止）
             _save_snapshot_best_effort(profile_id, profile_input, necessity)
+        # 必要像を 1:N 台帳へ記録＋ベクトル化（指示書17 §7・best-effort・churn は関数側で防止）。
+        _publish_necessity_best_effort(profile_id, profile_input, necessity)
     except Exception as e:  # noqa: BLE001
         try:
             store.set_generation_status(profile_id, GEN_ERROR, error=str(e)[:500])
@@ -507,6 +509,31 @@ def _save_snapshot_best_effort(profile_id, profile_input, necessity):
         )
     except Exception:  # noqa: BLE001
         pass
+
+
+def _publish_necessity_best_effort(profile_id, profile_input, necessity):
+    """必要像を 1:N 台帳（necessities）へ記録し、必要像ベクトルを実体化する（指示書17 §7）。
+
+    失敗しても登録・照合・ベクトル化本体には一切影響させない（best-effort）。
+    - origin='generated'（①プロンプト由来／サーバー②生成のいずれも差分導出）。
+    - content_hash が直前と同一なら関数側で churn スキップ（編集の再ベクトル化で本文が
+      変わらないケースを弾く）。
+    - vectorize_necessity は build_vectors と同一の embed() を通す（本番 nomic／ローカル stub）。
+    """
+    try:
+        if not necessity:
+            return
+        import necessities as _nec
+        nec_in = {**necessity, "will_text": profile_input.get("will_text", "")}
+        r = _nec.publish_necessity(
+            profile_id, "subject", nec_in,
+            origin="generated", generator=necessity.get("generator_name") or "",
+            actor=profile_id, db_path=DB,
+        )
+        if not r.get("skipped"):
+            _nec.vectorize_necessity(r["necessity_id"], db_path=DB)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[necessity-1:N] 記録skip（本体は成功）: {e}")
 
 
 def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback,

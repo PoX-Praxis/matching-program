@@ -15,9 +15,12 @@ PoX ③ 最小プラットフォーム
 import sys, os, uuid
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from flask import Flask, request, jsonify, render_template, abort, redirect, url_for
+from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session
 from werkzeug.utils import secure_filename
 from db_connect import is_postgres
+import auth, mailer
+from ledger_events import append_event
+from canon import sha256_hex
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 get_seeker, list_candidate_pool, get_profile_edit_data,
                 save_view_overrides, update_seeker_core, list_public_seeker_index,
@@ -33,6 +36,15 @@ from messages import get_community_messages
 
 app = Flask(__name__)
 DB = os.environ.get("POX_DB", "pox.db")
+
+# セッション署名鍵（指示書17 §3）。本番では POX_SECRET_KEY を必ず設定する。
+app.secret_key = os.environ.get("POX_SECRET_KEY")
+if not app.secret_key:
+    app.secret_key = "dev-insecure-key-change-me"
+    app.logger.warning("[auth] POX_SECRET_KEY 未設定。開発用の既定鍵で起動（本番では必ず設定すること）")
+
+# 規約（プライバシーポリシー）の版。terms.accepted に記録（§3-3）。
+TERMS_VERSION = "2026-08"
 
 # Postgres 接続時は起動時にスキーマを初期化（冪等・再デプロイ安全）
 if is_postgres():
@@ -78,6 +90,70 @@ def dev_console():
     if not _debug_enabled():
         abort(404)
     return render_template("index.html")
+
+
+def _terms_hash() -> str:
+    """規約本文（privacy.html）の SHA-256。版番号だけでは本文差し替えを検出できない（§3-3）。"""
+    try:
+        path = os.path.join(os.path.dirname(__file__), "templates", "privacy.html")
+        with open(path, encoding="utf-8") as f:
+            return sha256_hex(f.read())
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+@app.get("/login")
+def login_page():
+    return render_template("login.html")
+
+
+@app.post("/auth/request")
+def auth_request():
+    """メールアドレスを受け取り、単回・15分有効のマジックリンクを送る（§3-1）。"""
+    body = request.get_json(force=True, silent=True) or request.form.to_dict()
+    email = (body.get("email") or "").strip()
+    if not auth.is_valid_email(email):
+        return jsonify({"error": "メールアドレスの形式が正しくありません"}), 400
+    token = auth.issue_token(email, db_path=DB)
+    link = request.url_root.rstrip("/") + "/auth/verify?token=" + token
+    result = mailer.send_magic_link(email, link)
+    out = {"sent": True}
+    # 開発モード（SMTP 未設定）かつ POX_DEBUG=1 のときのみリンクを返す。本番では返さない。
+    if result.get("dev") and _debug_enabled():
+        out["dev_link"] = result.get("dev_link")
+    return jsonify(out), 200
+
+
+@app.get("/auth/verify")
+def auth_verify():
+    """マジックリンクを検証してセッションを張る。初回のみ台帳へ subject.created / terms.accepted（§3-1）。"""
+    token = request.args.get("token", "")
+    consumed = auth.consume_token(token, db_path=DB)
+    if not consumed:
+        return render_template(
+            "login.html",
+            error="リンクが無効か、期限切れか、使用済みです。もう一度お試しください。",
+        ), 400
+    _email_hash, email = consumed
+    subject_id, created = auth.get_or_create_identity(email, db_path=DB)
+    session["subject_id"] = subject_id
+    if created:
+        # 初回のみ（§3-1 step4・§3-3）。best-effort: 失敗してもログインは成立させる。
+        try:
+            append_event(subject_id, "subject.created",
+                         {"subject_id": subject_id, "kind": "individual"}, db_path=DB)
+            append_event(subject_id, "terms.accepted",
+                         {"subject_id": subject_id, "terms_version": TERMS_VERSION,
+                          "terms_hash": _terms_hash()}, db_path=DB)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[auth] 台帳書き込みskip（ログインは成立）: {e}")
+    return redirect(f"/mypage?id={subject_id}")
+
+
+@app.post("/auth/logout")
+def auth_logout():
+    session.pop("subject_id", None)
+    return jsonify({"ok": True}), 200
 
 
 @app.post("/seekers")

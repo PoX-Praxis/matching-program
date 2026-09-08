@@ -75,6 +75,54 @@ _SQLITE_DDL = [
         joined_at    TEXT NOT NULL,
         PRIMARY KEY (community_id, member_id)
     )""",
+
+    # ── 台帳 v2 基盤（指示書17 §3・§4）────────────────────────────
+    # マジックリンク認証。token は平文保存しない（token_hash のみ）。
+    """CREATE TABLE IF NOT EXISTS auth_identities (
+        subject_id  TEXT PRIMARY KEY,
+        email_hash  TEXT NOT NULL UNIQUE,
+        email_enc   TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS auth_tokens (
+        token_hash  TEXT PRIMARY KEY,
+        email_hash  TEXT NOT NULL,
+        email_enc   TEXT NOT NULL,
+        expires_at  TEXT NOT NULL,
+        used_at     TEXT
+    )""",
+    # 追記専用イベント列。書き込みは ledger_events.append_event のみ（§4-4）。
+    """CREATE TABLE IF NOT EXISTS ledger_events (
+        seq           INTEGER PRIMARY KEY,
+        at            TEXT NOT NULL,
+        actor         TEXT NOT NULL,
+        type          TEXT NOT NULL,
+        prev_hash     TEXT,
+        canon_version TEXT NOT NULL,
+        payload_json  TEXT NOT NULL,
+        event_hash    TEXT NOT NULL UNIQUE
+    )""",
+    # 是認ログ（署名）。本段階では空。署名の動線は後から（§2-1）。
+    """CREATE TABLE IF NOT EXISTS attestations (
+        event_hash    TEXT NOT NULL,
+        by            TEXT NOT NULL,
+        pubkey        TEXT NOT NULL,
+        sig           TEXT NOT NULL,
+        at            TEXT NOT NULL,
+        level         TEXT NOT NULL,
+        canon_version TEXT NOT NULL,
+        PRIMARY KEY (event_hash, by, pubkey)
+    )""",
+    # 日次アンカー（root）。external_ref は段階4では null（§6）。
+    """CREATE TABLE IF NOT EXISTS anchors (
+        anchor_seq    INTEGER PRIMARY KEY,
+        date          TEXT NOT NULL UNIQUE,
+        from_seq      INTEGER NOT NULL,
+        to_seq        INTEGER NOT NULL,
+        root          TEXT NOT NULL,
+        prev_anchor   TEXT,
+        external_ref  TEXT
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -153,6 +201,50 @@ _PG_DDL = [
         embedding  vector(256),          -- MRL 256 次元想定（仕様 5.5 節）。確定前は変更しうる
         model_name TEXT,                 -- どのモデルで生成したか（再現性・移行用）
         created_at TIMESTAMPTZ DEFAULT now()
+    )""",
+
+    # ── 台帳 v2 基盤（指示書17 §3・§4）。SQLite 版と同一スキーマ（型は TEXT/INTEGER で共通）──
+    """CREATE TABLE IF NOT EXISTS auth_identities (
+        subject_id  TEXT PRIMARY KEY,
+        email_hash  TEXT NOT NULL UNIQUE,
+        email_enc   TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS auth_tokens (
+        token_hash  TEXT PRIMARY KEY,
+        email_hash  TEXT NOT NULL,
+        email_enc   TEXT NOT NULL,
+        expires_at  TEXT NOT NULL,
+        used_at     TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS ledger_events (
+        seq           INTEGER PRIMARY KEY,
+        at            TEXT NOT NULL,
+        actor         TEXT NOT NULL,
+        type          TEXT NOT NULL,
+        prev_hash     TEXT,
+        canon_version TEXT NOT NULL,
+        payload_json  TEXT NOT NULL,
+        event_hash    TEXT NOT NULL UNIQUE
+    )""",
+    """CREATE TABLE IF NOT EXISTS attestations (
+        event_hash    TEXT NOT NULL,
+        by            TEXT NOT NULL,
+        pubkey        TEXT NOT NULL,
+        sig           TEXT NOT NULL,
+        at            TEXT NOT NULL,
+        level         TEXT NOT NULL,
+        canon_version TEXT NOT NULL,
+        PRIMARY KEY (event_hash, by, pubkey)
+    )""",
+    """CREATE TABLE IF NOT EXISTS anchors (
+        anchor_seq    INTEGER PRIMARY KEY,
+        date          TEXT NOT NULL UNIQUE,
+        from_seq      INTEGER NOT NULL,
+        to_seq        INTEGER NOT NULL,
+        root          TEXT NOT NULL,
+        prev_anchor   TEXT,
+        external_ref  TEXT
     )""",
 ]
 

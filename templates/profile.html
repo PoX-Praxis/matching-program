@@ -106,7 +106,7 @@
   <div class="connect-block" id="connectBlock" style="display:none">
     <h2>つながる</h2>
     <div class="want-row">
-      <span class="want-label">マッチングの方向性：</span>
+      <span class="want-label">照合の方向性：</span>
       <select class="want-select" id="wantMode">
         <option value="complement">補完（現状・役割が違う人）</option>
         <option value="similar">共鳴（意志が近い人）</option>
@@ -286,7 +286,7 @@ async function doConnect(btn) {
   if (!sid) { PoX.loginRedirect(); return; }
   const want = document.getElementById("wantMode").value;
   if (btn) btn.disabled = true;                     // 二重押下防止（§5）
-  notice.textContent = "マッチング中...";
+  notice.textContent = "照合中...";
   notice.className = "";
   try {
     const mRes = await fetch("/match", {
@@ -297,7 +297,7 @@ async function doConnect(btn) {
     const mData = await mRes.json();
     if (!mRes.ok) {
       notice.className = "err";
-      notice.textContent = "マッチングエラー: " + (mData.error || JSON.stringify(mData));
+      notice.textContent = "照合エラー: " + (mData.error || JSON.stringify(mData));
       if (btn) btn.disabled = false; return;
     }
     const matchRunId = mData.match_run_id;
@@ -319,10 +319,10 @@ async function doConnect(btn) {
     }
     if (aData.established) {
       notice.className = "ok";
-      notice.textContent = `🎉 接続成立！ vessel: ${aData.vessel_id}`;
+      notice.textContent = `🎉 接続成立！`;
     } else {
       notice.className = "ok";
-      notice.textContent = `✅ 接続を申請しました（vessel: ${aData.vessel_id}）。相手の承認をお待ちください。`;
+      notice.textContent = `✅ 接続を申請しました。相手の承認をお待ちください。`;
     }
     // 成功後はボタンを無効のまま（重複申請を防ぐ）
   } catch (e) {

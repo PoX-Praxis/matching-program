@@ -24,8 +24,8 @@
 
   <h2>承認が必要な案件</h2>
   <table>
-    <thead><tr><th>相手</th><th>vessel</th><th>状態</th><th>アクション</th></tr></thead>
-    <tbody id="approvalRows"><tr><td colspan="4">なし</td></tr></tbody>
+    <thead><tr><th>相手</th><th>状態</th><th>アクション</th></tr></thead>
+    <tbody id="approvalRows"><tr><td colspan="3">なし</td></tr></tbody>
   </table>
 
   <h2>未読メッセージ</h2>
@@ -77,7 +77,7 @@ function renderApprovals(vessels, myId) {
 
   const tbody = document.getElementById("approvalRows");
   if (!needAction.length) {
-    tbody.innerHTML = "<tr><td colspan='4'>承認待ち案件はありません</td></tr>"; return;
+    tbody.innerHTML = "<tr><td colspan='3'>承認待ち案件はありません</td></tr>"; return;
   }
   tbody.innerHTML = needAction.map(v => {
     const j = (v.joins || [])[0] || {};
@@ -85,7 +85,6 @@ function renderApprovals(vessels, myId) {
     const oid = encodeURIComponent(other);
     return `<tr>
       <td><a href="/profile/${oid}">${escHtml(other)}</a></td>
-      <td><code style="font-size:11px">${escHtml(v.vessel_id)}</code></td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
       <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;
@@ -123,9 +122,9 @@ async function doApprove(otherId, btn) {
     const data = await res.json();
     if (!res.ok) { alert("エラー: " + (data.error || res.status)); if (btn) btn.disabled = false; return; }
     if (data.established) {
-      alert(`接続成立！ vessel: ${data.vessel_id}`);
+      alert(`接続成立！`);
     } else {
-      alert(`承認しました（vessel: ${data.vessel_id}）`);
+      alert(`承認しました`);
     }
     init();                                          // 再読込で最新状態を反映
   } catch (e) {

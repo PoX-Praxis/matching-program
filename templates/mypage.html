@@ -553,7 +553,6 @@ function renderConnections(vessels, myId) {
     return `<div class="mp-card">
       <div class="row"><span class="k">相手</span><span>${otherCell}</span></div>
       <div class="row"><span class="k">状態</span><span>${badge}</span></div>
-      <div class="row"><span class="k">vessel</span><span><code style="font-size:11px">${escHtml(v.vessel_id)}</code></span></div>
       ${action ? `<div class="row"><span class="k">操作</span><span>${action}</span></div>` : ""}
     </div>`;
   }).join("");
@@ -582,9 +581,9 @@ async function doApprove(otherId, btn) {
     if (btn) btn.disabled = false; return;
   }
   if (data.established) {
-    msg.className = "ok"; msg.textContent = `🎉 接続成立！  vessel: ${data.vessel_id}`;
+    msg.className = "ok"; msg.textContent = `🎉 接続成立！`;
   } else {
-    msg.className = ""; msg.textContent = `✅ 承認しました（vessel: ${data.vessel_id}）。相手の承認待ちです。`;
+    msg.className = ""; msg.textContent = `✅ 承認しました。相手の承認待ちです。`;
   }
   const ledgerRes = await fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`);
   if (handleAuth(ledgerRes)) return;

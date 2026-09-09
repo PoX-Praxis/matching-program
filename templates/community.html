@@ -39,7 +39,7 @@
     <button id="editBtn" style="display:none;padding:3px 12px;font-size:12px;cursor:pointer;border:1px solid #1a3a5c;background:white;color:#1a3a5c;border-radius:4px" onclick="openEdit()">編集</button>
   </div>
   <p id="cDesc" style="color:#555;margin:4px 0"></p>
-  <p style="font-size:12px;color:#888">メンバー数: <span id="memberCount">0</span>人 &nbsp; founder: <span id="cFounder"></span></p>
+  <p style="font-size:12px;color:#888">メンバー数: <span id="memberCount">0</span>人 &nbsp; 作成者: <span id="cFounder"></span></p>
 
   <div id="joinSection" style="margin:16px 0"></div>
 
@@ -449,7 +449,7 @@ function renderJoinSection() {
   const isFounder = communityData.founder === me;
 
   if (isFounder) {
-    el.innerHTML = '<span style="font-size:13px;color:#1a8a1a">あなたはこのコミュニティの founder です</span>';
+    el.innerHTML = '<span style="font-size:13px;color:#1a8a1a">あなたはこのコミュニティの作成者です</span>';
   } else if (member) {
     el.innerHTML = '<span style="font-size:13px;color:#1a8a1a">参加中のコミュニティです</span>';
   } else if (pending) {
@@ -465,7 +465,7 @@ function renderMembers() {
     const isFounder = m.member_id === communityData.founder;
     return `<tr>
       <td><a href="/profile/${encodeURIComponent(m.member_id)}">${escHtml(m.member_id)}</a></td>
-      <td>${isFounder ? '<span class="badge-founder">founder</span>' : "メンバー"}</td>
+      <td>${isFounder ? '<span class="badge-founder">作成者</span>' : "メンバー"}</td>
       <td>${myId && myId !== m.member_id ? `<a href="/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(m.member_id)}" style="font-size:12px">DM</a>` : ""}</td>
     </tr>`;
   }).join("") || "<tr><td colspan='3'>メンバーなし</td></tr>";

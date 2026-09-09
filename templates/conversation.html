@@ -96,21 +96,24 @@ async function sendMsg() {
   const input = document.getElementById("msgInput");
   const body = input.value.trim();
   if (!body && !pendingAttachUrl) return;
-  if (!myId || !otherId) return;
+  if (!otherId) return;
+  const sid = await PoX.me();                        // 同一性はセッション（指示書26）
+  if (!sid) { PoX.loginRedirect(); return; }
 
-  input.value = "";
-  const payload = { from_id: myId, to_id: otherId, body: body || "" };
-  if (pendingAttachUrl) { payload.attachment_url = pendingAttachUrl; clearAttach(); }
+  const payload = { to_id: otherId, body: body || "" };  // from_id はサーバーがセッションから取る
+  if (pendingAttachUrl) { payload.attachment_url = pendingAttachUrl; }
 
   const res = await fetch("/messages", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (PoX.handle(res, { on403: m => { document.getElementById("notice").textContent = m; } })) return;
   if (!res.ok) {
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     document.getElementById("notice").textContent = "エラー: " + JSON.stringify(data);
     return;
   }
+  input.value = ""; if (pendingAttachUrl) clearAttach();
   await loadConversation();
   const box = document.getElementById("chatBox");
   box.scrollTop = box.scrollHeight;
@@ -125,6 +128,7 @@ async function handleFile(e) {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch("/api/upload", { method: "POST", body: fd });
+  if (PoX.handle(res)) return;
   if (!res.ok) { alert("アップロード失敗"); return; }
   const data = await res.json();
   pendingAttachUrl = data.url;

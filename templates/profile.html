@@ -332,9 +332,10 @@ async function doConnect(btn) {
   }
 }
 
-function sendMsg() {
-  if (!myId) { alert("マイページでIDを設定してください"); return; }
-  location.href = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(profileId)}`;
+async function sendMsg() {
+  const sid = await PoX.me();                       // 同一性はセッション（指示書26）
+  if (!sid) { PoX.loginRedirect(); return; }        // 未ログインは /login へ（白画面/生エラーにしない）
+  location.href = `/conversation?me=${encodeURIComponent(sid)}&with=${encodeURIComponent(profileId)}`;
 }
 
 function escHtml(s) {

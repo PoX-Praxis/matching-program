@@ -351,17 +351,25 @@ PoX は「意志（どこへ進みたいか）」と「現状（いま何を持�
   <label><input type="checkbox" id="policyAgree">
     <a href="/privacy" target="_blank">プライバシーポリシー</a>を読み、特に「重要な点」（必要像の公開・接続の公開・消せない記録があること）に同意します</label>
 </div>
-<button class="submit-btn" onclick="register()">登録する</button>
+<button class="submit-btn" onclick="register(this)">登録する</button>
 <div id="msg"></div>
 
 <script>
 const PRIVACY_POLICY_VERSION = "2026-09";   // 同意記録に紐づける版（ポリシー最終更新と揃える・指示書13 §3-5 / 16 §7）
-const existingId = localStorage.getItem("pox_my_id");
-if (existingId) {
+// 登録はログイン後に行う（選択肢1）。プロフィールはセッションの subject_id に束縛される。
+let sessionId = null;
+(async function initRegister() {
+  sessionId = await PoX.me();
   const n = document.getElementById("existingNotice");
   n.style.display = "block";
-  n.innerHTML = `現在ログイン中: <code>${existingId}</code> ── ここで登録すると<strong>このアカウントが上書き更新</strong>されます（新しいアカウントは作られません）。`;
-}
+  if (sessionId) {
+    n.innerHTML = `現在ログイン中: <code>${sessionId}</code> ── ここで登録すると<strong>このアカウントの内容が更新</strong>されます（新しいアカウントは作られません）。`;
+  } else {
+    n.innerHTML = `登録には<strong>ログインが必要です</strong>。<a href="#" id="regLoginLink">ログイン / 新規登録へ →</a>（ログイン後この画面に戻ります。プロンプトの内容は先に読んで構いません）。`;
+    const lk = document.getElementById("regLoginLink");
+    if (lk) lk.onclick = function(e){ e.preventDefault(); PoX.loginRedirect(); };
+  }
+})();
 
 function copyPrompt(preId, msgId) {
   const text = document.getElementById(preId).textContent;
@@ -372,9 +380,13 @@ function copyPrompt(preId, msgId) {
   });
 }
 
-async function register() {
+async function register(btn) {
   const el = document.getElementById("msg");
   el.className = ""; el.textContent = "";
+
+  // 登録はログイン後（選択肢1）。未ログインなら先に /login へ（戻り先＝この画面）。
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
 
   // プライバシーポリシー同意ガード（既存の "consent"＝登録内容合意 とは別物）
   if (!document.getElementById("policyAgree").checked) {
@@ -382,7 +394,6 @@ async function register() {
     el.textContent = "プライバシーポリシーへの同意が必要です（上のチェックを入れてください）";
     return;
   }
-  el.textContent = "登録中...";
 
   let rawText = document.getElementById("seekerJson").value.trim();
   if (!rawText) { el.className = "err"; el.textContent = "JSON を貼り付けてください"; return; }
@@ -392,20 +403,29 @@ async function register() {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'");
 
-  // raw_text をサーバへ。``` 除去・パース・正規化はサーバ側が行う。
+  if (btn) btn.disabled = true;                    // 二重押下防止
+  el.textContent = "登録中...";
+
+  // raw_text をサーバへ。``` 除去・パース・正規化はサーバ側が行う。id はサーバがセッションから取る。
   // ポリシー同意は既存 consent とは別フィールドで送る（サーバー側で証跡記録）。
   const payload = { raw_text: rawText,
                     privacy_policy_agreed: true,
                     privacy_policy_version: PRIVACY_POLICY_VERSION };
-  if (existingId) payload.user_id = existingId;   // 既存ユーザーは上書き
 
-  const res = await fetch("/seekers", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let res;
+  try {
+    res = await fetch("/seekers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    el.className = "err"; el.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
+    if (btn) btn.disabled = false; return;
+  }
+  if (PoX.handle(res, { on403: m => { el.className = "err"; el.textContent = m; } })) { if (btn) btn.disabled = false; return; }
   const data = await res.json();
   if (res.ok) {
-    localStorage.setItem("pox_my_id", data.id);
+    localStorage.setItem("pox_my_id", data.id);    // 表示上の利便のみ（認可には使わない）
     el.className = "ok";
     el.innerHTML = `✅ 登録完了！ ID: <strong>${data.id}</strong>
       &nbsp; <a href="/mypage?id=${encodeURIComponent(data.id)}">マイページを開く →</a>
@@ -413,6 +433,7 @@ async function register() {
   } else {
     el.className = "err";
     el.textContent = "エラー: " + (data.error || JSON.stringify(data));
+    if (btn) btn.disabled = false;
   }
 }
 </script>

@@ -3,6 +3,24 @@
      一部ページは body が中央寄せの枠のため帯が端まで届かなかった → 全幅・上端そろえに統一。 */
   #poxNav{ box-sizing:border-box; width:100vw; margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw); margin-top:0; }
   body{ margin-top:0 !important; }
+
+  /* ── スマホ対応（全ページ共通）── 横幅は各 body の max-width が流動的に縮む。
+     ここでは端末幅で崩れやすい要素だけを整える。 */
+  html, body{ max-width:100%; overflow-x:hidden; }   /* 100vw リボン由来の横スクロールを抑止 */
+  img{ max-width:100%; height:auto; }
+  @media (max-width:640px){
+    #poxNav{ padding:10px 12px; }
+    #poxNav > div{ gap:11px; }
+    #poxNav a, #poxNav button{ font-size:13px; }
+    /* 幅広の表・整形テキスト・チャットは要素内で横スクロール（ページ全体は横に伸ばさない） */
+    table{ display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    pre{ overflow-x:auto; }
+    #navMenu{ min-width:min(240px, calc(100vw - 24px)); }
+  }
+  @media (max-width:400px){
+    #poxNav > div{ gap:8px; }
+    #poxNav a, #poxNav button{ font-size:12px; }
+  }
 </style>
 <nav id="poxNav" style="background:#1a3a5c;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;position:relative">
   <a href="/" style="color:white;font-weight:bold;text-decoration:none;font-size:1.1rem">PoX</a>

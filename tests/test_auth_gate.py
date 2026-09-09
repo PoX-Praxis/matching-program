@@ -59,6 +59,24 @@ def test_post_endpoints_401_without_session():
     assert r.status_code == 401
 
 
+# ── メッセージ/アップロード系のゲート（指示書26）───────────────────
+def test_message_endpoints_require_login():
+    os.environ.pop("POX_DEBUG", None)
+    c, _ = _client()
+    # 未ログインで DM 送信・コミュニティ投稿・アップロードは 401（従来は通っていた穴）
+    assert c.post("/messages", json={"from_id": "u1", "to_id": "u2", "body": "hi"}).status_code == 401
+    assert c.post("/api/community/c1/message", json={"from_id": "u1", "body": "hi"}).status_code == 401
+    assert c.post("/api/upload").status_code == 401
+
+
+def test_message_send_403_on_impersonation():
+    os.environ.pop("POX_DEBUG", None)
+    c, _ = _client()
+    _login(c, "u1")
+    # 他人になりすまして DM 送信 → 403
+    assert c.post("/messages", json={"from_id": "victim", "to_id": "u2", "body": "hi"}).status_code == 403
+
+
 # ── 403: ログインしているが id が食い違う ───────────────────────
 def test_get_endpoints_403_on_mismatch():
     os.environ.pop("POX_DEBUG", None)

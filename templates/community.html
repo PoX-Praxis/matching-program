@@ -412,6 +412,7 @@ async function handleFile(e) {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch("/api/upload", { method: "POST", body: fd });
+  if (PoX.handle(res)) return;
   if (!res.ok) { alert("アップロード失敗"); return; }
   const data = await res.json();
   pendingAttachUrl = data.url;
@@ -501,15 +502,19 @@ function renderChat() {
 
   box.scrollTop = box.scrollHeight;
 
-  const me = sessionId || myId;
-  const member = communityData.members.find(m => m.member_id === me);
+  // 入力欄はセッション本人が当事者のときだけ（localStorage の残骸で出さない・指示書26）。
+  const me = sessionId;
+  const member = me && communityData.members.find(m => m.member_id === me);
   const isFounder = me && communityData.founder === me;
+  const notice = document.getElementById("chatNotice");
   if (member || isFounder) {
     document.getElementById("chatInput").style.display = "flex";
-    document.getElementById("chatNotice").style.display = "none";
-  } else if (me) {
+    notice.style.display = "none";
+  } else {
     document.getElementById("chatInput").style.display = "none";
-    document.getElementById("chatNotice").style.display = "block";
+    notice.style.display = "block";
+    notice.textContent = me ? "チャットに参加するにはメンバーになってください。"
+                            : "チャットに参加するにはログインしてください。";
   }
 }
 
@@ -550,21 +555,22 @@ async function sendMsg() {
   const input = document.getElementById("msgInput");
   const body = input.value.trim();
   if (!body && !pendingAttachUrl) return;
-  const me = sessionId || myId;
-  if (!me) return;
-  input.value = "";
+  const sid = await PoX.me();                        // 同一性はセッション（指示書26）
+  if (!sid) { PoX.loginRedirect(); return; }
 
-  const payload = { from_id: me, body: body || "" };
-  if (pendingAttachUrl) { payload.attachment_url = pendingAttachUrl; clearAttach(); }
+  const payload = { body: body || "" };              // from_id はサーバーがセッションから取る
+  if (pendingAttachUrl) { payload.attachment_url = pendingAttachUrl; }
 
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/message`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (PoX.handle(res, { on403: m => { document.getElementById("notice").textContent = m; } })) return;
   if (!res.ok) {
     document.getElementById("notice").textContent = "送信エラー";
     return;
   }
+  input.value = ""; if (pendingAttachUrl) clearAttach();
   await reloadChat();
 }
 

@@ -82,7 +82,12 @@ async function loadCommunities() {
   }).join("");
 }
 
-function openModal()  { document.getElementById("modal").classList.add("open"); }
+async function openModal()  {
+  // コミュニティ作成はログイン必須（台帳に member.joined を書く・指示書25/26）。
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
+  document.getElementById("modal").classList.add("open");
+}
 function closeModal() { document.getElementById("modal").classList.remove("open"); }
 
 async function createCommunity(btn) {

@@ -1330,11 +1330,13 @@ def community_page(community_id):
 # ── メッセージ API ────────────────────────────────────────────
 
 @app.post("/messages")
+@login_required
 def post_message():
+    """DM 送信。送信者(from_id)はセッション本人に束縛（指示書26）。未ログインは 401・なりすましは 403。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
-    from_id = body.get("from_id")
+    from_id = require_self(body.get("from_id"))
     to_id   = body.get("to_id")
     msg_body = (body.get("body") or "").strip()
     attachment_url = body.get("attachment_url")
@@ -1358,7 +1360,9 @@ def api_conversation():
 
 # ── ファイルアップロード API ──────────────────────────────────
 @app.post("/api/upload")
+@login_required
 def api_upload():
+    """添付アップロード。メッセージ送信の一部のためログイン必須（指示書26）。未ログインは 401。"""
     if "file" not in request.files:
         return jsonify({"error": "ファイルがありません"}), 400
     f = request.files["file"]
@@ -1586,11 +1590,14 @@ def api_leave_community(community_id):
 
 
 @app.post("/api/community/<community_id>/message")
+@login_required
 def api_community_message(community_id):
+    """コミュニティチャット投稿。送信者はセッション本人に束縛＋メンバー限定（指示書26）。
+    未ログインは 401・なりすましは 403・非メンバーは 403。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
-    from_id  = (body.get("from_id") or "").strip()
+    from_id  = require_self((body.get("from_id") or "").strip() or None) or ""
     msg_body = (body.get("body") or "").strip()
     attachment_url = body.get("attachment_url")
     if not from_id or (not msg_body and not attachment_url):

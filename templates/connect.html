@@ -59,7 +59,8 @@
 <div id="directory"><span class="muted">読み込み中…</span></div>
 
 <script>
-const myId = localStorage.getItem("pox_my_id");
+// 照合は本人のプロフィールに基づく個人向け機能。身元はセッション（localStorage ではない）。
+let sid = null;        // ログイン中の subject_id（未ログインは null）
 let recResults = [];   // POST /v4/match の results をキャッシュ（並べ替えは再照合しない）
 
 function escHtml(s) {
@@ -75,9 +76,12 @@ const AXIS = {
 /* ── おすすめ（v4 照合）── */
 async function loadRecommendations() {
   const status = document.getElementById("recStatus");
-  if (!myId) {
-    status.innerHTML = `<div class="notice">つながるには、まずあなた自身を言語化する必要があります。
-      <a href="/register">言語化する →</a></div>`;
+  // 未ログイン: 個人向けの照合（並べ替え・おすすめ・再試行）は出さず、ログイン後に使える旨だけ案内。
+  if (!sid) {
+    document.getElementById("recToolbar").style.display = "none";
+    document.getElementById("recCards").innerHTML = "";
+    status.innerHTML = `<div class="notice">ログインすると、あなたに合った相手を照合できます。
+      下の「登録者一覧」は今も見られます。<a href="/login?next=%2Fconnect">ログイン →</a></div>`;
     return;
   }
   status.innerHTML = `<span class="muted">照合中…</span>`;
@@ -86,7 +90,7 @@ async function loadRecommendations() {
   try {
     res = await fetch("/v4/match", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ seeker_id: myId }),
+      body: JSON.stringify({ seeker_id: sid }),
     });
   } catch (e) {
     status.innerHTML = `<div class="notice warn">照合に接続できませんでした。下の一覧から探してみてください。</div>`;
@@ -146,7 +150,7 @@ function renderRecs() {
 /* 自分の照合準備状態（preparing のとき注意書き。非ブロッキング）*/
 async function checkMyStatus() {
   try {
-    const r = await fetch(`/v4/seekers/${encodeURIComponent(myId)}/status`);
+    const r = await fetch(`/v4/seekers/${encodeURIComponent(sid)}/status`);
     if (!r.ok) return;
     const st = await r.json();
     if (st.generation_status === "preparing") {
@@ -167,7 +171,7 @@ async function retryGeneration(btn) {
   const box = document.getElementById("recErr");
   if (box) box.innerHTML = "再試行を開始しました。準備中です…";
   try {
-    const r = await fetch(`/v4/seekers/${encodeURIComponent(myId)}/retry`, { method: "POST" });
+    const r = await fetch(`/v4/seekers/${encodeURIComponent(sid)}/retry`, { method: "POST" });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
       if (box) box.innerHTML = "再試行に失敗しました（" + (d.error || r.status)
@@ -191,7 +195,7 @@ async function loadDirectory() {
     el.innerHTML = `<span class="muted">一覧を読み込めませんでした。</span>`;
     return;
   }
-  rows = (rows || []).filter(r => r.id && r.id !== myId);   // 自分は除外
+  rows = (rows || []).filter(r => r.id && r.id !== sid);   // 自分は除外
   rows.forEach(r => { dirOneLiner[r.id] = r.one_liner || ""; dirNecessity[r.id] = r.necessity_excerpt || ""; });
   if (!rows.length) {
     el.innerHTML = `<span class="muted">まだ他の登録者がいません。</span>`;
@@ -208,8 +212,8 @@ async function loadDirectory() {
   }).join("");
 }
 
-// 一覧を先に読み（一行紹介をおすすめでも使うため）→ おすすめ照合
-loadDirectory().then(loadRecommendations);
+// セッションを確定 → 一覧を先に読み（一行紹介をおすすめでも使う）→ おすすめ照合（ログイン時のみ実照合）
+PoX.me().then(function(s){ sid = s; return loadDirectory(); }).then(loadRecommendations);
 </script>
 </body>
 </html>

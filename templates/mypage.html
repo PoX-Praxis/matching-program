@@ -246,10 +246,9 @@
 const params = new URLSearchParams(location.search);
 const myId = params.get("id");
 
-// 認証ゲート（指示書22）。本人限定 API が 401 を返したら白画面にせず /login へ誘導する。
+// 認証ゲート（指示書22/25）。401→/login（元画面へ）・403→権限表示。共通ハンドラに委譲。
 function handleAuth(res) {
-  if (res && res.status === 401) { location.href = "/login"; return true; }
-  return false;
+  return PoX.handle(res);
 }
 
 if (!myId) {
@@ -476,16 +475,44 @@ async function loadV4Status(id) {
     el.style.display = "block";
     return;
   }
+  if (s === "error") {
+    // 失敗時は再試行の動線を出す（§6）。/v4/seekers/<id>/retry は登録動線のため無認証のまま。
+    el.className = "v4status err";
+    el.innerHTML = '照合準備でエラーが発生しました。'
+      + '<button id="v4RetryBtn" class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">再試行する</button>';
+    el.style.display = "block";
+    return;
+  }
   const map = {
     preparing: ["照合の準備中です", "info"],
     ready:     ["照合可能な状態です", "ok"],
-    error:     ["照合準備でエラーが発生しました", "err"],
   };
   const m = map[s];
   if (!m) { el.style.display = "none"; return; }
   el.className = "v4status " + m[1];
   el.textContent = m[0];
   el.style.display = "block";
+}
+
+async function retryGeneration(id, btn) {
+  const el = document.getElementById("v4Status");
+  if (btn) btn.disabled = true;                        // 二重押下防止（§5）
+  if (el) { el.className = "v4status info"; el.textContent = "再試行を開始しました。準備中です…"; }
+  try {
+    const r = await fetch(`/v4/seekers/${encodeURIComponent(id)}/retry`, { method: "POST" });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      if (el) { el.className = "v4status err";
+        el.innerHTML = "再試行に失敗しました（" + (d.error || r.status) + "）。"
+          + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">もう一度</button>'; }
+      return;
+    }
+    setTimeout(() => loadV4Status(id), 2500);          // 準備完了を少し待って再表示
+  } catch (e) {
+    if (el) { el.className = "v4status err";
+      el.innerHTML = "通信エラーが発生しました。"
+        + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">もう一度</button>'; }
+  }
 }
 
 /* ══ 接続（§3-8 カード化。空状態は「つながる」への導線） ══════════════ */
@@ -512,7 +539,7 @@ function renderConnections(vessels, myId) {
     } else if (!iApproved && theyApproved) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
-      action = `<button class="mp-btn" onclick="doApprove('${eid}')">承認する</button>`;
+      action = `<button class="mp-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
     }
@@ -532,15 +559,27 @@ function renderConnections(vessels, myId) {
   }).join("");
 }
 
-async function doApprove(otherId) {
+async function doApprove(otherId, btn) {
   const msg = document.getElementById("notice");
-  const res = await fetch("/approve", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from_id: myId, to_id: otherId }),
-  });
+  const sid = await PoX.me();                        // 同一性はセッション（§2）
+  if (!sid) { PoX.loginRedirect(); return; }
+  if (btn) btn.disabled = true;                      // 二重押下防止（§5）
+  msg.className = ""; msg.textContent = "承認処理中...";
+  let res;
+  try {
+    res = await fetch("/approve", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_id: otherId }),
+    });
+  } catch (e) {
+    msg.className = "err"; msg.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
+    if (btn) btn.disabled = false; return;
+  }
+  if (PoX.handle(res, { on403: m => { msg.className = "err"; msg.textContent = m; } })) { if (btn) btn.disabled = false; return; }
   const data = await res.json();
   if (!res.ok) {
-    msg.className = "err"; msg.textContent = "エラー: " + JSON.stringify(data); return;
+    msg.className = "err"; msg.textContent = "エラー: " + JSON.stringify(data);
+    if (btn) btn.disabled = false; return;
   }
   if (data.established) {
     msg.className = "ok"; msg.textContent = `🎉 接続成立！  vessel: ${data.vessel_id}`;

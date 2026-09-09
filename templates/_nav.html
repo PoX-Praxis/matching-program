@@ -13,6 +13,39 @@
   </div>
 </nav>
 <script>
+/* ══ PoX 共通クライアントヘルパ（指示書25）══════════════════════════════════
+   同一性の根拠はセッション。フロントは自分の id を送らず、サーバーが取る。
+   localStorage.pox_my_id は表示上の利便のみ（認可には使わない・§2-2）。 */
+window.PoX = (function(){
+  let _me = undefined;   // undefined=未取得 / null=未ログイン / "id"=ログイン済み
+  async function me() {
+    if (_me !== undefined) return _me;
+    try {
+      const r = await fetch("/api/me");
+      _me = r.ok ? ((await r.json()).subject_id || null) : null;   // 401=未ログイン
+    } catch (e) { _me = null; }
+    return _me;
+  }
+  function loginRedirect() {
+    const next = encodeURIComponent(location.pathname + location.search);
+    location.href = "/login?next=" + next;      // ログイン後、元画面へ戻す（§4-2）
+  }
+  /* ゲートされた fetch の応答を共通処理する。処理済みなら true を返す（呼び出し側は中断）。
+     401 → /login へ（現画面を next に）／403 → 権限エラー表示・/login には飛ばさない。 */
+  function handle(res, opts) {
+    opts = opts || {};
+    if (!res) return false;
+    if (res.status === 401) { loginRedirect(); return true; }
+    if (res.status === 403) {
+      const msg = "この操作を行う権限がありません。";
+      if (typeof opts.on403 === "function") opts.on403(msg); else alert(msg);
+      return true;
+    }
+    return false;
+  }
+  return { me, handle, loginRedirect };
+})();
+
 (function(){
   const id = localStorage.getItem("pox_my_id");
   if (id) {
@@ -20,6 +53,20 @@
     document.getElementById("navInbox").href  = `/inbox?id=${encodeURIComponent(id)}`;
     document.getElementById("navId").textContent = id;
   }
+  // セッションの実ログイン状態でナビを補正（authoritative・§2-3）。localStorage は表示ヒントのみ。
+  PoX.me().then(function(sid){
+    const loginLink = document.getElementById("navLogin");
+    if (sid) {
+      document.getElementById("navMyPage").href = `/mypage?id=${encodeURIComponent(sid)}`;
+      document.getElementById("navInbox").href  = `/inbox?id=${encodeURIComponent(sid)}`;
+      document.getElementById("navId").textContent = sid;
+      if (loginLink) { loginLink.textContent = "ログアウト"; loginLink.href = "#";
+        loginLink.onclick = async function(e){ e.preventDefault();
+          await fetch("/auth/logout", {method:"POST"});
+          try { localStorage.removeItem("pox_my_id"); } catch(_){}
+          location.href = "/about"; }; }
+    }
+  });
   const path = location.pathname;
   const map = {
     "/connect": "navMatch",

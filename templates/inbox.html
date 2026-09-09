@@ -53,9 +53,7 @@ async function init() {
     fetch(`/api/inbox?id=${encodeURIComponent(myId)}`),
   ]);
 
-  if (ledgerRes.status === 401 || inboxRes.status === 401) {   // 未ログイン → /login（指示書22）
-    location.href = "/login"; return;
-  }
+  if (PoX.handle(ledgerRes) || PoX.handle(inboxRes)) return;   // 401→/login・403→権限表示（§4）
 
   const vessels = await ledgerRes.json();
   const inbox   = await inboxRes.json();
@@ -89,7 +87,7 @@ function renderApprovals(vessels, myId) {
       <td><a href="/profile/${oid}">${escHtml(other)}</a></td>
       <td><code style="font-size:11px">${escHtml(v.vessel_id)}</code></td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
-      <td><button onclick="doApprove('${escHtml(other)}')">承認する</button></td>
+      <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;
   }).join("");
 }
@@ -112,18 +110,28 @@ function renderMessages(convs) {
   }).join("");
 }
 
-async function doApprove(otherId) {
-  const res = await fetch("/approve", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from_id: myId, to_id: otherId }),
-  });
-  const data = await res.json();
-  if (data.established) {
-    alert(`接続成立！ vessel: ${data.vessel_id}`);
-  } else {
-    alert(`承認しました（vessel: ${data.vessel_id}）`);
+async function doApprove(otherId, btn) {
+  const sid = await PoX.me();                       // 同一性はセッション（§2）
+  if (!sid) { PoX.loginRedirect(); return; }
+  if (btn) btn.disabled = true;                     // 二重押下防止（§5）
+  try {
+    const res = await fetch("/approve", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_id: otherId }),
+    });
+    if (PoX.handle(res)) { if (btn) btn.disabled = false; return; }
+    const data = await res.json();
+    if (!res.ok) { alert("エラー: " + (data.error || res.status)); if (btn) btn.disabled = false; return; }
+    if (data.established) {
+      alert(`接続成立！ vessel: ${data.vessel_id}`);
+    } else {
+      alert(`承認しました（vessel: ${data.vessel_id}）`);
+    }
+    init();                                          // 再読込で最新状態を反映
+  } catch (e) {
+    alert("通信エラーが発生しました。時間をおいて再度お試しください。");
+    if (btn) btn.disabled = false;
   }
-  init();
 }
 
 function escHtml(s) {

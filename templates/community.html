@@ -101,7 +101,7 @@
       <textarea id="npNecessity" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;height:60px;resize:vertical;margin:4px 0 8px"></textarea>
     </div>
 
-    <button class="btn btn-primary" onclick="submitPropose()">提起する</button>
+    <button class="btn btn-primary" onclick="submitPropose(this)">提起する</button>
     <span id="proposeNotice" style="font-size:12px;margin-left:8px"></span>
   </div>
 
@@ -147,17 +147,13 @@ const myId = localStorage.getItem("pox_my_id");
 let sessionId = null;         // 台帳に書く操作の身元（セッション・指示書23 §4）
 let communityData = null;
 
-// ゲートされた操作が 401 を返したら白画面にせず /login へ（指示書22/23）。
+// ゲートされた操作の 401/403 を共通処理（指示書25 §4）。401→/login（元画面へ）・403→権限表示。
 function handleAuth(res) {
-  if (res && res.status === 401) { location.href = "/login"; return true; }
-  return false;
+  return PoX.handle(res);
 }
 
 async function loadSession() {
-  try {
-    const r = await fetch("/api/me");
-    if (r.ok) sessionId = (await r.json()).subject_id;
-  } catch (e) { sessionId = null; }
+  sessionId = await PoX.me();
 }
 
 async function init() {
@@ -238,12 +234,12 @@ function renderIntents() {
     const approvers = (i.approvers || []).map(escHtml).join(", ") || "なし";
     let actions = "";
     if (canAct && i.status === "proposed") {
-      actions += `<button class="btn-sm" onclick="agreeIntent('${i.intent_id}')">合意する</button> `;
-      actions += `<button class="btn-sm" style="background:#933" onclick="cancelIntent('${i.intent_id}')">取消</button>`;
+      actions += `<button class="btn-sm" onclick="agreeIntent('${i.intent_id}', this)">合意する</button> `;
+      actions += `<button class="btn-sm" style="background:#933" onclick="cancelIntent('${i.intent_id}', this)">取消</button>`;
     } else if (canAct && i.status === "agreed") {
-      actions += `<button class="btn-sm" onclick="completeIntent('${i.intent_id}')">完了にする</button> `;
-      actions += `<button class="btn-sm" style="background:#933" onclick="cancelIntent('${i.intent_id}')">取消</button> `;
-      actions += `<button class="btn-sm" style="background:#357" onclick="joinParticipant('${i.intent_id}')">目的別に参加</button>`;
+      actions += `<button class="btn-sm" onclick="completeIntent('${i.intent_id}', this)">完了にする</button> `;
+      actions += `<button class="btn-sm" style="background:#933" onclick="cancelIntent('${i.intent_id}', this)">取消</button> `;
+      actions += `<button class="btn-sm" style="background:#357" onclick="joinParticipant('${i.intent_id}', this)">目的別に参加</button>`;
     }
     const recruit = i.declaration && i.declaration.kind === "recruit"
       ? `<div style="margin:4px 0;font-size:12px;color:#a15"><b>募集（必要像）:</b> ${escHtml(i.declaration.necessity_text || "")}</div>` : "";
@@ -277,9 +273,38 @@ function onKindChange() {
   document.getElementById("npRecruit").style.display = k === "recruit" ? "block" : "none";
 }
 
-async function submitPropose() {
+/* 台帳に書く操作の共通ラッパ: ログイン確認・二重押下防止・401/403・重複(skip)処理（§4/§5）。
+   doFetch は Response を返す関数。成功時は reloadAll する。 */
+async function ledgerAction(btn, doFetch, opts) {
+  opts = opts || {};
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
+  if (btn) btn.disabled = true;                       // 二重押下防止（§5）
+  let res;
+  try {
+    res = await doFetch(sid);
+  } catch (e) {
+    alert("通信エラーが発生しました。時間をおいて再度お試しください。");
+    if (btn) btn.disabled = false; return;
+  }
+  if (PoX.handle(res, { on403: m => alert(m) })) { if (btn) btn.disabled = false; return; }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // 一意性規則で拒否（既に完了/取消済み等）はエラーでなく状態として伝える（§5-3）。
+    const msg = data.error === "cancelled" ? "この意志形成は取り消されています。"
+              : data.error === "not_agreed" ? "まだ合意に達していません。"
+              : (opts.failMsg || "操作に失敗しました") + "（" + (data.error || res.status) + "）";
+    alert(msg); if (btn) btn.disabled = false; return;
+  }
+  if (data.skipped) { alert(opts.skipMsg || "この操作は既に反映されています。"); }
+  if (opts.onOk) opts.onOk(data);
+  await reloadAll();
+}
+
+async function submitPropose(btn) {
   const notice = document.getElementById("proposeNotice");
-  if (!sessionId) { location.href = "/login"; return; }
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
   const body = document.getElementById("npBody").value.trim();
   if (!body) { notice.style.color = "#c00"; notice.textContent = "本文は必須です"; return; }
   const kind = document.getElementById("npKind").value;
@@ -293,66 +318,54 @@ async function submitPropose() {
       will_text: document.getElementById("npRecruitWill").value.trim(),
       necessity_text: document.getElementById("npNecessity").value.trim() };
   }
+  if (btn) btn.disabled = true;                        // 二重押下防止（§5）
   notice.style.color = "#888"; notice.textContent = "提起中…";
-  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/intent/propose`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ proposer: sessionId, body, declaration }),
-  });
-  if (handleAuth(res)) return;
-  if (!res.ok) { notice.style.color = "#c00"; notice.textContent = "提起に失敗: " + ((await res.json().catch(() => ({}))).error || res.status); return; }
+  let res;
+  try {
+    res = await fetch(`/api/community/${encodeURIComponent(communityId)}/intent/propose`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body, declaration }),
+    });
+  } catch (e) {
+    notice.style.color = "#c00"; notice.textContent = "通信エラーが発生しました。";
+    if (btn) btn.disabled = false; return;
+  }
+  if (PoX.handle(res, { on403: m => { notice.style.color = "#c00"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
+  if (!res.ok) { notice.style.color = "#c00"; notice.textContent = "提起に失敗: " + ((await res.json().catch(() => ({}))).error || res.status); if (btn) btn.disabled = false; return; }
   document.getElementById("npBody").value = ""; document.getElementById("npWill").value = "";
   document.getElementById("npStateHave").value = ""; document.getElementById("npRecruitWill").value = "";
   document.getElementById("npNecessity").value = ""; document.getElementById("npKind").value = ""; onKindChange();
   notice.textContent = "";
+  if (btn) btn.disabled = false;
   await reloadAll();
 }
 
-async function agreeIntent(iid) {
-  if (!sessionId) { location.href = "/login"; return; }
-  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/agree`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ subject: sessionId }),
-  });
-  if (handleAuth(res)) return;
-  if (!res.ok) { alert("合意に失敗しました"); return; }
-  await reloadAll();
+function agreeIntent(iid, btn) {
+  ledgerAction(btn, () => fetch(`/api/intent/${encodeURIComponent(iid)}/agree`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+  }), { failMsg: "合意に失敗しました", skipMsg: "既に合意済みです。" });
 }
 
-async function completeIntent(iid) {
-  if (!sessionId) { location.href = "/login"; return; }
+function completeIntent(iid, btn) {
   const result = prompt("結果を記述してください（実績として残ります・必須）");
   if (result === null || !result.trim()) { alert("結果の記述は必須です"); return; }
-  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/complete`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ by: sessionId, result: result.trim() }),
-  });
-  if (handleAuth(res)) return;
-  if (!res.ok) { alert("完了に失敗: " + ((await res.json().catch(() => ({}))).error || res.status)); return; }
-  await reloadAll();
+  ledgerAction(btn, () => fetch(`/api/intent/${encodeURIComponent(iid)}/complete`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result: result.trim() }),
+  }), { failMsg: "完了に失敗しました", skipMsg: "既に完了しています。" });
 }
 
-async function cancelIntent(iid) {
-  if (!sessionId) { location.href = "/login"; return; }
+function cancelIntent(iid, btn) {
   const reason = prompt("取消の理由（任意）") || "";
-  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/cancel`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ by: sessionId, reason }),
-  });
-  if (handleAuth(res)) return;
-  if (!res.ok) { alert("取消に失敗しました"); return; }
-  await reloadAll();
+  ledgerAction(btn, () => fetch(`/api/intent/${encodeURIComponent(iid)}/cancel`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
+  }), { failMsg: "取消に失敗しました", skipMsg: "既に完了/取消済みです。" });
 }
 
-async function joinParticipant(iid) {
-  if (!sessionId) { location.href = "/login"; return; }
+function joinParticipant(iid, btn) {
   const introduced_by = prompt("紹介者のID（任意・既存メンバーまたは参加者）") || null;
-  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/participant/join`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ participant: sessionId, introduced_by, approved_by: [] }),
-  });
-  if (handleAuth(res)) return;
-  if (!res.ok) { alert("参加に失敗しました"); return; }
-  await reloadAll();
+  ledgerAction(btn, () => fetch(`/api/intent/${encodeURIComponent(iid)}/participant/join`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ introduced_by, approved_by: [] }),
+  }), { failMsg: "参加に失敗しました" });
 }
 
 async function reloadAll() {
@@ -442,7 +455,7 @@ function renderJoinSection() {
   } else if (pending) {
     el.innerHTML = '<span class="pending-badge">参加申請中（承認待ち）</span>';
   } else {
-    el.innerHTML = '<button class="btn btn-primary" onclick="joinCommunity()">参加を申請する</button>';
+    el.innerHTML = '<button class="btn btn-primary" onclick="joinCommunity(this)">参加を申請する</button>';
   }
 }
 
@@ -467,7 +480,7 @@ function renderPending() {
   tbody.innerHTML = pending.map(m => `<tr>
     <td>${escHtml(m.member_id)}</td>
     <td>${(m.joined_at || "").slice(0, 10)}</td>
-    <td><button class="btn-sm" onclick="approveMember('${escHtml(m.member_id)}')">承認</button></td>
+    <td><button class="btn-sm" onclick="approveMember('${escHtml(m.member_id)}', this)">承認</button></td>
   </tr>`).join("");
 }
 
@@ -500,24 +513,33 @@ function renderChat() {
   }
 }
 
-async function joinCommunity() {
-  if (!sessionId) { location.href = "/login"; return; }   // 台帳に書くためログイン必須（指示書23 §4）
-  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/join`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ member_id: sessionId }),
-  });
-  if (handleAuth(res)) return;
-  if (res.ok) { await init(); }
+async function joinCommunity(btn) {
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }          // 台帳に書くためログイン必須（§2/§4）
+  if (btn) btn.disabled = true;                        // 二重押下防止（§5）
+  let res;
+  try {
+    res = await fetch(`/api/community/${encodeURIComponent(communityId)}/join`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    });
+  } catch (e) { alert("通信エラーが発生しました。"); if (btn) btn.disabled = false; return; }
+  if (PoX.handle(res, { on403: m => alert(m) })) { if (btn) btn.disabled = false; return; }
+  if (res.ok) { await init(); } else { alert("参加申請に失敗しました。"); if (btn) btn.disabled = false; }
 }
 
-async function approveMember(memberId) {
-  if (!sessionId) { location.href = "/login"; return; }
-  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/approve`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ member_id: memberId, approver_id: sessionId }),
-  });
-  if (handleAuth(res)) return;
-  if (res.ok) { await init(); }
+async function approveMember(memberId, btn) {
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
+  if (btn) btn.disabled = true;                        // 二重押下防止（§5）
+  let res;
+  try {
+    res = await fetch(`/api/community/${encodeURIComponent(communityId)}/approve`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ member_id: memberId }),
+    });
+  } catch (e) { alert("通信エラーが発生しました。"); if (btn) btn.disabled = false; return; }
+  if (PoX.handle(res, { on403: m => alert(m) })) { if (btn) btn.disabled = false; return; }
+  if (res.ok) { await init(); } else { alert("承認に失敗しました。"); if (btn) btn.disabled = false; }
 }
 
 function handleKey(e) {

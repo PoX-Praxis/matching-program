@@ -60,10 +60,11 @@ if (!myId || !otherId) {
   document.getElementById("notice").textContent = "URL に me= と with= が必要です。";
 }
 
+let _convTimer = null;
 async function loadConversation() {
   if (!myId || !otherId) return;
   const res = await fetch(`/api/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(otherId)}`);
-  if (res.status === 401) { location.href = "/login"; return; }   // 未ログイン → /login（指示書22）
+  if (PoX.handle(res)) { if (_convTimer) clearInterval(_convTimer); return; }   // 401→/login・403→権限表示。ポーリング停止（§4）
   if (!res.ok) return;
   const msgs = await res.json();
 
@@ -155,7 +156,7 @@ function escHtml(s) {
 }
 
 loadConversation();
-setInterval(loadConversation, 5000);
+_convTimer = setInterval(loadConversation, 5000);
 </script>
 </body>
 </html>

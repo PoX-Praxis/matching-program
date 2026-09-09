@@ -146,8 +146,21 @@ def _terms_hash() -> str:
         return ""
 
 
+def _safe_next(raw):
+    """オープンリダイレクト防止: 同一サイト内パス（/... かつ //・スキーム無し）のみ許可。"""
+    if not raw or not raw.startswith("/") or raw.startswith("//") or "://" in raw:
+        return None
+    return raw
+
+
 @app.get("/login")
 def login_page():
+    # 401 で送られてきた元画面へ、ログイン後に戻れるように next を控える（指示書25 §4-2）。
+    nxt = _safe_next(request.args.get("next"))
+    if nxt:
+        session["login_next"] = nxt
+    else:
+        session.pop("login_next", None)
     return render_template("login.html")
 
 
@@ -191,7 +204,9 @@ def auth_verify():
                           "terms_hash": _terms_hash()}, db_path=DB)
         except Exception as e:  # noqa: BLE001
             app.logger.warning(f"[auth] 台帳書き込みskip（ログインは成立）: {e}")
-    return redirect(f"/mypage?id={subject_id}")
+    # 401 から誘導された場合は元画面へ戻す（同一ブラウザのみ・§4-2）。既定はマイページ。
+    nxt = _safe_next(session.pop("login_next", None))
+    return redirect(nxt or f"/mypage?id={subject_id}")
 
 
 @app.post("/auth/logout")
@@ -202,9 +217,13 @@ def auth_logout():
 
 @app.get("/api/me")
 def api_me():
-    """現在のセッション本人（未ログインなら null）。フロントが操作の身元に使う（指示書23 §4）。
-    台帳に書く操作は subject_id を唯一の同一性の根拠とするため、UI もこれに合わせる。"""
-    return jsonify({"subject_id": current_subject_id()}), 200
+    """現在のセッション本人。フロントが操作の身元とログイン状態の把握に使う（指示書25 §2-3）。
+    ログイン済み → 200 {subject_id}／未ログイン → 401 {auth_required:true}。
+    個人情報は返さない（subject_id のみ）。プロフィール本体は公開ビューから取る。"""
+    sid = current_subject_id()
+    if sid is None:
+        return jsonify({"auth_required": True}), 401
+    return jsonify({"subject_id": sid}), 200
 
 
 @app.get("/ledger/verify/<date>")
@@ -1373,13 +1392,16 @@ def _needs_my_approval(vessel, my_id: str) -> bool:
 # ── コミュニティ API ──────────────────────────────────────────
 
 @app.post("/api/communities")
+@login_required
 def api_create_community():
+    """コミュニティ作成（創設者の member.joined を台帳へ）。台帳に書くため本人セッション限定に
+    ゲート（指示書25 §3・指示書23 §4 の記述誤り訂正）。founder_id はセッションと一致必須。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
     name        = body.get("name", "").strip()
     description = body.get("description", "")
-    founder_id  = body.get("founder_id", "").strip()
+    founder_id  = require_self((body.get("founder_id") or "").strip() or None) or ""
     if not name or not founder_id:
         return jsonify({"error": "name と founder_id が必要です"}), 400
     community = create_community(founder_id, name, description, db_path=DB)
@@ -1540,12 +1562,14 @@ def api_community_intents(community_id):
 
 
 @app.post("/api/community/<community_id>/leave")
+@login_required
 def api_leave_community(community_id):
-    """自主離脱（member.left）。自分自身のみ（追い出しは不可・§2-1）。"""
+    """自主離脱（member.left を台帳へ）。自分自身のみ（追い出しは不可・§2-1）。
+    台帳に書くため本人セッション限定にゲート（指示書25 §3）。member_id はセッションと一致必須。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
-    member_id = (body.get("member_id") or "").strip()
+    member_id = require_self((body.get("member_id") or "").strip() or None) or ""
     if not member_id:
         return jsonify({"error": "member_id が必要です"}), 400
     from community import leave_community

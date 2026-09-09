@@ -2,7 +2,7 @@
 
 ## リポジトリ
 - GitHub: `pox-praxis/matching-program` / ブランチ: `main`
-- デプロイ先: Render（`pox-box.onrender.com`）
+- デプロイ先: Render（`pox-web.onrender.com`。render.yaml のサービス名 `pox-web` に対応）
 
 ## セキュリティ制約（絶対厳守）
 - `ANTHROPIC_API_KEY` / `GITHUB_TOKEN` / `DATABASE_URL` はコードにもリポジトリにも書かない

@@ -64,7 +64,10 @@
 
 1. **GitHub repository secrets**（2件）
    - `POX_ANCHOR_TOKEN` … Render に設定したものと同値
-   - `POX_ANCHOR_URL` … `https://pox-box.onrender.com/ledger/anchor`
+   - `POX_ANCHOR_URL` … **`https://pox-web.onrender.com/ledger/anchor`**
+     （本番ホストは `pox-web.onrender.com`。render.yaml のサービス名 `pox-web` に対応。
+     旧記載の `pox-box` は誤り＝存在しないサービスで 404 になる。正確な URL は Render
+     ダッシュボードの pox-web ページ最上部でも確認できる）
    - workflow は導入済み: `.github/workflows/daily_anchor.yml`（毎日 00:10 UTC・手動起動可・
      2xx 以外で失敗・Render コールドスタートに備えリトライ3回）／
      `.github/workflows/anchor_monitor.yml`（週1・`status?strict=1` を叩き 503 で失敗＝メール通知）

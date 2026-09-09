@@ -36,9 +36,15 @@ def test_emitter_churn_and_chain():
     assert le.verify_chain(db_path=db)["ok"] is True
 
 
+def _login(c, sid):   # 指示書22: セッションが唯一の身元
+    with c.session_transaction() as sess:
+        sess["subject_id"] = sid
+
+
 def test_endpoint_updates_db_and_ledger():
     db = _setup()
     c = appmod.app.test_client()
+    _login(c, "u1")
     assert get_profile_visibility("u1", db_path=db) == "public"       # 既定
     r = c.post("/api/profile/u1/visibility", json={"id": "u1", "scope": "private"})
     assert r.status_code == 200
@@ -49,9 +55,19 @@ def test_endpoint_updates_db_and_ledger():
 def test_endpoint_owner_only_and_scope_validation():
     db = _setup()
     c = appmod.app.test_client()
+    _login(c, "u1")
+    # body の id が本人（セッション）と食い違う → 403
     assert c.post("/api/profile/u1/visibility", json={"id": "other", "scope": "private"}).status_code == 403
+    # path が本人（セッション）と食い違う → 403（指示書22: id を知るだけでは他人を書き換えられない）
+    assert c.post("/api/profile/other/visibility", json={"id": "other", "scope": "private"}).status_code == 403
+    # 本人・不正 scope → 400
     assert c.post("/api/profile/u1/visibility", json={"id": "u1", "scope": "weird"}).status_code == 400
-    assert c.post("/api/profile/nope/visibility", json={"id": "nope", "scope": "private"}).status_code == 404
+    # 未ログイン → 401（404 で隠さない）
+    assert appmod.app.test_client().post(
+        "/api/profile/u1/visibility", json={"id": "u1", "scope": "private"}).status_code == 401
+    # 本人だがプロフィール不在 → 404（別セッションで検証）
+    c2 = appmod.app.test_client(); _login(c2, "nope")
+    assert c2.post("/api/profile/nope/visibility", json={"id": "nope", "scope": "private"}).status_code == 404
 
 
 if __name__ == "__main__":

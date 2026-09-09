@@ -121,7 +121,10 @@ def test_api_profile_merges_text_only():
 def test_api_my_necessity_owner_text_and_evidence():
     orig = _patch(_store_with(_past()))
     try:
-        data = appmod.app.test_client().get("/api/my/necessity?id=u1").get_json()
+        c = appmod.app.test_client()
+        with c.session_transaction() as sess:   # 指示書22: セッション本人限定
+            sess["subject_id"] = "u1"
+        data = c.get("/api/my/necessity?id=u1").get_json()
         assert data["necessity_text"] and data["evidence_span"]
         for k in _NUMS:
             assert k not in data
@@ -129,8 +132,10 @@ def test_api_my_necessity_owner_text_and_evidence():
         _restore(orig)
 
 
-def test_api_my_necessity_requires_id():
-    assert appmod.app.test_client().get("/api/my/necessity").status_code == 400
+def test_api_my_necessity_requires_login():
+    # 指示書22: 未ログインは 401（?id= を知っていても本人限定情報は出さない・404 で隠さない）
+    assert appmod.app.test_client().get("/api/my/necessity?id=u1").status_code == 401
+    assert appmod.app.test_client().get("/api/my/necessity").status_code == 401
 
 
 if __name__ == "__main__":

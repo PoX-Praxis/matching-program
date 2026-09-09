@@ -107,15 +107,25 @@ def test_my_vessels_scoped_to_party():
     orig = appmod.load_all_vessels
     appmod.load_all_vessels = lambda db_path=None: _vessels()
     try:
-        r = _client().get("/api/my/vessels?id=alice")
+        c = _client()
+        with c.session_transaction() as sess:   # 指示書22: セッション本人限定
+            sess["subject_id"] = "alice"
+        r = c.get("/api/my/vessels?id=alice")
         ids = {v["vessel_id"] for v in r.get_json()}
         assert ids == {"v1", "v2"}      # alice が当事者の2件のみ（v3 は他人）
     finally:
         appmod.load_all_vessels = orig
 
 
-def test_my_vessels_requires_id():
-    assert _client().get("/api/my/vessels").status_code == 400
+def test_my_vessels_requires_login():
+    # 指示書22: 未ログインは 401（?id= を知っていても他人の接続一覧は出さない・404 で隠さない）
+    os.environ.pop("POX_DEBUG", None)
+    assert _client().get("/api/my/vessels?id=alice").status_code == 401
+    # 他人になりすまし（セッション ≠ ?id=）→ 403
+    c = _client()
+    with c.session_transaction() as sess:
+        sess["subject_id"] = "alice"
+    assert c.get("/api/my/vessels?id=bob").status_code == 403
 
 
 if __name__ == "__main__":

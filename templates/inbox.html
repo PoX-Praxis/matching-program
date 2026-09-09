@@ -53,6 +53,10 @@ async function init() {
     fetch(`/api/inbox?id=${encodeURIComponent(myId)}`),
   ]);
 
+  if (ledgerRes.status === 401 || inboxRes.status === 401) {   // 未ログイン → /login（指示書22）
+    location.href = "/login"; return;
+  }
+
   const vessels = await ledgerRes.json();
   const inbox   = await inboxRes.json();
 

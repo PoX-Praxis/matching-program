@@ -1,15 +1,24 @@
-<nav style="background:#1a3a5c;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+<nav id="poxNav" style="background:#1a3a5c;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;position:relative">
   <a href="/" style="color:white;font-weight:bold;text-decoration:none;font-size:1.1rem">PoX</a>
-  <div style="display:flex;gap:16px;align-items:center">
-    <a href="/register" style="color:#cde">登録</a>
-    <a href="/connect" id="navMatch" style="color:#cde">つながる</a>
-    <a href="/communities" style="color:#cde">コミュニティ</a>
-    <a href="/about" style="color:#cde">PoXとは</a>
-    <a href="/privacy" style="color:#cde">プライバシー</a>
-    <a href="#" id="navInbox" style="color:#cde">インボックス</a>
-    <a href="#" id="navMyPage" style="color:#cde">マイページ</a>
-    <a href="/login" id="navLogin" style="color:#cde">ログイン</a>
-    <span id="navId" style="color:#aaa;font-size:12px"></span>
+  <div style="display:flex;gap:16px;align-items:center;position:relative">
+    <!-- 常に表示する主要導線（厳選）。他は右端の ☰ に折り畳む。 -->
+    <a href="/connect" id="navMatch" style="color:#cde;text-decoration:none;white-space:nowrap">つながる</a>
+    <a href="/communities" id="navCommunities" style="color:#cde;text-decoration:none;white-space:nowrap">コミュニティ</a>
+    <!-- 未ログイン時のみ表示（ログイン後は非表示にして ☰ 内のログアウトへ） -->
+    <a href="/login" id="navLogin" style="color:#cde;text-decoration:none;white-space:nowrap">ログイン</a>
+    <button id="navMenuBtn" aria-label="メニュー" aria-expanded="false"
+            style="background:none;border:1px solid #4a6a8c;color:#cde;border-radius:4px;padding:2px 10px;font-size:16px;cursor:pointer;line-height:1.5">☰</button>
+    <div id="navMenu" hidden
+         style="position:absolute;top:100%;right:0;margin-top:8px;background:#fff;border:1px solid #ccd;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);min-width:200px;padding:6px;z-index:200">
+      <!-- hidden 項目は inline display を付けない（display:block は hidden の既定 display:none を上書きしてしまうため）。表示は JS で style.display を付与する。 -->
+      <div id="navMenuId" hidden style="font-size:11px;color:#888;padding:6px 10px;border-bottom:1px solid #eee;margin-bottom:4px;word-break:break-all"></div>
+      <a href="/register" id="menuRegister" hidden style="padding:9px 10px;color:#1a3a5c;text-decoration:none;border-radius:4px">プロフィール登録</a>
+      <a href="#" id="menuInbox" hidden style="padding:9px 10px;color:#1a3a5c;text-decoration:none;border-radius:4px">受信箱</a>
+      <a href="#" id="menuMypage" hidden style="padding:9px 10px;color:#1a3a5c;text-decoration:none;border-radius:4px">マイページ</a>
+      <a href="/about" style="display:block;padding:9px 10px;color:#1a3a5c;text-decoration:none;border-radius:4px">PoXとは</a>
+      <a href="/privacy" style="display:block;padding:9px 10px;color:#1a3a5c;text-decoration:none;border-radius:4px">プライバシー</a>
+      <a href="#" id="menuLogout" hidden style="padding:9px 10px;color:#a33;text-decoration:none;border-radius:4px;border-top:1px solid #eee;margin-top:4px">ログアウト</a>
+    </div>
   </div>
 </nav>
 <script>
@@ -47,41 +56,54 @@ window.PoX = (function(){
 })();
 
 (function(){
-  const id = localStorage.getItem("pox_my_id");
-  if (id) {
-    document.getElementById("navMyPage").href = `/mypage?id=${encodeURIComponent(id)}`;
-    document.getElementById("navInbox").href  = `/inbox?id=${encodeURIComponent(id)}`;
-    document.getElementById("navId").textContent = id;
-  }
-  // セッションの実ログイン状態でナビを補正（authoritative・§2-3）。localStorage は表示ヒントのみ。
+  // ── ☰ メニューの開閉 ───────────────────────────────────────────────
+  var btn = document.getElementById("navMenuBtn");
+  var menu = document.getElementById("navMenu");
+  function closeMenu(){ menu.hidden = true; btn.setAttribute("aria-expanded","false"); }
+  btn.addEventListener("click", function(e){
+    e.stopPropagation();
+    var open = menu.hidden;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("click", function(e){
+    if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) closeMenu();
+  });
+
+  // ── ログイン状態による表示分け（未ログイン/ログイン後）──────────────────
+  // 既定は「未ログイン」表示（ログインリンクを出し、本人限定項目は隠す）。
+  // セッションが実在するときだけ本人向けに反転する＝localStorage の残骸で
+  // 「ログイン中」表示になる不具合（未ログインなのに右上に id が出る）を防ぐ。
   PoX.me().then(function(sid){
-    const loginLink = document.getElementById("navLogin");
+    var login   = document.getElementById("navLogin");
+    var idBox   = document.getElementById("navMenuId");
+    var mReg    = document.getElementById("menuRegister");
+    var mInbox  = document.getElementById("menuInbox");
+    var mMypage = document.getElementById("menuMypage");
+    var mLogout = document.getElementById("menuLogout");
     if (sid) {
-      document.getElementById("navMyPage").href = `/mypage?id=${encodeURIComponent(sid)}`;
-      document.getElementById("navInbox").href  = `/inbox?id=${encodeURIComponent(sid)}`;
-      document.getElementById("navId").textContent = sid;
-      if (loginLink) { loginLink.textContent = "ログアウト"; loginLink.href = "#";
-        loginLink.onclick = async function(e){ e.preventDefault();
-          await fetch("/auth/logout", {method:"POST"});
-          try { localStorage.removeItem("pox_my_id"); } catch(_){}
-          location.href = "/about"; }; }
+      // ログイン後: ログインリンクを隠し、本人限定項目を出す。id はセッション値のみ表示。
+      if (login) login.hidden = true;
+      idBox.textContent = "ログイン中: " + sid; idBox.hidden = false;
+      mReg.hidden = false;    mReg.style.display = "block";
+      mInbox.hidden  = false; mInbox.style.display  = "block"; mInbox.href  = "/inbox?id="  + encodeURIComponent(sid);
+      mMypage.hidden = false; mMypage.style.display = "block"; mMypage.href = "/mypage?id=" + encodeURIComponent(sid);
+      mLogout.hidden = false; mLogout.style.display = "block";
+      mLogout.onclick = async function(e){
+        e.preventDefault();
+        try { await fetch("/auth/logout", {method:"POST"}); } catch(_){}
+        try { localStorage.removeItem("pox_my_id"); } catch(_){}
+        location.href = "/about";
+      };
+    } else {
+      // 未ログイン: ログインリンクのみ。本人限定項目（登録/受信箱/マイページ/ログアウト/id）は隠したまま。
+      if (login) login.hidden = false;
     }
   });
-  const path = location.pathname;
-  const map = {
-    "/connect": "navMatch",
-    "/register": null,
-    "/communities": null,
-    "/about": null,
-    "/inbox": "navInbox",
-    "/mypage": "navMyPage"
-  };
-  const activeId = map[path];
-  if (activeId) {
-    const el = document.getElementById(activeId);
-    if (el) el.style.color = "#fff";
-  } else {
-    document.querySelectorAll("nav a[href='" + path + "']").forEach(function(a){ a.style.color = "#fff"; });
-  }
+
+  // ── 現在ページの強調（常時表示リンクのみ）────────────────────────────
+  var path = location.pathname;
+  if (path === "/connect")     document.getElementById("navMatch").style.color = "#fff";
+  if (path === "/communities") document.getElementById("navCommunities").style.color = "#fff";
 })();
 </script>

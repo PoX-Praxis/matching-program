@@ -114,7 +114,7 @@
       </select>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-connect" onclick="doConnect()">この人とつながる</button>
+      <button class="btn btn-connect" onclick="doConnect(this)">この人とつながる</button>
       <button class="btn btn-msg" onclick="sendMsg()">メッセージを送る</button>
     </div>
     <div id="notice"></div>
@@ -280,50 +280,55 @@ function buildTrajHtml(trajectory) {
     </div>`).join("")}</div>`;
 }
 
-async function doConnect() {
-  if (!myId) {
-    alert("マイページでIDを設定してから接続してください");
-    location.href = "/mypage";
-    return;
-  }
+async function doConnect(btn) {
   const notice = document.getElementById("notice");
+  const sid = await PoX.me();                       // 同一性はセッション（§2）
+  if (!sid) { PoX.loginRedirect(); return; }
   const want = document.getElementById("wantMode").value;
+  if (btn) btn.disabled = true;                     // 二重押下防止（§5）
   notice.textContent = "マッチング中...";
   notice.className = "";
+  try {
+    const mRes = await fetch("/match", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seeker_id: sid, want }),
+    });
+    if (PoX.handle(mRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
+    const mData = await mRes.json();
+    if (!mRes.ok) {
+      notice.className = "err";
+      notice.textContent = "マッチングエラー: " + (mData.error || JSON.stringify(mData));
+      if (btn) btn.disabled = false; return;
+    }
+    const matchRunId = mData.match_run_id;
+    const ranking = mData.ranking || [];
+    const matchEntry = ranking.find(r => r.id === profileId);
+    const predictedRole = matchEntry?.predicted_role || null;
 
-  const mRes = await fetch("/match", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ seeker_id: myId, want }),
-  });
-  const mData = await mRes.json();
-  if (!mRes.ok) {
+    notice.textContent = "接続処理中...";
+    const aRes = await fetch("/approve", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_id: profileId, match_run_id: matchRunId, predicted_role: predictedRole }),
+    });
+    if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
+    const aData = await aRes.json();
+    if (!aRes.ok) {
+      notice.className = "err";
+      notice.textContent = "接続エラー: " + (aData.error || JSON.stringify(aData));
+      if (btn) btn.disabled = false; return;
+    }
+    if (aData.established) {
+      notice.className = "ok";
+      notice.textContent = `🎉 接続成立！ vessel: ${aData.vessel_id}`;
+    } else {
+      notice.className = "ok";
+      notice.textContent = `✅ 接続を申請しました（vessel: ${aData.vessel_id}）。相手の承認をお待ちください。`;
+    }
+    // 成功後はボタンを無効のまま（重複申請を防ぐ）
+  } catch (e) {
     notice.className = "err";
-    notice.textContent = "マッチングエラー: " + (mData.error || JSON.stringify(mData));
-    return;
-  }
-
-  const matchRunId = mData.match_run_id;
-  const ranking = mData.ranking || [];
-  const matchEntry = ranking.find(r => r.id === profileId);
-  const predictedRole = matchEntry?.predicted_role || null;
-
-  const aRes = await fetch("/approve", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from_id: myId, to_id: profileId, match_run_id: matchRunId, predicted_role: predictedRole }),
-  });
-  const aData = await aRes.json();
-  if (!aRes.ok) {
-    notice.className = "err";
-    notice.textContent = "接続エラー: " + (aData.error || JSON.stringify(aData));
-    return;
-  }
-
-  if (aData.established) {
-    notice.className = "ok";
-    notice.textContent = `🎉 接続成立！ vessel: ${aData.vessel_id}`;
-  } else {
-    notice.className = "ok";
-    notice.textContent = `✅ 接続を申請しました（vessel: ${aData.vessel_id}）。相手の承認をお待ちください。`;
+    notice.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
+    if (btn) btn.disabled = false;
   }
 }
 

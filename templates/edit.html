@@ -150,7 +150,9 @@ function switchTab(name) {
 async function init() {
   if (!myId) return;
   const res = await fetch(`/api/profile/${encodeURIComponent(myId)}/edit`);
-  if (res.status === 401) { location.href = "/login"; return; }   // 未ログイン → /login（指示書22）
+  // 401 → /login、403 → 権限表示（§4）。共通ハンドラで処理。
+  if (PoX.handle(res, { on403: m => { document.getElementById("loading").innerHTML =
+      `<span style="color:#c00">${m}</span>`; } })) return;
   if (!res.ok) {
     document.getElementById("loading").innerHTML =
       `<span style="color:#c00">プロフィール "${myId}" が見つかりません。</span>`;

@@ -52,7 +52,7 @@
     <textarea id="cDesc" placeholder="コミュニティの説明"></textarea>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
-      <button class="btn btn-primary" onclick="createCommunity()">作成</button>
+      <button class="btn btn-primary" onclick="createCommunity(this)">作成</button>
     </div>
   </div>
 </div>
@@ -85,19 +85,24 @@ async function loadCommunities() {
 function openModal()  { document.getElementById("modal").classList.add("open"); }
 function closeModal() { document.getElementById("modal").classList.remove("open"); }
 
-async function createCommunity() {
+async function createCommunity(btn) {
   const name = document.getElementById("cName").value.trim();
   const desc = document.getElementById("cDesc").value.trim();
   const notice = document.getElementById("notice");
   if (!name) { notice.textContent = "名前を入力してください"; return; }
-  if (!myId) { notice.textContent = "マイページでIDを設定してください"; return; }
-
-  const res = await fetch("/api/communities", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, description: desc, founder_id: myId }),
-  });
+  const sid = await PoX.me();                          // 同一性はセッション（§2）
+  if (!sid) { PoX.loginRedirect(); return; }           // 台帳に書くためログイン必須（§3）
+  if (btn) btn.disabled = true;                        // 二重押下防止（§5）
+  let res;
+  try {
+    res = await fetch("/api/communities", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description: desc, founder_id: sid }),
+    });
+  } catch (e) { notice.textContent = "通信エラーが発生しました。"; if (btn) btn.disabled = false; return; }
+  if (PoX.handle(res, { on403: m => { notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
   const data = await res.json();
-  if (!res.ok) { notice.textContent = "エラー: " + JSON.stringify(data); return; }
+  if (!res.ok) { notice.textContent = "エラー: " + JSON.stringify(data); if (btn) btn.disabled = false; return; }
 
   closeModal();
   document.getElementById("cName").value = "";

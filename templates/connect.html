@@ -153,8 +153,30 @@ async function checkMyStatus() {
       document.getElementById("recStatus").insertAdjacentHTML("afterbegin",
         `<div class="notice warn" style="margin-bottom:10px">あなたの照合準備がまだ完了していません。
          おすすめの精度は準備完了後に上がります。</div>`);
+    } else if (st.generation_status === "error") {
+      // 失敗時は再試行の動線を出す（§6）
+      document.getElementById("recStatus").insertAdjacentHTML("afterbegin",
+        `<div class="notice warn" id="recErr" style="margin-bottom:10px">照合準備でエラーが発生しました。
+         <button style="cursor:pointer" onclick="retryGeneration(this)">再試行する</button></div>`);
     }
   } catch (e) { /* 無視 */ }
+}
+
+async function retryGeneration(btn) {
+  if (btn) btn.disabled = true;                        // 二重押下防止（§5）
+  const box = document.getElementById("recErr");
+  if (box) box.innerHTML = "再試行を開始しました。準備中です…";
+  try {
+    const r = await fetch(`/v4/seekers/${encodeURIComponent(myId)}/retry`, { method: "POST" });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      if (box) box.innerHTML = "再試行に失敗しました（" + (d.error || r.status)
+        + "）。<button style='cursor:pointer' onclick='retryGeneration(this)'>もう一度</button>";
+    }
+    // 成功時はバックグラウンドで準備が進む。ページ再読込で反映される。
+  } catch (e) {
+    if (box) box.innerHTML = "通信エラーが発生しました。<button style='cursor:pointer' onclick='retryGeneration(this)'>もう一度</button>";
+  }
 }
 
 /* ── 登録者一覧（GET /seekers = id・一行紹介・意志抜粋のみ）── */

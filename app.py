@@ -200,6 +200,13 @@ def auth_logout():
     return jsonify({"ok": True}), 200
 
 
+@app.get("/api/me")
+def api_me():
+    """現在のセッション本人（未ログインなら null）。フロントが操作の身元に使う（指示書23 §4）。
+    台帳に書く操作は subject_id を唯一の同一性の根拠とするため、UI もこれに合わせる。"""
+    return jsonify({"subject_id": current_subject_id()}), 200
+
+
 @app.get("/ledger/verify/<date>")
 def ledger_verify(date):
     """日次アンカーの検証（§6-3）。保存 root をその日のイベントから再計算して照合。"""
@@ -904,12 +911,15 @@ def post_v4_match():
 
 
 @app.post("/approve")
+@login_required
 def post_approve():
+    """接続の承認（相互承認で connection.established を台帳へ）。承認する本人(from_id)
+    セッション限定にゲート（指示書23 §4）。偽の承認で「両者が合意した」記録が残るのを防ぐ。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         abort(400, "JSON が読めません")
 
-    from_id = body.get("from_id")
+    from_id = require_self(body.get("from_id"))
     to_id   = body.get("to_id")
     if not from_id or not to_id:
         abort(400, "from_id と to_id が必要です")
@@ -1389,15 +1399,22 @@ def api_get_community(community_id):
     members  = get_members(community_id, db_path=DB)
     pending  = get_pending_requests(community_id, db_path=DB)
     messages = get_community_messages(community_id, db_path=DB)
-    return jsonify({**c, "members": members, "pending": pending, "messages": messages})
+    # 宣言と実績（指示書23 §3-1）。第三者（未ログイン）にも見える。数値は出さない。
+    from intent_ledger import list_intent_details, latest_policy_declaration
+    declaration = latest_policy_declaration(community_id, db_path=DB)
+    intents = list_intent_details(community_id, db_path=DB)
+    return jsonify({**c, "members": members, "pending": pending, "messages": messages,
+                    "declaration": declaration, "intents": intents})
 
 
 @app.post("/api/community/<community_id>/join")
+@login_required
 def api_join_community(community_id):
+    """参加申請（承認で member.joined を台帳へ）。申請する本人セッション限定にゲート（指示書23 §4）。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
-    member_id = body.get("member_id", "").strip()
+    member_id = require_self((body.get("member_id") or "").strip() or None) or ""
     if not member_id:
         return jsonify({"error": "member_id が必要です"}), 400
     result = request_join(community_id, member_id, db_path=DB)
@@ -1405,12 +1422,15 @@ def api_join_community(community_id):
 
 
 @app.post("/api/community/<community_id>/approve")
+@login_required
 def api_approve_member(community_id):
+    """承認（member.joined を台帳へ）。承認者(approver)本人セッション限定にゲート（指示書23 §4）。
+    member_id は承認される相手なのでゲート対象外（approver が自分であることのみ確認）。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
-    member_id   = body.get("member_id", "").strip()
-    approver_id = body.get("approver_id", "").strip()
+    member_id   = (body.get("member_id") or "").strip()
+    approver_id = require_self((body.get("approver_id") or "").strip() or None) or ""
     if not member_id or not approver_id:
         return jsonify({"error": "member_id と approver_id が必要です"}), 400
     if not is_founder(community_id, approver_id, db_path=DB):
@@ -1420,10 +1440,12 @@ def api_approve_member(community_id):
 
 
 @app.post("/api/community/<community_id>/intent/propose")
+@login_required
 def api_intent_propose(community_id):
-    """意志形成を提起（§5-3）。提起者は ctx の active メンバーであること。AI 非依存。"""
+    """意志形成を提起（§5-3）。提起者は ctx の active メンバーであること。AI 非依存。
+    台帳に intent.proposed を書くため、本人セッション限定にゲート（指示書23 §4）。"""
     body = request.get_json(force=True, silent=True) or {}
-    proposer = (body.get("proposer") or "").strip()
+    proposer = require_self((body.get("proposer") or "").strip() or None) or ""
     if not proposer:
         return jsonify({"error": "proposer が必要です"}), 400
     from member_ledger import active_members_from_events
@@ -1437,9 +1459,12 @@ def api_intent_propose(community_id):
 
 
 @app.post("/api/intent/<intent_id>/agree")
+@login_required
 def api_intent_agree(intent_id):
+    """合意（intent.agreed を台帳へ）。本人セッション限定にゲート（指示書23 §4）。
+    偽の承認が台帳に永久に残るのを防ぐ（追記専用で訂正できないため）。"""
     body = request.get_json(force=True, silent=True) or {}
-    subject = (body.get("subject") or "").strip()
+    subject = require_self((body.get("subject") or "").strip() or None) or ""
     if not subject:
         return jsonify({"error": "subject が必要です"}), 400
     from intent_ledger import agree_intent
@@ -1450,9 +1475,11 @@ def api_intent_agree(intent_id):
 
 
 @app.post("/api/intent/<intent_id>/complete")
+@login_required
 def api_intent_complete(intent_id):
+    """完了（intent.completed を台帳へ）。本人セッション限定にゲート（指示書23 §4）。"""
     body = request.get_json(force=True, silent=True) or {}
-    by = (body.get("by") or "").strip()
+    by = require_self((body.get("by") or "").strip() or None) or ""
     if not by:
         return jsonify({"error": "by が必要です"}), 400
     from intent_ledger import complete_intent
@@ -1465,9 +1492,11 @@ def api_intent_complete(intent_id):
 
 
 @app.post("/api/intent/<intent_id>/cancel")
+@login_required
 def api_intent_cancel(intent_id):
+    """取消（intent.cancelled を台帳へ）。本人セッション限定にゲート（指示書23 §4）。"""
     body = request.get_json(force=True, silent=True) or {}
-    by = (body.get("by") or "").strip()
+    by = require_self((body.get("by") or "").strip() or None) or ""
     if not by:
         return jsonify({"error": "by が必要です"}), 400
     from intent_ledger import cancel_intent
@@ -1478,9 +1507,12 @@ def api_intent_cancel(intent_id):
 
 
 @app.post("/api/intent/<intent_id>/participant/join")
+@login_required
 def api_intent_participant_join(intent_id):
+    """目的別参加（intent.participant.joined を台帳へ）。参加する本人セッション限定にゲート
+    （指示書23 §4）。introduced_by は本人の参加イベント内にしか書けない（§1-6）。"""
     body = request.get_json(force=True, silent=True) or {}
-    participant = (body.get("participant") or "").strip()
+    participant = require_self((body.get("participant") or "").strip() or None) or ""
     if not participant:
         return jsonify({"error": "participant が必要です"}), 400
     from intent_ledger import join_participant

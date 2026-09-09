@@ -245,6 +245,13 @@
 <script>
 const params = new URLSearchParams(location.search);
 const myId = params.get("id");
+
+// 認証ゲート（指示書22）。本人限定 API が 401 を返したら白画面にせず /login へ誘導する。
+function handleAuth(res) {
+  if (res && res.status === 401) { location.href = "/login"; return true; }
+  return false;
+}
+
 if (!myId) {
   document.getElementById("loading").innerHTML =
     '<span style="color:#c00">URL に ?id= が指定されていません。<a href="/">トップ</a>から「マイページ」を開いてください。</span>';
@@ -257,6 +264,8 @@ async function init() {
     fetch(`/api/profile/${encodeURIComponent(myId)}`),
     fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`),   // 当事者分のみ（全台帳公開の廃止）
   ]);
+
+  if (handleAuth(ledgerRes)) return;   // 未ログインで本人ページを開いた → /login へ
 
   if (!profileRes.ok) {
     document.getElementById("loading").innerHTML =
@@ -388,7 +397,9 @@ async function saveFreeText() {
   const msg = document.getElementById("freeMsg");
   msg.className = ""; msg.textContent = "保存中…";
   try {
-    const cur = await fetch(`/api/profile/${encodeURIComponent(myId)}/edit`).then(r => r.json());
+    const curRes = await fetch(`/api/profile/${encodeURIComponent(myId)}/edit`);
+    if (handleAuth(curRes)) return;
+    const cur = await curRes.json();
     const overrides = (cur && cur.overrides) || {};
     overrides.free_text = document.getElementById("freeText").value;
     const res = await fetch(`/api/profile/${encodeURIComponent(myId)}/overrides`, {
@@ -429,6 +440,7 @@ async function loadOwnerNecessity(id) {
   let nec;
   try {
     const r = await fetch(`/api/my/necessity?id=${encodeURIComponent(id)}`);
+    if (handleAuth(r)) return;
     if (!r.ok) { el.style.display = "none"; return; }
     nec = await r.json();
   } catch (e) { el.style.display = "none"; return; }
@@ -536,6 +548,7 @@ async function doApprove(otherId) {
     msg.className = ""; msg.textContent = `✅ 承認しました（vessel: ${data.vessel_id}）。相手の承認待ちです。`;
   }
   const ledgerRes = await fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`);
+  if (handleAuth(ledgerRes)) return;
   renderConnections(await ledgerRes.json(), myId);
 }
 
@@ -602,6 +615,7 @@ async function toggleHidden(sid, hidden, cb) {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ id: myId, hidden }),
     });
+    if (handleAuth(r)) return;
     if (!r.ok) throw new Error();
   } catch (e) { cb.checked = !hidden; alert("変更に失敗しました"); }
 }

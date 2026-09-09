@@ -78,6 +78,49 @@ def _debug_enabled():
     return os.environ.get("POX_DEBUG", "0") == "1"
 
 
+# ── 認証ゲート（指示書22）───────────────────────────────────────
+# 本人限定データは「?id= を知っていること」ではなく「セッションに紐づく本人であること」
+# で守る。セッションの subject_id を唯一の身元とし、クエリ/パス/本文の id は受け取っても
+# よいが、一致しなければ 403、セッションが無ければ 401（404 で隠さない）。
+# POX_DEBUG=1 は /dev・/ledger と同じく開発バイパス（セッション無しでも通す）。
+
+def current_subject_id():
+    """ログイン中の本人 subject_id（マジックリンク認証で張ったセッション）。未ログインなら None。"""
+    return session.get("subject_id")
+
+
+def _auth_error(code, msg):
+    """認証失敗の JSON 応答。フロントは 401 を見て /login へ誘導する（白画面にしない）。"""
+    from flask import make_response
+    return make_response(jsonify({"error": msg, "auth_required": (code == 401)}), code)
+
+
+def login_required(fn):
+    """認証ゲート（指示書22）。セッションが無ければ 401 を返す。POX_DEBUG=1 は開発バイパス。
+    本人一致（403）の判定は各エンドポイントが require_self() で行う。"""
+    from functools import wraps
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if current_subject_id() is None and not _debug_enabled():
+            return _auth_error(401, "ログインが必要です")
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def require_self(claimed_id):
+    """権威ある本人 id を返す。セッションの subject_id を唯一の身元とし、claimed_id
+    （クエリ/パス/本文の id）がそれと食い違えば 403 で abort する。セッションが無い場合は
+    POX_DEBUG のときのみ claimed_id を信頼（login_required 通過後に呼ぶ前提）。"""
+    sid = current_subject_id()
+    if sid is None:
+        return claimed_id  # DEBUG バイパス（login_required が許可済み）
+    if claimed_id is not None and str(claimed_id) != str(sid):
+        abort(_auth_error(403, "本人のみアクセスできます"))
+    return sid
+
+
 @app.get("/")
 def index():
     # トップは「PoXとは」(about) に付け替え（指示書09 §3-5）。LP 相当の原稿は about に統合済み（指示書15）。
@@ -994,14 +1037,16 @@ def api_timeline(user_id):
 
 
 @app.post("/api/snapshot/<snapshot_id>/visibility")
+@login_required
 def api_snapshot_visibility(snapshot_id):
     """
     本人が時点の中身を第三者に伏せる/戻す（指示書12改訂 §4-4）。所有者一致のときのみ。
     消すのではなく第三者表示を止めるだけ。接続の結末は対象外（伏せられない）。
-    認証は簡易（body の id）＝§7-5 の限界。
+    §4-2 の指摘: hidden=false で「公開方向」に戻せる（＝第三者へ再露出）ため、
+    id を知る第三者による書き換えを防ぐ必要がある → セッション本人限定にゲート（指示書22 第1群）。
     """
     body = request.get_json(force=True, silent=True) or {}
-    owner_id = body.get("id")
+    owner_id = require_self(body.get("id"))
     if not owner_id:
         return jsonify({"error": "id が必要です"}), 400
     hidden = bool(body.get("hidden"))
@@ -1016,17 +1061,18 @@ _VISIBILITY_SCOPES = ("public", "private")
 
 
 @app.post("/api/profile/<user_id>/visibility")
+@login_required
 def api_profile_visibility(user_id):
     """本人がプロフィールの公開範囲を変更（指示書17 §5: visibility.changed）。
 
-    本人のみ（body の id が path と一致）＝§7-5 の簡易認証の限界。scope は public|private。
+    セッション本人限定（指示書22 第1群）。path/body の id はセッションの subject_id と
+    一致必須（不一致は 403・未ログインは 401）。scope は public|private。
     profiles.visibility を更新し、visibility.changed を台帳へ（churn は関数側で防止）。
     """
     body = request.get_json(force=True, silent=True) or {}
-    owner_id = (body.get("id") or "").strip()
+    require_self(user_id)  # path が本人（セッション）と一致しなければ 403
+    require_self((body.get("id") or "").strip() or None)  # body の id も一致必須（明示指定時）
     scope = (body.get("scope") or "").strip()
-    if owner_id != user_id:
-        return jsonify({"error": "本人のみ変更できます"}), 403
     if scope not in _VISIBILITY_SCOPES:
         return jsonify({"error": f"scope は {'/'.join(_VISIBILITY_SCOPES)}"}), 400
     if not set_profile_visibility(user_id, scope, db_path=DB):
@@ -1040,13 +1086,15 @@ def api_profile_visibility(user_id):
 
 
 @app.get("/api/my/vessels")
+@login_required
 def api_my_vessels():
     """
     当事者本人が関わる vessel のみ返す（指示書09 §3-4）。全台帳の無認証公開を廃止し、
     mypage/inbox がクライアント側で行っていた絞り込み（founder==id または joins[0].joiner==id）
     をサーバー側に移す。返す vessel 構造は現状のまま（当事者には全情報が見えてよい）。
+    本人限定の接続情報のため、セッション本人限定にゲート（指示書22 第2群）。
     """
-    my_id = request.args.get("id")
+    my_id = require_self(request.args.get("id"))
     if not my_id:
         return jsonify({"error": "id が必要です"}), 400
     mine = [
@@ -1083,10 +1131,12 @@ def api_profile(user_id):
 
 
 @app.get("/api/my/necessity")
+@login_required
 def api_my_necessity():
     """本人向け: 自分の必要像（necessity_text＋evidence_span）を返す。数値は出さない（§4-4）。
-    公開条件に関わらず本人は自分の必要像を見られる。認証は簡易（id）＝§7-5 の限界あり。"""
-    my_id = request.args.get("id")
+    evidence_span は本人限定情報のため、セッション本人限定にゲート（指示書22 第1群）。
+    公開条件に関わらず本人は自分の必要像を見られる。"""
+    my_id = require_self(request.args.get("id"))
     if not my_id:
         return jsonify({"error": "id が必要です"}), 400
     nec = get_owner_necessity(my_id)
@@ -1094,8 +1144,11 @@ def api_my_necessity():
 
 
 @app.get("/api/profile/<user_id>/edit")
+@login_required
 def api_profile_edit(user_id):
-    """「見せ方を編集」用。base profile_view と現在の view_overrides を返す（seeker原文は返さない）。"""
+    """「見せ方を編集」用。base profile_view と現在の view_overrides を返す（seeker原文は返さない）。
+    編集前の view_overrides は本人限定情報のため、セッション本人限定にゲート（指示書22 第2群）。"""
+    require_self(user_id)  # path が本人（セッション）と一致しなければ 403 / 未ログインは 401
     data = get_profile_edit_data(user_id, db_path=DB)
     if data is None:
         return jsonify({"error": "プロフィールが見つかりません"}), 404
@@ -1254,8 +1307,10 @@ def post_message():
 
 
 @app.get("/api/conversation")
+@login_required
 def api_conversation():
-    me    = request.args.get("me")
+    """本人が当事者の会話のみ返す。me はセッション本人限定にゲート（指示書22 第2群）。"""
+    me    = require_self(request.args.get("me"))
     other = request.args.get("with")
     if not me or not other:
         return jsonify({"error": "me と with が必要です"}), 400
@@ -1280,8 +1335,10 @@ def api_upload():
 # ── インボックス API ──────────────────────────────────────────
 
 @app.get("/api/inbox")
+@login_required
 def api_inbox():
-    my_id = request.args.get("id")
+    """本人の受信箱。id はセッション本人限定にゲート（指示書22 第2群）。"""
+    my_id = require_self(request.args.get("id"))
     if not my_id:
         return jsonify({"error": "id が必要です"}), 400
     convs   = get_inbox_summary(my_id, db_path=DB)

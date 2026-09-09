@@ -73,7 +73,7 @@ async function loadCommunities() {
       <div style="flex:1">
         <h3><a href="${href}" style="text-decoration:none;color:#1a3a5c">${escHtml(c.name)}</a></h3>
         <p>${escHtml(c.description || "")}</p>
-        <div class="card-meta">メンバー: ${c.member_count}人 &nbsp; founder: ${escHtml(c.founder)}</div>
+        <div class="card-meta">メンバー: ${c.member_count}人 &nbsp; 作成者: ${escHtml(c.founder)}</div>
       </div>
       <div style="margin-left:16px;flex-shrink:0">
         <a href="${href}" class="btn btn-outline" style="text-decoration:none;display:inline-block">詳細</a>

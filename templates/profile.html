@@ -132,13 +132,17 @@
 <script>
 const pathParts = location.pathname.split("/");
 const profileId = decodeURIComponent(pathParts[pathParts.length - 1]);
-const myId = localStorage.getItem("pox_my_id");
-
-if (myId && myId === profileId) {
-  location.replace(`/mypage?id=${encodeURIComponent(myId)}`);
-}
 
 async function init() {
+  // 「自分のプロフィールならマイページへ」の判定はセッション基準（指示書26）。
+  // localStorage の残骸で判定すると、未ログインでも過去の自分の id と一致し、
+  // マイページ→本人限定API 401→/login と 2 秒空白で飛ばされてしまうため。
+  const sid = await PoX.me();
+  if (sid && sid === profileId) {
+    location.replace(`/mypage?id=${encodeURIComponent(sid)}`);
+    return;
+  }
+
   const res = await fetch(`/api/profile/${encodeURIComponent(profileId)}`);
   if (!res.ok) {
     document.getElementById("loading").innerHTML =
@@ -150,17 +154,11 @@ async function init() {
   document.getElementById("main").style.display = "block";
 
   renderProfileView(pv);
-  loadTimeline(profileId, myId);   // 第三者ビュー（viewer=自分）。接続は公開・evidence_span/数値は出ない
+  loadTimeline(profileId, sid);   // viewer はセッション本人（未ログインは null＝第三者ビュー）
 
-  if (myId && myId !== profileId) {
-    document.getElementById("connectBlock").style.display = "block";
-  } else if (!myId) {
-    document.getElementById("connectBlock").style.display = "block";
-  } else {
-    const own = document.getElementById("ownActions");
-    own.style.display = "block";
-    document.getElementById("mypageLink").href = `/mypage?id=${encodeURIComponent(myId)}`;
-  }
+  // 他人のプロフィール（未ログイン含む）は接続ブロックを表示。
+  // 接続・メッセージの各ボタンは押下時に PoX.me() でログイン誘導する。
+  document.getElementById("connectBlock").style.display = "block";
 }
 
 function renderProfileView(pv) {

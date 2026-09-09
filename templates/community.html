@@ -59,6 +59,52 @@
     <tbody id="memberRows"><tr><td colspan="3">なし</td></tr></tbody>
   </table>
 
+  <!-- ── 宣言（私たちは何者で、どこへ向かうか）── -->
+  <h2>宣言</h2>
+  <p style="font-size:12px;color:#888;margin:2px 0 8px">私たちの意志と現状。合意された全体方針から確定します。</p>
+  <div id="declarationBox" style="font-size:14px"></div>
+
+  <!-- ── 実績（何を合意し、何を完了させたか）── -->
+  <h2>実績</h2>
+  <p style="font-size:12px;color:#888;margin:2px 0 8px">完了した意志形成。台帳のイベント鎖と日次アンカーが骨格を保証します。宣言との突き合わせは読み手に委ねられます。</p>
+  <div id="achievementsBox" style="font-size:13px"></div>
+
+  <!-- ── 進行中の意志形成 ── -->
+  <h2>進行中の意志形成</h2>
+  <div id="intentsBox" style="font-size:13px"></div>
+
+  <!-- 提起フォーム（メンバーのみ） -->
+  <div id="proposeSection" style="display:none;margin-top:16px;border:1px solid #ddd;border-radius:8px;padding:16px;background:#fafafa">
+    <h3 style="margin:0 0 10px;font-size:1rem">意志形成を提起する</h3>
+    <label style="font-size:13px;font-weight:bold">何をするか（本文・必須）</label>
+    <textarea id="npBody" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;height:60px;resize:vertical;margin:4px 0 12px"></textarea>
+
+    <label style="font-size:13px;font-weight:bold">宣言を含める（任意）</label>
+    <select id="npKind" style="display:block;margin:4px 0 10px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px" onchange="onKindChange()">
+      <option value="">含めない（ただ何かをする）</option>
+      <option value="policy">全体方針（私たちの意志・現状を定める）</option>
+      <option value="recruit">目的別募集（必要像を定める）</option>
+    </select>
+
+    <div id="npPolicy" style="display:none">
+      <label style="font-size:12px">意志（どこへ向かうか）</label>
+      <textarea id="npWill" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;height:44px;resize:vertical;margin:4px 0 8px"></textarea>
+      <label style="font-size:12px">現状・持っているもの</label>
+      <input id="npStateHave" type="text" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;margin:4px 0 8px">
+    </div>
+
+    <div id="npRecruit" style="display:none">
+      <label style="font-size:12px">意志（この募集の文脈）</label>
+      <textarea id="npRecruitWill" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;height:44px;resize:vertical;margin:4px 0 8px"></textarea>
+      <label style="font-size:12px">必要像</label>
+      <p style="font-size:11px;color:#a15;margin:2px 0">これは求人票ではありません。「どんなスキルの人が欲しいか」ではなく、<b>私たちに何が足りず、それを埋める人はどういう人か</b>——意志と現状の差分を埋める存在を書いてください。</p>
+      <textarea id="npNecessity" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;height:60px;resize:vertical;margin:4px 0 8px"></textarea>
+    </div>
+
+    <button class="btn btn-primary" onclick="submitPropose()">提起する</button>
+    <span id="proposeNotice" style="font-size:12px;margin-left:8px"></span>
+  </div>
+
   <!-- チャット -->
   <h2>コミュニティチャット</h2>
   <div id="chatBox"></div>
@@ -98,9 +144,24 @@
 const pathParts = location.pathname.split("/");
 const communityId = decodeURIComponent(pathParts[pathParts.length - 1]);
 const myId = localStorage.getItem("pox_my_id");
+let sessionId = null;         // 台帳に書く操作の身元（セッション・指示書23 §4）
 let communityData = null;
 
+// ゲートされた操作が 401 を返したら白画面にせず /login へ（指示書22/23）。
+function handleAuth(res) {
+  if (res && res.status === 401) { location.href = "/login"; return true; }
+  return false;
+}
+
+async function loadSession() {
+  try {
+    const r = await fetch("/api/me");
+    if (r.ok) sessionId = (await r.json()).subject_id;
+  } catch (e) { sessionId = null; }
+}
+
 async function init() {
+  await loadSession();
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}`);
   if (!res.ok) {
     document.getElementById("loading").textContent = "コミュニティが見つかりません。";
@@ -118,14 +179,187 @@ async function init() {
 
   renderJoinSection();
   renderMembers();
+  renderDeclaration();
+  renderAchievements();
+  renderIntents();
+  renderProposeSection();
   renderChat();
 
-  const isFounder = myId && communityData.founder === myId;
+  const isFounder = sessionId && communityData.founder === sessionId;
   if (isFounder) {
     document.getElementById("editBtn").style.display = "inline-block";
     document.getElementById("pendingSection").style.display = "block";
     renderPending();
   }
+}
+
+/* ── 意志形成: 身元と権限 ── */
+function isActingMember() {
+  if (!sessionId) return false;
+  return communityData.founder === sessionId ||
+    (communityData.members || []).some(m => m.member_id === sessionId);
+}
+
+/* ── 宣言 ── */
+function renderDeclaration() {
+  const box = document.getElementById("declarationBox");
+  const d = communityData.declaration;
+  if (!d) { box.innerHTML = '<span style="color:#a15">未宣言</span>'; return; }
+  const rows = [["意志", d.will_text], ["持っているもの", d.state_have],
+                ["できること（型）", d.state_can_type], ["縛られているもの", d.state_bound],
+                ["未分類", d.state_unsorted]].filter(([, v]) => v);
+  box.innerHTML = rows.map(([k, v]) =>
+    `<div style="margin:4px 0"><span style="color:#888;font-size:12px">${k}</span><br>${escHtml(v)}</div>`).join("");
+}
+
+/* ── 実績（完了した意志形成）── */
+function renderAchievements() {
+  const box = document.getElementById("achievementsBox");
+  const done = (communityData.intents || []).filter(i => i.status === "completed");
+  if (!done.length) { box.innerHTML = '<span style="color:#888">まだ完了した意志形成はありません。</span>'; return; }
+  box.innerHTML = done.map(i => {
+    const who = intentPeople(i);
+    return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px;margin:8px 0;background:#fbfffb">
+      <div style="font-size:11px;color:#888">完了: ${tsDate(i.completed_at)}${i.declaration_kind ? " ・宣言: " + kindLabel(i.declaration_kind) : ""}</div>
+      <div style="margin:4px 0"><b>何を:</b> ${escHtml(i.body || "（記述なし）")}</div>
+      <div style="margin:4px 0"><b>結果:</b> ${escHtml(i.result || "（記述なし）")}</div>
+      <div style="font-size:12px;color:#555"><b>誰が:</b> ${who}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ── 進行中（proposed / agreed）── */
+function renderIntents() {
+  const box = document.getElementById("intentsBox");
+  const live = (communityData.intents || []).filter(i => i.status === "proposed" || i.status === "agreed");
+  if (!live.length) { box.innerHTML = '<span style="color:#888">進行中の意志形成はありません。</span>'; return; }
+  box.innerHTML = live.map(i => {
+    const canAct = isActingMember();
+    const approvers = (i.approvers || []).map(escHtml).join(", ") || "なし";
+    let actions = "";
+    if (canAct && i.status === "proposed") {
+      actions += `<button class="btn-sm" onclick="agreeIntent('${i.intent_id}')">合意する</button> `;
+      actions += `<button class="btn-sm" style="background:#933" onclick="cancelIntent('${i.intent_id}')">取消</button>`;
+    } else if (canAct && i.status === "agreed") {
+      actions += `<button class="btn-sm" onclick="completeIntent('${i.intent_id}')">完了にする</button> `;
+      actions += `<button class="btn-sm" style="background:#933" onclick="cancelIntent('${i.intent_id}')">取消</button> `;
+      actions += `<button class="btn-sm" style="background:#357" onclick="joinParticipant('${i.intent_id}')">目的別に参加</button>`;
+    }
+    const recruit = i.declaration && i.declaration.kind === "recruit"
+      ? `<div style="margin:4px 0;font-size:12px;color:#a15"><b>募集（必要像）:</b> ${escHtml(i.declaration.necessity_text || "")}</div>` : "";
+    return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px;margin:8px 0">
+      <div style="font-size:11px;color:#888">${statusLabel(i.status)}${i.declaration_kind ? " ・宣言: " + kindLabel(i.declaration_kind) : ""} ・提起: ${tsDate(i.proposed_at)}</div>
+      <div style="margin:4px 0"><b>何を:</b> ${escHtml(i.body || "（記述なし）")}</div>
+      ${recruit}
+      <div style="font-size:12px;color:#555">合意済み: ${approvers}</div>
+      <div style="margin-top:6px">${actions}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderProposeSection() {
+  document.getElementById("proposeSection").style.display = isActingMember() ? "block" : "none";
+}
+
+function intentPeople(i) {
+  const set = new Set(i.approvers || []);
+  (i.participants || []).forEach(p => set.add(p.participant));
+  return [...set].map(escHtml).join(", ") || "—";
+}
+function kindLabel(k) { return k === "policy" ? "全体方針" : (k === "recruit" ? "目的別募集" : "自由記述"); }
+function statusLabel(s) { return s === "proposed" ? "合意待ち" : (s === "agreed" ? "実行中（合意済み）" : s); }
+function tsDate(at) { return at ? new Date(at).toLocaleString("ja-JP") : "—"; }
+
+/* ── 提起フォーム ── */
+function onKindChange() {
+  const k = document.getElementById("npKind").value;
+  document.getElementById("npPolicy").style.display  = k === "policy" ? "block" : "none";
+  document.getElementById("npRecruit").style.display = k === "recruit" ? "block" : "none";
+}
+
+async function submitPropose() {
+  const notice = document.getElementById("proposeNotice");
+  if (!sessionId) { location.href = "/login"; return; }
+  const body = document.getElementById("npBody").value.trim();
+  if (!body) { notice.style.color = "#c00"; notice.textContent = "本文は必須です"; return; }
+  const kind = document.getElementById("npKind").value;
+  let declaration = "";
+  if (kind === "policy") {
+    declaration = { kind: "policy",
+      will_text: document.getElementById("npWill").value.trim(),
+      state_have: document.getElementById("npStateHave").value.trim() };
+  } else if (kind === "recruit") {
+    declaration = { kind: "recruit",
+      will_text: document.getElementById("npRecruitWill").value.trim(),
+      necessity_text: document.getElementById("npNecessity").value.trim() };
+  }
+  notice.style.color = "#888"; notice.textContent = "提起中…";
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/intent/propose`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ proposer: sessionId, body, declaration }),
+  });
+  if (handleAuth(res)) return;
+  if (!res.ok) { notice.style.color = "#c00"; notice.textContent = "提起に失敗: " + ((await res.json().catch(() => ({}))).error || res.status); return; }
+  document.getElementById("npBody").value = ""; document.getElementById("npWill").value = "";
+  document.getElementById("npStateHave").value = ""; document.getElementById("npRecruitWill").value = "";
+  document.getElementById("npNecessity").value = ""; document.getElementById("npKind").value = ""; onKindChange();
+  notice.textContent = "";
+  await reloadAll();
+}
+
+async function agreeIntent(iid) {
+  if (!sessionId) { location.href = "/login"; return; }
+  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/agree`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subject: sessionId }),
+  });
+  if (handleAuth(res)) return;
+  if (!res.ok) { alert("合意に失敗しました"); return; }
+  await reloadAll();
+}
+
+async function completeIntent(iid) {
+  if (!sessionId) { location.href = "/login"; return; }
+  const result = prompt("結果を記述してください（実績として残ります・必須）");
+  if (result === null || !result.trim()) { alert("結果の記述は必須です"); return; }
+  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/complete`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by: sessionId, result: result.trim() }),
+  });
+  if (handleAuth(res)) return;
+  if (!res.ok) { alert("完了に失敗: " + ((await res.json().catch(() => ({}))).error || res.status)); return; }
+  await reloadAll();
+}
+
+async function cancelIntent(iid) {
+  if (!sessionId) { location.href = "/login"; return; }
+  const reason = prompt("取消の理由（任意）") || "";
+  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/cancel`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by: sessionId, reason }),
+  });
+  if (handleAuth(res)) return;
+  if (!res.ok) { alert("取消に失敗しました"); return; }
+  await reloadAll();
+}
+
+async function joinParticipant(iid) {
+  if (!sessionId) { location.href = "/login"; return; }
+  const introduced_by = prompt("紹介者のID（任意・既存メンバーまたは参加者）") || null;
+  const res = await fetch(`/api/intent/${encodeURIComponent(iid)}/participant/join`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ participant: sessionId, introduced_by, approved_by: [] }),
+  });
+  if (handleAuth(res)) return;
+  if (!res.ok) { alert("参加に失敗しました"); return; }
+  await reloadAll();
+}
+
+async function reloadAll() {
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}`);
+  if (!res.ok) return;
+  communityData = await res.json();
+  renderDeclaration(); renderAchievements(); renderIntents(); renderProposeSection();
 }
 
 /* ── 編集 (founder only) ── */
@@ -191,11 +425,15 @@ function renderAttachment(url) {
 
 function renderJoinSection() {
   const el = document.getElementById("joinSection");
-  if (!myId) { el.innerHTML = ""; return; }
+  const me = sessionId;   // 参加・承認は台帳に書くためセッション本人が基準（指示書23 §4）
+  if (!me) {
+    el.innerHTML = '<a href="/login" style="font-size:13px;color:#1a56bb">ログインすると参加・提起できます</a>';
+    return;
+  }
 
-  const member = communityData.members.find(m => m.member_id === myId);
-  const pending = (communityData.pending || []).find(m => m.member_id === myId);
-  const isFounder = communityData.founder === myId;
+  const member = communityData.members.find(m => m.member_id === me);
+  const pending = (communityData.pending || []).find(m => m.member_id === me);
+  const isFounder = communityData.founder === me;
 
   if (isFounder) {
     el.innerHTML = '<span style="font-size:13px;color:#1a8a1a">あなたはこのコミュニティの founder です</span>';
@@ -250,32 +488,35 @@ function renderChat() {
 
   box.scrollTop = box.scrollHeight;
 
-  const member = communityData.members.find(m => m.member_id === myId);
-  const isFounder = myId && communityData.founder === myId;
+  const me = sessionId || myId;
+  const member = communityData.members.find(m => m.member_id === me);
+  const isFounder = me && communityData.founder === me;
   if (member || isFounder) {
     document.getElementById("chatInput").style.display = "flex";
     document.getElementById("chatNotice").style.display = "none";
-  } else if (myId) {
+  } else if (me) {
     document.getElementById("chatInput").style.display = "none";
     document.getElementById("chatNotice").style.display = "block";
   }
 }
 
 async function joinCommunity() {
-  if (!myId) { alert("マイページでIDを設定してください"); return; }
+  if (!sessionId) { location.href = "/login"; return; }   // 台帳に書くためログイン必須（指示書23 §4）
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/join`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ member_id: myId }),
+    body: JSON.stringify({ member_id: sessionId }),
   });
+  if (handleAuth(res)) return;
   if (res.ok) { await init(); }
 }
 
 async function approveMember(memberId) {
-  if (!myId) return;
+  if (!sessionId) { location.href = "/login"; return; }
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/approve`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ member_id: memberId, approver_id: myId }),
+    body: JSON.stringify({ member_id: memberId, approver_id: sessionId }),
   });
+  if (handleAuth(res)) return;
   if (res.ok) { await init(); }
 }
 
@@ -287,10 +528,11 @@ async function sendMsg() {
   const input = document.getElementById("msgInput");
   const body = input.value.trim();
   if (!body && !pendingAttachUrl) return;
-  if (!myId) return;
+  const me = sessionId || myId;
+  if (!me) return;
   input.value = "";
 
-  const payload = { from_id: myId, body: body || "" };
+  const payload = { from_id: me, body: body || "" };
   if (pendingAttachUrl) { payload.attachment_url = pendingAttachUrl; clearAttach(); }
 
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/message`, {

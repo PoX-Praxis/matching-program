@@ -175,6 +175,15 @@ _SQLITE_DDL = [
         evidence_span TEXT,
         salt          TEXT
     )""",
+    # 意志形成の本文置き場（指示書23 §1-5）。台帳は content_hash のみ・本文は可読性のためここへ。
+    """CREATE TABLE IF NOT EXISTS intent_content (
+        intent_id        TEXT PRIMARY KEY,
+        ctx              TEXT NOT NULL,
+        body             TEXT,
+        declaration_json TEXT,
+        result           TEXT,
+        updated_at       TEXT NOT NULL
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -342,6 +351,14 @@ _PG_DDL = [
         necessity_id  TEXT PRIMARY KEY,
         evidence_span TEXT,
         salt          TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS intent_content (
+        intent_id        TEXT PRIMARY KEY,
+        ctx              TEXT NOT NULL,
+        body             TEXT,
+        declaration_json TEXT,
+        result           TEXT,
+        updated_at       TEXT NOT NULL
     )""",
 ]
 

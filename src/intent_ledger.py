@@ -17,8 +17,9 @@ intent は「人」ではなく、あるコミュニティ（ctx）の中の合�
 import uuid
 from datetime import datetime, timezone
 
-from canon import sha256_hex
+from canon import sha256_hex, canonicalize
 import ledger_events as le
+import intent_content
 from member_ledger import members_hash
 
 DEFAULT_RULESET = "r1"   # 初期閾値: 全員一致（§1-6）
@@ -41,6 +42,14 @@ def _proposed(intent_id, db_path):
 
 # ── 書き込み ────────────────────────────────────────────────────────────────
 
+def _declaration_hash(declaration) -> str:
+    """宣言（構造）の内容ハッシュ。宣言なしは空文字の SHA-256（§4-2: 本文は載せない）。"""
+    norm = intent_content.normalize_declaration(declaration)
+    if not norm:
+        return sha256_hex(b"")
+    return sha256_hex(canonicalize(norm))
+
+
 def propose_intent(ctx, proposer, *, body="", declaration="",
                    ruleset_version=DEFAULT_RULESET, actor=None, db_path="pox.db"):
     intent_id = f"int_{uuid.uuid4().hex[:12]}"
@@ -48,9 +57,11 @@ def propose_intent(ctx, proposer, *, body="", declaration="",
                 if e["payload"].get("ctx") == ctx)
     last = le.get_last_event(db_path=db_path)
     basis_seq = last["seq"] if last else 0
+    # 本文・宣言（構造）は DB へ（可読性・§1-5/§3-1）。台帳は content_hash のみ。
+    intent_content.save_proposal(intent_id, ctx, body or "", declaration, db_path=db_path)
     le.append_event(actor or proposer, "intent.proposed", {
         "intent_id": intent_id, "ctx": ctx, "n": n, "proposer": proposer,
-        "body_hash": sha256_hex(body or ""), "declaration_hash": sha256_hex(declaration or ""),
+        "body_hash": sha256_hex(body or ""), "declaration_hash": _declaration_hash(declaration),
         "ruleset_version": ruleset_version, "basis_seq": basis_seq,
     }, db_path=db_path)
     return {"intent_id": intent_id, "ctx": ctx, "n": n, "basis_seq": basis_seq,
@@ -67,8 +78,45 @@ def agree_intent(intent_id, subject, *, actor=None, db_path="pox.db"):
     le.append_event(actor or subject, "intent.agreed", {
         "intent_id": intent_id, "approvals": [{"from": subject, "at": _now()}],
     }, db_path=db_path)
+    agreed = is_agreed(intent_id, db_path=db_path)
+    confirmed = None
+    if agreed is True:
+        # 合意が成立した時点で宣言が確定し、対応するイベントが書かれる（§1-2）。churn ガードで冪等。
+        confirmed = _confirm_declaration(intent_id, base["payload"], db_path)
     return {"intent_id": intent_id, "skipped": False, "approver": subject,
-            "agreed": is_agreed(intent_id, db_path=db_path)}
+            "agreed": agreed, "declaration_confirmed": confirmed}
+
+
+def _confirm_declaration(intent_id, base_payload, db_path):
+    """intent が agreed になった時点で宣言を確定させる（§1-2）。冪等（各生成関数の churn ガード）。
+
+    - policy（全体方針）: コミュニティ(ctx) の profile.structured を書く（意志・現状）
+    - recruit（目的別募集）: owner_ref=intent_id の necessity.published を書く（origin=self_declared）
+    - kind 無し（自由記述）/ 宣言なし: 何も確定しない（通常の「何かをする」意志形成）
+    """
+    content = intent_content.get_content(intent_id, db_path=db_path)
+    decl = content.get("declaration")
+    if not decl or not decl.get("kind"):
+        return None
+    ctx = base_payload["ctx"]
+    if decl["kind"] == "policy":
+        from subject_ledger import publish_profile_structured
+        from member_ledger import active_members_from_events
+        members = sorted(active_members_from_events(ctx, db_path=db_path))
+        profile_input = {k: decl.get(k, "") for k in
+                         ("will_text", "state_have", "state_can_type", "state_bound", "state_unsorted")}
+        r = publish_profile_structured(ctx, profile_input,
+                                       members_after_hash=members_hash(members),
+                                       actor=ctx, db_path=db_path)
+        return {"kind": "policy", "profile_structured": r}
+    if decl["kind"] == "recruit":
+        from necessities import publish_necessity
+        nec = {"will_text": decl.get("will_text", ""),
+               "necessity_text": decl.get("necessity_text", "")}
+        r = publish_necessity(intent_id, "intent", nec,
+                              origin="self_declared", actor=ctx, db_path=db_path)
+        return {"kind": "recruit", "necessity_published": r}
+    return None
 
 
 def complete_intent(intent_id, by, *, result="", db_path="pox.db"):
@@ -83,6 +131,7 @@ def complete_intent(intent_id, by, *, result="", db_path="pox.db"):
         return {"intent_id": intent_id, "error": "cancelled"}
     if is_agreed(intent_id, db_path=db_path) is not True:
         return {"intent_id": intent_id, "error": "not_agreed"}
+    intent_content.save_result(intent_id, result or "", db_path=db_path)   # 結果本文は DB（§1-5）
     le.append_event(by, "intent.completed", {
         "intent_id": intent_id, "result_hash": sha256_hex(result or ""),
     }, db_path=db_path)
@@ -221,3 +270,78 @@ def list_intents(ctx, *, db_path="pox.db"):
         if e["payload"].get("ctx") == ctx:
             out.append(get_intent(e["payload"]["intent_id"], db_path=db_path))
     return out
+
+
+def _participants(intent_id, db_path):
+    out = []
+    for e in le.get_events(type_="intent.participant.joined", db_path=db_path):
+        if e["payload"].get("intent_id") == intent_id:
+            out.append({"participant": e["payload"].get("participant"),
+                        "introduced_by": e["payload"].get("introduced_by"),
+                        "approved_by": e["payload"].get("approved_by", []),
+                        "at": e.get("at")})
+    return out
+
+
+def _event_at(intent_id, type_, db_path):
+    for e in le.get_events(type_=type_, db_path=db_path):
+        if e["payload"].get("intent_id") == intent_id:
+            return e.get("at")
+    return None
+
+
+def get_intent_detail(intent_id, *, db_path="pox.db"):
+    """UI（宣言/実績/進行中）用の可読ビュー。本文は DB から、状態は台帳から。
+
+    数値（gate/α/β 等）は出さない。recruit の necessity_text は公開してよいが、
+    necessities の内部数値には触れない（本文置き場から読むだけ）。
+    """
+    base = get_intent(intent_id, db_path=db_path)
+    if not base:
+        return None
+    content = intent_content.get_content(intent_id, db_path=db_path)
+    decl = content.get("declaration")
+    proposed = _proposed(intent_id, db_path)
+    return {
+        **base,
+        "body": content.get("body", ""),
+        "result": content.get("result", ""),
+        "declaration_kind": (decl or {}).get("kind"),
+        "declaration": decl,
+        "participants": _participants(intent_id, db_path),
+        "proposed_at": proposed.get("at") if proposed else None,
+        "completed_at": _event_at(intent_id, "intent.completed", db_path),
+        "cancelled_at": _event_at(intent_id, "intent.cancelled", db_path),
+    }
+
+
+def list_intent_details(ctx, *, db_path="pox.db"):
+    return [get_intent_detail(e["payload"]["intent_id"], db_path=db_path)
+            for e in le.get_events(type_="intent.proposed", db_path=db_path)
+            if e["payload"].get("ctx") == ctx]
+
+
+def latest_policy_declaration(ctx, *, db_path="pox.db"):
+    """コミュニティ(ctx) が確定させた最新の全体方針宣言（意志・現状）。無ければ None（§3-1）。
+
+    「確定」＝agreed に達した policy 宣言。取消は含めない。profile.structured は content_hash
+    しか持たないため、本文は intent_content から読む（最新の agreed policy を採用）。
+    """
+    latest = None
+    for e in le.get_events(type_="intent.proposed", db_path=db_path):
+        if e["payload"].get("ctx") != ctx:
+            continue
+        iid = e["payload"]["intent_id"]
+        st = get_intent(iid, db_path=db_path)
+        if st["status"] not in ("agreed", "completed"):
+            continue
+        c = intent_content.get_content(iid, db_path=db_path)
+        d = c.get("declaration")
+        if d and d.get("kind") == "policy":
+            latest = {"will_text": d.get("will_text", ""),
+                      "state_have": d.get("state_have", ""),
+                      "state_can_type": d.get("state_can_type", ""),
+                      "state_bound": d.get("state_bound", ""),
+                      "state_unsorted": d.get("state_unsorted", ""),
+                      "intent_id": iid, "at": e.get("at")}
+    return latest

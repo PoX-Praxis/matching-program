@@ -76,8 +76,8 @@ const AXIS = {
 async function loadRecommendations() {
   const status = document.getElementById("recStatus");
   if (!myId) {
-    status.innerHTML = `<div class="notice">つながるには、まずあなたのプロフィール登録が必要です。
-      <a href="/register">プロフィールを登録する →</a></div>`;
+    status.innerHTML = `<div class="notice">つながるには、まずあなた自身を言語化する必要があります。
+      <a href="/register">言語化する →</a></div>`;
     return;
   }
   status.innerHTML = `<span class="muted">照合中…</span>`;

@@ -278,19 +278,25 @@ def ledger_anchor():
 
 
 @app.post("/seekers")
+@login_required
 def post_seeker():
     """
     登録の受け口（修正指示書 v3.1 §3・§4）。
       raw_text があれば strip_code_fence → parse → normalize_to_seeker を通す。
       なければ body 自体を素JSONとみなして normalize する（後方互換）。
-    user_id を渡されれば上書き（再登録で重複を作らない §4）。新規のみ UUID 採番。
+
+    登録はログイン後に行う（選択肢1）。プロフィール id は **セッションの subject_id に束縛**する。
+    これにより「登録した id ≠ ログイン後の id」で登録が宙に浮く問題を解消し、
+    同時に他人の id を指定して他人のプロフィールを上書きする経路も塞ぐ。
+    （POX_DEBUG バイパス時のみ、セッションが無く body の user_id / 新規採番にフォールバック。）
     """
     body = request.get_json(force=True, silent=True)
     if not isinstance(body, dict):
         return jsonify({"error": "JSON が読めません"}), 400
 
     raw_text = body.get("raw_text")
-    user_id  = body.get("user_id")
+    # id はセッション本人に束縛（body の user_id は一致必須・不一致は 403）。§選択肢1。
+    user_id  = require_self(body.get("user_id"))
 
     if raw_text is not None:
         try:
@@ -304,7 +310,7 @@ def post_seeker():
     seeker = normalize_to_seeker(raw)
 
     if not user_id:
-        user_id = f"u_{uuid.uuid4().hex[:8]}"   # UUID由来・連番ではない（不変条件4）
+        user_id = f"u_{uuid.uuid4().hex[:8]}"   # UUID由来・連番ではない（不変条件4・DEBUG時のみ到達）
 
     save_profile(user_id, seeker, db_path=DB)   # seeker + profile_view を同時保存（UPSERT）
 
@@ -714,6 +720,7 @@ def _dual_write_v4(profile_id, raw):
 
 
 @app.post("/v4/seekers")
+@login_required
 def post_v4_seeker():
     """
     ①v4 の構造化出力を取り込む（F章 登録/更新）。二経路:
@@ -741,7 +748,9 @@ def post_v4_seeker():
 
     from db_v4 import GEN_PREPARING
 
-    profile_id = body.get("user_id") or f"u_{uuid.uuid4().hex[:8]}"
+    # id はセッション本人に束縛（選択肢1）。body の user_id は一致必須・不一致は 403。
+    # DEBUG バイパス時のみ body / 新規採番にフォールバック。
+    profile_id = require_self(body.get("user_id")) or f"u_{uuid.uuid4().hex[:8]}"
     try:
         profile_id, necessity, is_fallback = _ingest_v4_from_flat(body, profile_id=profile_id)
     except (ValueError, TypeError) as e:

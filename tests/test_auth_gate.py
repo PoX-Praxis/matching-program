@@ -110,13 +110,26 @@ def test_debug_bypass_allows_without_session():
         os.environ.pop("POX_DEBUG", None)
 
 
-# ── 対象外（禁則）: 登録はゲートしない ───────────────────────────
-def test_registration_not_gated():
+# ── 登録はログイン後（選択肢1）。プロフィール id はセッションに束縛される ──────────
+def test_registration_requires_login():
     os.environ.pop("POX_DEBUG", None)
     c, _ = _client()
-    # 未ログインでも登録は 401/403 にならない（201 で成功する）
+    # 未ログインでは登録は 401（登録はログイン後・選択肢1）
     r = c.post("/seekers", json={"意志": "何かを作りたい", "現状": {"持っているもの": "時間"}})
-    assert r.status_code == 201, f"/seekers は登録経路のためゲート禁止（→ {r.status_code}）"
+    assert r.status_code == 401
+
+
+def test_registration_binds_profile_to_session():
+    os.environ.pop("POX_DEBUG", None)
+    c, _ = _client()
+    with c.session_transaction() as sess:
+        sess["subject_id"] = "u_alice"
+    # user_id を送らなくても、プロフィール id はセッションの subject_id になる
+    r = c.post("/seekers", json={"意志": "作りたい", "現状": {"持っているもの": "時間"}})
+    assert r.status_code == 201 and r.get_json()["id"] == "u_alice"
+    # 他人の id を指定して上書きしようとしても 403（なりすまし阻止）
+    r2 = c.post("/seekers", json={"user_id": "u_victim", "意志": "x", "現状": {}})
+    assert r2.status_code == 403
 
 
 def test_public_profile_not_gated():

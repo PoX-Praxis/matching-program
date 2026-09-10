@@ -86,6 +86,7 @@ TimeoutError を制限の証左とみなした）。
 この状態だと起動時に警告が出る（`app.py` は `mailer.is_configured()` でバックエンド別に判定）。
 
 > 依存は増やしていない。HTTP API 送信は標準ライブラリ `urllib` を使用（`requests` 不使用）。
+> Resend は **User-Agent ヘッダ必須**（無いと 403 + error code 1010）。`urllib` は自動付与しないため `mailer.py` で明示的に付けている（`pox-web/1.0`）。
 
 ---
 

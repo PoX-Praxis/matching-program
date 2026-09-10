@@ -63,6 +63,18 @@ if _PROD and not mailer.is_configured():
         "resend_api なら POX_RESEND_API_KEY / POX_MAIL_FROM、smtp なら POX_SMTP_HOST/USER/PASS を設定してください。"
     )
 
+# ── セッションCookie設定 ─────────────────────────────────────────────
+# 有効期限は 30 日（auth_verify で session.permanent=True を張る）。既定では毎リクエストで
+# 期限が延びる（スライディング）。POX_SECRET_KEY を差し替えると全 Cookie の署名が無効になり
+# 全員ログアウトする（＝漏洩時に即差し替えてよい根拠・docs 参照）。
+from datetime import timedelta as _timedelta
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=_timedelta(days=30),
+    SESSION_COOKIE_HTTPONLY=True,          # JS から Cookie を読ませない（XSS 緩和）
+    SESSION_COOKIE_SAMESITE="Lax",         # クロスサイトの誤送出を抑止（CSRF 緩和）
+    SESSION_COOKIE_SECURE=_PROD,           # 本番は HTTPS 限定。開発(POX_DEBUG=1)は False
+)
+
 # 規約（プライバシーポリシー）の版。terms.accepted に記録（§3-3）。
 # ポリシー本文（最終更新）と揃える。本文差し替えは terms_hash が別途検出する。
 TERMS_VERSION = "2026-09"
@@ -213,6 +225,7 @@ def auth_verify():
         ), 400
     # アドレスの平文は保持していない。同一性は email_hash だけで採番・照合する（指示書26 §3）。
     subject_id, created = auth.get_or_create_identity_by_hash(email_hash, db_path=DB)
+    session.permanent = True   # 30日の有効期限を適用（PERMANENT_SESSION_LIFETIME）
     session["subject_id"] = subject_id
     if created:
         # 初回のみ（§3-1 step4・§3-3）。best-effort: 失敗してもログインは成立させる。

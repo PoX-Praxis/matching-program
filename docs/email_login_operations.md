@@ -142,3 +142,29 @@ TimeoutError を制限の証左とみなした）。
 - 通常 DB の行（`profiles` / `seekers` / `auth_identities` / `auth_tokens`）は削除して再登録。
 - 台帳（`ledger_events`）は追記専用（指示書18 §1-4）なので消さない。過去イベントは履歴として残る。
 - 新しい `POX_EMAIL_SALT` を設定した状態で、各自がメールで再ログイン → 再登録する。
+
+---
+
+## 7. ログインセッションの持続
+
+ログイン状態は `app.secret_key`（＝`POX_SECRET_KEY`）で署名した Cookie に保持する（サーバー側に
+セッション行は持たない）。設定は `app.py`：
+
+| 設定 | 値 | 意味 |
+|---|---|---|
+| `session.permanent`（auth_verify で付与） | `True` | 期限を効かせる |
+| `PERMANENT_SESSION_LIFETIME` | **30 日** | ログインの有効期限。既定でリクエストごとに延長（スライディング） |
+| `SESSION_COOKIE_HTTPONLY` | `True` | JS から Cookie を読ませない（XSS 緩和） |
+| `SESSION_COOKIE_SAMESITE` | `Lax` | クロスサイトの誤送出を抑止（CSRF 緩和） |
+| `SESSION_COOKIE_SECURE` | 本番 `True` / 開発 `False` | 本番は HTTPS 限定。`POX_DEBUG=1` のとき False |
+
+**持続期間**: 最後のアクセスから 30 日でセッションが切れ、再ログインが必要になる。
+共用端末での放置セッションもこれで最長 30 日で失効する。
+
+**セッションが切れる条件**:
+1. 30 日の有効期限切れ（最後のアクセス基準）
+2. ログアウト（`/auth/logout`）
+3. **`POX_SECRET_KEY` を差し替えたとき → 既存 Cookie の署名が全て無効になり、全員が即ログアウト**
+   （この副作用があるからこそ、漏洩が疑われたら `POX_SECRET_KEY` は迷わず差し替えてよい。
+   一方 `POX_EMAIL_SALT` は差し替えると全アカウント喪失なので絶対に変えない・§1）
+4. Cookie の削除／別端末・別ブラウザ（Cookie は端末×ブラウザ単位）

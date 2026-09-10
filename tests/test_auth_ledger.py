@@ -149,6 +149,35 @@ def test_relogin_same_address_returns_same_subject_and_profile():
     assert dbmod.get_profile_view(sid2, db_path=db) is not None
 
 
+def test_relogin_without_registration_returns_same_subject():
+    """指示書26 §2 補足: 構造化登録をせずログアウトしても、次回同じアドレスで
+    同じ subject_id に戻る。identity は初回ログイン時に auth_identities へ作られ、
+    プロフィール登録（/register）の有無に依存しないため。"""
+    db = _db()
+    appmod.DB = db
+    c = appmod.app.test_client()
+    EMAIL = "noreg@example.com"
+
+    # 1) 初回ログイン。構造化登録はしない。
+    tok1 = auth.issue_token(EMAIL, db_path=db)
+    r1 = c.get(f"/auth/verify?token={tok1}", follow_redirects=False)
+    sid1 = r1.headers["Location"].split("id=")[-1]
+    assert sid1.startswith("u_")
+    assert dbmod.get_profile_view(sid1, db_path=db) is None   # 未登録＝プロフィール無し
+
+    # 2) ログアウト
+    c.post("/auth/logout")
+
+    # 3) 同じアドレスで再ログイン → 同じ subject_id
+    tok2 = auth.issue_token(EMAIL, db_path=db)
+    r2 = c.get(f"/auth/verify?token={tok2}", follow_redirects=False)
+    sid2 = r2.headers["Location"].split("id=")[-1]
+    assert sid2 == sid1
+
+    # 4) subject.created は初回のみ（再ログインで重複しない）
+    assert [e["type"] for e in le.get_events(db_path=db)] == ["subject.created", "terms.accepted"]
+
+
 def test_auth_request_rejects_bad_email():
     db = _db()
     appmod.DB = db

@@ -53,11 +53,14 @@ if _PROD and not os.environ.get("POX_EMAIL_SALT"):
         "全アカウント喪失につながるため許可しません。Render の環境変数に設定してください"
         "（開発時のみ POX_DEBUG=1 で既定ソルトにフォールバックします）。"
     )
-# SMTP 設定漏れは起動を止めないが、本番で未設定なら開発モード（メール不送）になるため警告する。
-if _PROD and not all(os.environ.get(k) for k in ("POX_SMTP_HOST", "POX_SMTP_USER", "POX_SMTP_PASS")):
+# メール送信設定の漏れは起動を止めないが、本番で未設定なら開発モード（メール不送）に
+# なるため警告する。判定は現在のバックエンド（resend_api / smtp）に応じる。
+if _PROD and not mailer.is_configured():
+    _mail_backend = os.environ.get("POX_MAIL_BACKEND", "resend_api")
     app.logger.warning(
-        "[mailer] POX_SMTP_* 未設定。本番なのに開発モードで起動しています＝"
-        "ログインメールは一通も送信されません。POX_SMTP_HOST/USER/PASS を設定してください。"
+        f"[mailer] メール送信バックエンド（{_mail_backend}）が未設定です。本番なのに開発モードで"
+        "起動しています＝ログインメールは一通も送信されません。"
+        "resend_api なら POX_RESEND_API_KEY / POX_MAIL_FROM、smtp なら POX_SMTP_HOST/USER/PASS を設定してください。"
     )
 
 # 規約（プライバシーポリシー）の版。terms.accepted に記録（§3-3）。

@@ -48,29 +48,44 @@
 
 ---
 
-## 3. SMTP（送信）設定
+## 3. 送信バックエンド（`POX_MAIL_BACKEND`）
 
-### 送信手段
-- **Gmail は使わない。** ドメイン認証のない差出人は迷惑メール判定されやすく、届かなければ
-  ログインできない。
-- **送信専用サービス**（SendGrid / Resend / Amazon SES 等）を使う。送信ログで到達確認できる。
-- **コードはポートで接続方式を自動切替**（`mailer.py`）：
-  - `465` / `2465` → 暗黙 TLS（`SMTP_SSL`）
-  - `25` / `587` / `2587` → STARTTLS
-  timeout は 30 秒。接続失敗時は `host` / `port` / `mode` をログに出す（経路切り分け用）。
-  Render から特定ポートが塞がれている場合は、別ポート（例 587 が不通なら 2587 や 465/2465）を試す。
+送信方式を `POX_MAIL_BACKEND` で切り替える。
+
+- `resend_api`（**既定**）… Resend の HTTP API（`POST https://api.resend.com/emails`）。
+- `smtp` … SMTP 送信（将来の別サービス用に維持）。
+
+### なぜ HTTP API を既定にしたか（経緯）
+当初は SMTP（`smtp.resend.com:587`）で送る実装だった。しかし **Render から
+`smtp.resend.com:587` への TCP 接続が `TimeoutError` になり、認証以前に接続が確立しなかった。**
+Render はプランによってアウトバウンド SMTP（25/587 等）を塞ぐため、SMTP 経路自体が使えない
+と判断。**HTTPS(443) で送れる HTTP API なら SMTP ポート制限の影響を受けない**ため、
+`resend_api` を既定に切り替えた（Render Shell が使えずポート切り分けができなかったため、
+TimeoutError を制限の証左とみなした）。
+
+`smtp` バックエンドは残してあり、ポートで接続方式を自動切替する（`mailer.py`）：
+`465`/`2465` → 暗黙 TLS（`SMTP_SSL`）、`25`/`587`/`2587` → STARTTLS。timeout 30 秒。
 
 ### 環境変数（すべて Render ダッシュボードで手入力・`sync: false`）
+
+**resend_api（既定）で必須：**
 | キー | 例 | 必須 |
 |---|---|---|
-| `POX_SMTP_HOST` | `smtp.sendgrid.net` / `smtp.resend.com` | ✅ |
-| `POX_SMTP_USER` | サービス発行のユーザー名 | ✅ |
-| `POX_SMTP_PASS` | API キー / パスワード | ✅ |
-| `POX_SMTP_PORT` | 既定 `587` | 任意 |
-| `POX_SMTP_FROM` | `noreply@pox-praxis.com` | 任意（既定は USER） |
+| `POX_RESEND_API_KEY` | `re_...`（Resend 発行） | ✅ |
+| `POX_MAIL_FROM` | `noreply@pox-praxis.com` | ✅ |
 
-3点（HOST/USER/PASS）が未設定だと**開発モード**になり一通も送信されない。本番でこの状態だと
-起動時に警告が出る（`app.py`）。
+**smtp バックエンドを使う場合のみ：**
+| キー | 例 | 必須 |
+|---|---|---|
+| `POX_SMTP_HOST` | `smtp.resend.com` | ✅ |
+| `POX_SMTP_USER` / `POX_SMTP_PASS` | サービス発行 | ✅ |
+| `POX_SMTP_PORT` | 既定 `587`（465/2465 は暗黙TLS） | 任意 |
+| `POX_SMTP_FROM` | 既定は USER | 任意 |
+
+現在のバックエンドの必須変数が未設定だと**開発モード**になり一通も送信されない。本番で
+この状態だと起動時に警告が出る（`app.py` は `mailer.is_configured()` でバックエンド別に判定）。
+
+> 依存は増やしていない。HTTP API 送信は標準ライブラリ `urllib` を使用（`requests` 不使用）。
 
 ---
 

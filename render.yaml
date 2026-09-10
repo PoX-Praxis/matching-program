@@ -28,6 +28,26 @@ services:
         value: "3.12"
       - key: POX_DEBUG
         value: "0"
+      ## 同一性の鍵（指示書26 §1-3）。POX_SECRET_KEY とは必ず別値にする。
+      ##   POX_SECRET_KEY … セッション署名鍵。漏洩時は即差し替えてよい（再ログインで回復）。
+      ##   POX_EMAIL_SALT … email_hash のソルト。差し替えると全アカウントが到達不能になる。
+      ##                    絶対に変更しない・バックアップ必須。未設定だと本番は起動しない。
+      - key: POX_SECRET_KEY
+        sync: false          # Render ダッシュボードで手入力。
+      - key: POX_EMAIL_SALT
+        sync: false          # 手入力。一度決めたら二度と変えない（変更＝全アカウント喪失）。
+      ## メール送信（マジックリンク）。SMTP3点が未設定だと開発モード＝一通も送信されない。
+      ## 送信専用サービス（SendGrid / Resend / Amazon SES 等）を使う。587/STARTTLS 必須。
+      - key: POX_SMTP_HOST
+        sync: false
+      - key: POX_SMTP_USER
+        sync: false
+      - key: POX_SMTP_PASS
+        sync: false
+      - key: POX_SMTP_PORT
+        sync: false          # 未設定なら 587（STARTTLS）
+      - key: POX_SMTP_FROM
+        sync: false          # 例 noreply@pox-praxis.com（独自ドメイン・SPF/DKIM/DMARC 設定済み）
 
   ## 日次 root バッチ（指示書17 §6）。1日1回 UTC 00:10 に scripts/daily_anchor.py を実行。
   ## イベントゼロの日も空 root を記録し、落ちた日は次回にバックフィルされる（gap 無し）。

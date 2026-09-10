@@ -37,10 +37,13 @@
 
 | キー | 値 | 備考 |
 |---|---|---|
-| `POX_SECRET_KEY` | 長いランダム秘密（32バイト以上推奨） | セッション署名・email ハッシュ/暗号の鍵。**必ず設定**（未設定だと開発既定鍵で警告起動） |
+| `POX_SECRET_KEY` | 長いランダム秘密（32バイト以上推奨） | **Flask セッション署名のみ**。漏洩時は差し替え可（再ログインで回復）。未設定だと開発既定鍵で警告起動 |
+| `POX_EMAIL_SALT` | 長いランダム秘密（`POX_SECRET_KEY` とは**別値**） | `email_hash` のソルト＝同一性の根拠。**差し替え厳禁・バックアップ必須**。本番で未設定だと**起動停止**（指示書26 §1-3・詳細は `docs/email_login_operations.md`） |
 | `POX_ANCHOR_TOKEN` | 長いランダム秘密 | 日次 root を外部スケジューラから起動する場合（§2-4） |
-| `POX_SMTP_HOST` / `POX_SMTP_USER` / `POX_SMTP_PASS` | メール配信 | 未設定なら開発モード（リンクをログ出力・本番では設定する） |
-| `POX_SMTP_PORT` / `POX_SMTP_FROM` | 任意（既定 587 / USER） | |
+| `POX_SMTP_HOST` / `POX_SMTP_USER` / `POX_SMTP_PASS` | メール配信 | 未設定なら開発モード（**本番では一通も送信されず起動時に警告**）。送信専用サービス＋587/STARTTLS。詳細は `docs/email_login_operations.md` |
+| `POX_SMTP_PORT` / `POX_SMTP_FROM` | 任意（既定 587 / USER） | `POX_SMTP_FROM` は独自ドメイン（SPF/DKIM/DMARC 設定済み）推奨 |
+
+> 注: 旧 `email_enc`（アドレスの可逆暗号）は削除済み（指示書26 §3）。`POX_EMAIL_KEY` は不要。
 | 既存: `DATABASE_URL` / `ANTHROPIC_API_KEY` / `POX_EMBED_BACKEND=nomic` / `POX_NOMIC_ENDPOINT` / `POX_NOMIC_API_KEY` / `POX_EMBED_MODEL_TAG=nomic-emb-v2` | 現行のまま | Nomic は自宅PC＋Cloudflare Tunnel |
 
 ### 2-2. スキーマ

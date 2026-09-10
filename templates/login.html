@@ -56,7 +56,19 @@ btn.addEventListener("click", async () => {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "送信に失敗しました");
     msg.className = "msg ok";
-    msg.innerHTML = "✅ リンクを送信しました。メールをご確認ください。";
+    // 「送信しました」で終わらせない。届かない利用者が離脱しないよう具体的に案内する（§4-3b・§4-4）。
+    msg.innerHTML =
+      "✅ リンクを送信しました。数分以内にメールが届きます。" +
+      '<div class="note" style="margin-top:10px">' +
+      "届かない場合は次をご確認ください：" +
+      "<br>・<b>迷惑メールフォルダ</b>に振り分けられていないか" +
+      "<br>・<b>キャリアメール</b>（docomo / au / softbank など）をお使いの場合、" +
+      "初期設定でパソコンからのメールが拒否されることがあります。" +
+      "<b>受信許可リストに「pox-praxis.com」ドメインを追加</b>してから、もう一度お試しください。" +
+      "<br>・それでも届かない場合は、お問い合わせください（" +
+      // TODO(運営): 実在する問い合わせ先アドレスに差し替える。pox-praxis.com のメールボックスを用意すること。
+      '<a href="mailto:info@pox-praxis.com">info@pox-praxis.com</a>）。' +
+      "</div>";
     if (d.dev_link) {
       // 開発モード（SMTP未設定・POX_DEBUG=1）のときだけ表示される。
       msg.innerHTML += `<div class="dev">開発モード: <a href="${d.dev_link}">${d.dev_link}</a></div>`;

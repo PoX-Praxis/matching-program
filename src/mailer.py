@@ -12,9 +12,14 @@ SMTP 環境変数が揃っていれば送信、無ければ開発モードとし
     （SMTP 設定前に自分でログインする手段として）。
   - 本番（POX_DEBUG!=1）で開発モードに入っているのは設定漏れ＝異常。その旨だけ記録する。
 
+接続方式はポートで自動切替する:
+  - 465 / 2465 … 暗黙 TLS（SMTP_SSL・接続直後から暗号化。STARTTLS は呼ばない）
+  - 25 / 587 / 2587 … 平文接続後に STARTTLS で昇格
+timeout は 30 秒。接続失敗時は host / port / mode をログに残す（経路切り分け用）。
+
 環境変数:
   POX_SMTP_HOST / POX_SMTP_USER / POX_SMTP_PASS （必須3点）
-  POX_SMTP_PORT （既定 587・STARTTLS） / POX_SMTP_FROM （既定は USER）
+  POX_SMTP_PORT （既定 587＝STARTTLS。465/2465 なら暗黙TLS） / POX_SMTP_FROM （既定は USER）
 """
 import os
 import ssl
@@ -68,14 +73,25 @@ def send_magic_link(to_email: str, link: str) -> dict:
 
     host = os.environ["POX_SMTP_HOST"]
     port = int(os.environ.get("POX_SMTP_PORT", "587"))
+    # 465 / 2465 は暗黙 TLS（接続直後から SSL）＝ SMTP_SSL を使い STARTTLS は呼ばない。
+    # それ以外（25 / 587 / 2587）は平文接続後に STARTTLS で昇格する。
+    use_ssl = port in (465, 2465)
     try:
-        with smtplib.SMTP(host, port, timeout=15) as s:
-            s.starttls(context=ssl.create_default_context())
-            s.login(os.environ["POX_SMTP_USER"], os.environ["POX_SMTP_PASS"])
-            s.send_message(msg)
+        if use_ssl:
+            with smtplib.SMTP_SSL(host, port, timeout=30,
+                                  context=ssl.create_default_context()) as s:
+                s.login(os.environ["POX_SMTP_USER"], os.environ["POX_SMTP_PASS"])
+                s.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=30) as s:
+                s.starttls(context=ssl.create_default_context())
+                s.login(os.environ["POX_SMTP_USER"], os.environ["POX_SMTP_PASS"])
+                s.send_message(msg)
     except Exception as e:  # noqa: BLE001
         # 500 を返さない（利用者には成功に見せる＝列挙攻撃対策）。失敗はログに残す。
-        # アドレス平文は書かない（識別はハッシュ先頭）。
-        print(f"[mailer] ERROR: 送信失敗 {_addr_id(to_email)} type={type(e).__name__}: {e}")
+        # アドレス平文は書かない（識別はハッシュ先頭）。host:port を含め、経路の切り分けを可能にする。
+        mode = "SSL" if use_ssl else "STARTTLS"
+        print(f"[mailer] ERROR: 送信失敗 {_addr_id(to_email)} host={host} port={port} "
+              f"mode={mode} type={type(e).__name__}: {e}")
         return {"sent": False, "dev": False, "error": type(e).__name__}
     return {"sent": True, "dev": False}

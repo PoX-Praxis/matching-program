@@ -81,13 +81,11 @@ _SQLITE_DDL = [
     """CREATE TABLE IF NOT EXISTS auth_identities (
         subject_id  TEXT PRIMARY KEY,
         email_hash  TEXT NOT NULL UNIQUE,
-        email_enc   TEXT NOT NULL,
         created_at  TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS auth_tokens (
         token_hash  TEXT PRIMARY KEY,
         email_hash  TEXT NOT NULL,
-        email_enc   TEXT NOT NULL,
         expires_at  TEXT NOT NULL,
         used_at     TEXT
     )""",
@@ -268,13 +266,11 @@ _PG_DDL = [
     """CREATE TABLE IF NOT EXISTS auth_identities (
         subject_id  TEXT PRIMARY KEY,
         email_hash  TEXT NOT NULL UNIQUE,
-        email_enc   TEXT NOT NULL,
         created_at  TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS auth_tokens (
         token_hash  TEXT PRIMARY KEY,
         email_hash  TEXT NOT NULL,
-        email_enc   TEXT NOT NULL,
         expires_at  TEXT NOT NULL,
         used_at     TEXT
     )""",

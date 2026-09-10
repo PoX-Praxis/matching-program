@@ -43,6 +43,26 @@ if not app.secret_key:
     app.secret_key = "dev-insecure-key-change-me"
     app.logger.warning("[auth] POX_SECRET_KEY 未設定。開発用の既定鍵で起動（本番では必ず設定すること）")
 
+# ── 起動時ガード（指示書26 §1-3・§5-1）──────────────────────────────
+# POX_EMAIL_SALT は email_hash のソルト。既定値で本番起動すると、後から正しい値を
+# 入れた瞬間に全アカウントが到達不能になる。警告では足りないので本番では起動を止める。
+_PROD = os.environ.get("POX_DEBUG", "0") != "1"
+if _PROD and not os.environ.get("POX_EMAIL_SALT"):
+    raise SystemExit(
+        "[FATAL] POX_EMAIL_SALT 未設定。email_hash のソルトであり、既定値での本番起動は"
+        "全アカウント喪失につながるため許可しません。Render の環境変数に設定してください"
+        "（開発時のみ POX_DEBUG=1 で既定ソルトにフォールバックします）。"
+    )
+# メール送信設定の漏れは起動を止めないが、本番で未設定なら開発モード（メール不送）に
+# なるため警告する。判定は現在のバックエンド（resend_api / smtp）に応じる。
+if _PROD and not mailer.is_configured():
+    _mail_backend = os.environ.get("POX_MAIL_BACKEND", "resend_api")
+    app.logger.warning(
+        f"[mailer] メール送信バックエンド（{_mail_backend}）が未設定です。本番なのに開発モードで"
+        "起動しています＝ログインメールは一通も送信されません。"
+        "resend_api なら POX_RESEND_API_KEY / POX_MAIL_FROM、smtp なら POX_SMTP_HOST/USER/PASS を設定してください。"
+    )
+
 # 規約（プライバシーポリシー）の版。terms.accepted に記録（§3-3）。
 # ポリシー本文（最終更新）と揃える。本文差し替えは terms_hash が別途検出する。
 TERMS_VERSION = "2026-09"
@@ -185,14 +205,14 @@ def auth_request():
 def auth_verify():
     """マジックリンクを検証してセッションを張る。初回のみ台帳へ subject.created / terms.accepted（§3-1）。"""
     token = request.args.get("token", "")
-    consumed = auth.consume_token(token, db_path=DB)
-    if not consumed:
+    email_hash = auth.consume_token(token, db_path=DB)
+    if not email_hash:
         return render_template(
             "login.html",
             error="リンクが無効か、期限切れか、使用済みです。もう一度お試しください。",
         ), 400
-    _email_hash, email = consumed
-    subject_id, created = auth.get_or_create_identity(email, db_path=DB)
+    # アドレスの平文は保持していない。同一性は email_hash だけで採番・照合する（指示書26 §3）。
+    subject_id, created = auth.get_or_create_identity_by_hash(email_hash, db_path=DB)
     session["subject_id"] = subject_id
     if created:
         # 初回のみ（§3-1 step4・§3-3）。best-effort: 失敗してもログインは成立させる。

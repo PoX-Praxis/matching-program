@@ -121,6 +121,9 @@ def _send_resend_api(to_email: str, subject: str, body: str) -> dict:
         headers={
             "Authorization": f"Bearer {os.environ['POX_RESEND_API_KEY']}",
             "Content-Type": "application/json",
+            # Resend は User-Agent 必須。無いと 403 + error code 1010 で拒否される。
+            # urllib は自動付与しないため明示する。
+            "User-Agent": "pox-web/1.0",
         },
     )
     try:

@@ -369,8 +369,72 @@ def init(db_path: str = "pox.db") -> None:
     with get_connection(db_path) as con:
         for ddl in ddl_list:
             con.execute(ddl)
-        _migrate_user_snapshots(con)   # 既存テーブルに schema_version / vulnerable_hidden を後付け（指示書12改訂）
+        # CREATE TABLE IF NOT EXISTS は既存テーブルには適用されない。DDL を変えても
+        # 既存本番テーブルには反映されないため、ここで列の追加/削除を冪等に収束させる。
+        _migrate_user_snapshots(con)   # schema_version / vulnerable_hidden を後付け（指示書12改訂）
+        _migrate_columns(con)          # email_enc 削除・後付け列の補完（指示書26 / §スキーマ収束）
     print(f"[schema] init complete ({'postgres' if is_postgres() else f'sqlite:{db_path}'})")
+
+
+# ── 既存テーブルへの冪等な列移行（CREATE TABLE IF NOT EXISTS の穴を塞ぐ）──────
+#
+# CREATE TABLE IF NOT EXISTS は「テーブルが無いとき」だけ効く。既に存在する
+# 本番テーブルには DDL の変更（列の追加・削除・制約変更）が一切反映されない。
+# そこで init() の最後に、意図するスキーマへ寄せる操作を冪等に実行する。
+# 列名・型はコード内リテラルのみ（外部入力を SQL に埋め込まない）。
+
+
+def _column_exists(con, table: str, column: str) -> bool:
+    if is_postgres():
+        row = con.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = %s AND column_name = %s",
+            (table, column),
+        ).fetchone()
+        return row is not None
+    cols = {r[1] for r in con.execute(f"PRAGMA table_info({table})").fetchall()}
+    return column in cols
+
+
+def _drop_column_if_exists(con, table: str, column: str) -> None:
+    """列があれば落とす。無ければ何もしない（何度実行しても安全）。"""
+    if not _column_exists(con, table, column):
+        return
+    if is_postgres():
+        con.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS {column}")
+    else:
+        # SQLite は 3.35.0(2021) 以降で DROP COLUMN 可。古い版では失敗するが、
+        # 新規 SQLite DB には対象列が無い（CREATE 時点で無い）ので実害は限定的。
+        try:
+            con.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _add_column_if_missing(con, table: str, column: str, coltype: str) -> None:
+    """列が無ければ追加。あれば何もしない（両エンジンで冪等）。"""
+    if _column_exists(con, table, column):
+        return
+    con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+
+
+def _migrate_columns(con) -> None:
+    """DDL 変更を既存テーブルへ収束させる（追加は補完・削除は落とす・冪等）。"""
+    # 削除: email_enc（指示書26 でアドレスの可逆暗号を廃止）。既存の NOT NULL 列が
+    # 残っていると issue_token の INSERT が NotNullViolation になるため落とす。
+    for table in ("auth_tokens", "auth_identities"):
+        _drop_column_if_exists(con, table, "email_enc")
+
+    # 追加: 後から DDL/コードに入ったが Postgres 側に自己修復が無かった列。
+    # connection_requests のチャネル来歴（指示書18 §3。ledger.py は SQLite のみ ALTER していた）。
+    for col in ("predicted_role", "channel", "match_run_id"):
+        _add_column_if_missing(con, "connection_requests", col, "TEXT")
+    # profiles の後付け列（db.py は SQLite のみ自己修復）。
+    _add_column_if_missing(con, "profiles", "view_overrides", "TEXT NOT NULL DEFAULT '{}'")
+    _add_column_if_missing(con, "profiles", "created_at",
+                           "TIMESTAMPTZ" if is_postgres() else "TEXT")
+    # messages の添付列（messages.py は SQLite のみ自己修復）。
+    _add_column_if_missing(con, "messages", "attachment_url", "TEXT")
 
 
 def _migrate_user_snapshots(con) -> None:

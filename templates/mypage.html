@@ -467,31 +467,33 @@ async function loadV4Status(id) {
   } catch (e) { el.style.display = "none"; return; }
 
   const s = st.generation_status;
-  if (s === "needs_regeneration") {
-    el.className = "v4status warn";
-    el.innerHTML = "プロフィールを編集したため、必要像が古くなっています。"
-      + "より正確な照合のため、再構造化をおすすめします。"
-      + '<a href="/register" class="restructure">再構造化する →</a>';
+
+  // ready は正常。状態表示は出さない（指示書27 §2-1）。
+  if (s === "ready") { el.style.display = "none"; return; }
+
+  if (s === "preparing") {
+    el.className = "v4status info";
+    el.textContent = "準備中です。少し待ってから再読み込みしてください。";
     el.style.display = "block";
     return;
   }
   if (s === "error") {
-    // 失敗時は再試行の動線を出す（§6）。/v4/seekers/<id>/retry は登録動線のため無認証のまま。
+    // 失敗時は再試行（§2-2: 押し先は /v4/seekers/<id>/retry。retry が材料を見て自動判定）。
     el.className = "v4status err";
-    el.innerHTML = '照合準備でエラーが発生しました。'
-      + '<button id="v4RetryBtn" class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">再試行する</button>';
+    el.innerHTML = "準備に失敗しました。もう一度お試しください。"
+      + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">再試行</button>';
     el.style.display = "block";
     return;
   }
-  const map = {
-    preparing: ["照合の準備中です", "info"],
-    ready:     ["照合可能な状態です", "ok"],
-  };
-  const m = map[s];
-  if (!m) { el.style.display = "none"; return; }
-  el.className = "v4status " + m[1];
-  el.textContent = m[0];
-  el.style.display = "block";
+  if (s === "needs_regeneration") {
+    // 文言は違うが押し先は error と同じ retry（§2-2）。
+    el.className = "v4status warn";
+    el.innerHTML = "現状が変わりました。必要像を作り直せます。"
+      + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">作り直す</button>';
+    el.style.display = "block";
+    return;
+  }
+  el.style.display = "none";   // 未知の値は出さない
 }
 
 async function retryGeneration(id, btn) {

@@ -807,22 +807,35 @@ def post_v4_seeker():
 
 
 @app.get("/v4/seekers/<profile_id>/status")
+@login_required
 def get_v4_seeker_status(profile_id):
-    """非同期生成の進捗（preparing / ready / error / needs_regeneration）を返す。"""
+    """非同期生成の進捗（preparing / ready / error / needs_regeneration）を返す。
+
+    本人限定（指示書22 / 27 §2-4）: セッション本人のみ自分の状態を見られる。
+    generation_error は技術文字列なので利用者には返さない（§2-3。POX_DEBUG=1 のみ）。
+    """
+    require_self(profile_id)   # セッション本人と不一致は 403（401 は login_required が担保）
     if not is_postgres():
         return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
     st = _v4_store().get_profile_status(profile_id)
     if st is None:
         return jsonify({"error": "プロフィールが見つかりません"}), 404
-    return jsonify({"id": profile_id, **st})
+    out = {"id": profile_id, "generation_status": st.get("generation_status")}
+    if _debug_enabled() and st.get("generation_error"):
+        out["generation_error"] = st["generation_error"]
+    return jsonify(out)
 
 
 @app.post("/v4/seekers/<profile_id>/retry")
+@login_required
 def retry_v4_seeker(profile_id):
     """
     失敗した非同期生成を再試行する。保存済み necessity があれば再ベクトル化のみ、
     無ければフォールバック生成からやり直す。status=preparing に戻して再ジョブ。
+
+    本人限定（指示書22 / 27 §2-4）: 他人の id で再試行を起動できないようゲートする。
     """
+    require_self(profile_id)   # セッション本人と不一致は 403（401 は login_required が担保）
     if not is_postgres():
         return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
     store = _v4_store()

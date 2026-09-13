@@ -1682,6 +1682,93 @@ def api_intent_propose(community_id):
         ruleset_version=body.get("ruleset_version") or "r1", db_path=DB)), 200
 
 
+def _community_declaration_from_payload(payload):
+    """コミュニティ版①の出力JSON → propose 用 declaration dict（指示書28 §4）。
+
+    2種類を判別:
+      - 全体用（subject_kind="community"）→ kind="community_overall"（意志・現状＋必要像）
+      - 目的別（kind="intent_necessity"）  → kind="intent_necessity"（意志・現状なし）
+    第4/5条のサーバー側軽検査（§4-6）: 明らかな PII は redact_text で落とす（完全検出は目指さない）。
+    """
+    from pii_redaction import redact_text
+
+    def R(x):
+        return redact_text(x) if isinstance(x, str) else ""
+
+    def _nec_block(body):
+        nec = body.get("necessity") or {}
+        sm = body.get("supporting_material") or {}
+        seeking = sm.get("求めている") or ""
+        if seeking == "未取得":
+            seeking = ""
+        meta = body.get("_meta") or {}
+        return {
+            "necessity_text": R(nec.get("necessity_text")),
+            "evidence_span": R(nec.get("evidence_span")),
+            "seeking": R(seeking),
+            "gate_s": nec.get("gate_s"), "gate_u": nec.get("gate_u"),
+            "p_sharpness": nec.get("p_sharpness"), "alpha": nec.get("alpha"), "beta": nec.get("beta"),
+            "generator": str(nec.get("generator") or ""),
+            "generator_tag": (str(meta.get("source") or "") + "/" if meta.get("source") else "")
+                             + str(nec.get("generator") or ""),
+        }
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("kind") == "intent_necessity":
+        return {"kind": "intent_necessity",
+                "purpose_text": R(payload.get("purpose_text")),
+                "necessity": _nec_block(payload)}
+    if payload.get("subject_kind") == "community":
+        seeker = payload.get("seeker") or {}
+        state = seeker.get("現状") or {}
+        decl = {"kind": "community_overall", "will_text": R(seeker.get("意志"))}
+        for eng, jp in _V4_STATE_MAP.items():
+            decl[eng] = R(state.get(jp, ""))
+        decl["necessity"] = _nec_block(payload)
+        return decl
+    return None
+
+
+@app.post("/api/community/<community_id>/declare")
+@login_required
+def api_community_declare(community_id):
+    """コミュニティ版①の出力JSON（全体用/目的別）を受理し、意志形成として提起する（§2-3・§4）。
+    提起者は ctx の active メンバーであること。合意（/api/intent/<id>/agree）で台帳へ確定する。"""
+    body = request.get_json(force=True, silent=True) or {}
+    proposer = require_self((body.get("proposer") or "").strip() or None) or ""
+    if not proposer:
+        return jsonify({"error": "proposer が必要です"}), 400
+    from member_ledger import active_members_from_events
+    if proposer not in active_members_from_events(community_id, db_path=DB):
+        return jsonify({"error": "提起はコミュニティのメンバーのみ"}), 403
+    payload = body.get("payload")
+    decl = _community_declaration_from_payload(payload)
+    if decl is None:
+        return jsonify({"error": "コミュニティ①の JSON ではありません（subject_kind=community / kind=intent_necessity）"}), 400
+    if not (decl.get("necessity") or {}).get("necessity_text"):
+        return jsonify({"error": "necessity_text が必要です（①をやり直してください）"}), 400
+    from intent_ledger import propose_intent
+    kind_label = "目的別募集" if decl["kind"] == "intent_necessity" else "コミュニティ全体方針"
+    r = propose_intent(community_id, proposer, body=body.get("body") or kind_label,
+                       declaration=decl, ruleset_version=body.get("ruleset_version") or "r1",
+                       db_path=DB)
+    return jsonify({**r, "declaration_kind": decl["kind"]}), 200
+
+
+@app.get("/api/community/<community_id>/completed-episodes")
+@login_required
+def api_community_completed_episodes(community_id):
+    """コミュニティ版①（全体用）に貼る「完了した取り組み」を決定的規則で返す（§4-4）。
+    0件→なし / 1〜3件→全件 / 4件以上→直近3件。提起者（メンバー）向け。"""
+    from intent_ledger import completed_episodes_for_prompt
+    from member_ledger import active_members_from_events
+    me = current_subject_id()
+    if me is not None and me not in active_members_from_events(community_id, db_path=DB) and not _debug_enabled():
+        return jsonify({"error": "コミュニティのメンバーのみ"}), 403
+    return jsonify(completed_episodes_for_prompt(community_id, db_path=DB))
+
+
 @app.post("/api/intent/<intent_id>/agree")
 @login_required
 def api_intent_agree(intent_id):

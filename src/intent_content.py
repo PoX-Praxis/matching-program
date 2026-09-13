@@ -98,6 +98,50 @@ def normalize_declaration(declaration) -> dict | None:
         if not (will or nec):
             return None
         return {"kind": "recruit", "will_text": will, "necessity_text": nec}
+    # ── コミュニティ版①（指示書28 §4）。手書き(recruit/policy)と違い、必要像は
+    #    生成物（origin=generated・クランプしない）で、数値素材・生成元・試行回数を伴う。
+    if kind == "community_overall":
+        out = {"kind": "community_overall"}
+        for k in ("will_text", "state_have", "state_can_type", "state_bound", "state_unsorted"):
+            out[k] = str(declaration.get(k) or "")
+        out["necessity"] = _normalize_necessity_block(declaration.get("necessity"))
+        if not (any(out[k] for k in out if k not in ("kind", "necessity")) or out["necessity"]):
+            return None
+        return out
+    if kind == "intent_necessity":
+        purpose = str(declaration.get("purpose_text") or "")
+        nb = _normalize_necessity_block(declaration.get("necessity"))
+        if not (purpose or nb):
+            return None
+        return {"kind": "intent_necessity", "purpose_text": purpose, "necessity": nb}
     # kind 無し dict は自由記述として扱う
     txt = str(declaration.get("text") or "")
     return {"kind": None, "text": txt} if txt.strip() else None
+
+
+_NEC_NUM_KEYS = ("gate_s", "gate_u", "p_sharpness", "alpha", "beta")
+
+
+def _normalize_necessity_block(nec) -> dict | None:
+    """コミュニティ①の必要像ブロックを正準化（数値・seeking・生成元・試行回数を保持）。
+
+    数値は float/int のみ通す（不正は None）。content_hash に載る値なので決定的に。
+    """
+    if not isinstance(nec, dict):
+        return None
+    out = {"necessity_text": str(nec.get("necessity_text") or ""),
+           "evidence_span": str(nec.get("evidence_span") or ""),
+           "seeking": str(nec.get("seeking") or nec.get("求めている") or "")}
+    for k in _NEC_NUM_KEYS:
+        v = nec.get(k)
+        out[k] = float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    # 生成元・試行回数（ピン留め用・§3-1/§3-2）
+    out["generator"] = str(nec.get("generator") or "")
+    out["generator_tag"] = str(nec.get("generator_tag") or "")
+    src = nec.get("source_snapshot_hash")
+    out["source_snapshot_hash"] = str(src) if src else ""
+    an = nec.get("attempt_n")
+    out["attempt_n"] = int(an) if isinstance(an, int) and not isinstance(an, bool) else None
+    if not out["necessity_text"]:
+        return None
+    return out

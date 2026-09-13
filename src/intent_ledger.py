@@ -116,7 +116,78 @@ def _confirm_declaration(intent_id, base_payload, db_path):
         r = publish_necessity(intent_id, "intent", nec,
                               origin="self_declared", actor=ctx, db_path=db_path)
         return {"kind": "recruit", "necessity_published": r}
+    # ── コミュニティ版①（指示書28 §4）。必要像は生成物（origin=generated・非クランプ）。
+    if decl["kind"] == "community_overall":
+        from subject_ledger import publish_profile_structured
+        from member_ledger import active_members_from_events
+        from necessities import publish_necessity
+        members = sorted(active_members_from_events(ctx, db_path=db_path))
+        profile_input = {k: decl.get(k, "") for k in
+                         ("will_text", "state_have", "state_can_type", "state_bound", "state_unsorted")}
+        prof = publish_profile_structured(ctx, profile_input,
+                                          members_after_hash=members_hash(members),
+                                          actor=ctx, db_path=db_path)
+        nec_r = None
+        nb = decl.get("necessity")
+        if nb:
+            nec_r = publish_necessity(
+                ctx, "subject", _nec_from_block(nb, decl.get("will_text", "")),
+                origin="generated", generator=nb.get("generator", ""),
+                seeking=nb.get("seeking", ""), source_snapshot_hash=prof.get("content_hash"),
+                generator_tag=nb.get("generator_tag") or None, attempt_n=nb.get("attempt_n"),
+                actor=ctx, db_path=db_path)
+        return {"kind": "community_overall", "profile_structured": prof, "necessity_published": nec_r}
+    if decl["kind"] == "intent_necessity":
+        from subject_ledger import latest_profile_content_hash
+        from necessities import publish_necessity
+        nb = decl.get("necessity") or {}
+        # 生成元は確定済みのコミュニティ宣言の content_hash（§4-3）。宣言ブロックに明示があれば優先。
+        src = nb.get("source_snapshot_hash") or latest_profile_content_hash(ctx, db_path=db_path)
+        r = publish_necessity(
+            intent_id, "intent", _nec_from_block(nb, ""),
+            origin="generated", generator=nb.get("generator", ""),
+            seeking=nb.get("seeking", ""), source_snapshot_hash=src,
+            generator_tag=nb.get("generator_tag") or None, attempt_n=nb.get("attempt_n"),
+            actor=ctx, db_path=db_path)
+        return {"kind": "intent_necessity", "necessity_published": r}
     return None
+
+
+def _nec_from_block(nb: dict, will_text: str) -> dict:
+    """正規化済み necessity ブロック → publish_necessity が読む necessity dict。"""
+    return {
+        "will_text": will_text,
+        "necessity_text": nb.get("necessity_text", ""),
+        "gate_s": nb.get("gate_s"), "gate_u": nb.get("gate_u"),
+        "p_sharpness": nb.get("p_sharpness"), "alpha": nb.get("alpha"), "beta": nb.get("beta"),
+        "evidence_span": nb.get("evidence_span", ""),
+        "seeking": nb.get("seeking", ""),
+        "generator_name": nb.get("generator", ""),
+    }
+
+
+def completed_episodes_for_prompt(ctx, *, db_path="pox.db"):
+    """コミュニティ版①（全体用）が できること_型 抽出に使う完了した取り組みを、
+    **台帳側の決定的規則**で選ぶ（指示書28 §4-4。代表性より再現性）。
+
+    0件 → []／1〜3件 → 全件／4件以上 → 直近の完了3件（完了 seq の新しい順）。
+    提起者が①に貼れるよう body/result（本文はDB）を添えて返す。
+    """
+    proposed = {e["payload"]["intent_id"]: e
+                for e in le.get_events(type_="intent.proposed", db_path=db_path)
+                if e["payload"].get("ctx") == ctx}
+    completed = [e for e in le.get_events(type_="intent.completed", db_path=db_path)
+                 if e["payload"]["intent_id"] in proposed]
+    completed.sort(key=lambda e: e["seq"], reverse=True)   # 完了の新しい順
+    total = len(completed)
+    chosen = completed if total <= 3 else completed[:3]
+    episodes = []
+    for e in chosen:
+        iid = e["payload"]["intent_id"]
+        c = intent_content.get_content(iid, db_path=db_path)
+        episodes.append({"intent_id": iid, "body": c.get("body", ""),
+                         "result": c.get("result", "")})
+    return {"count": total, "episodes": episodes}
 
 
 def complete_intent(intent_id, by, *, result="", db_path="pox.db"):

@@ -16,8 +16,8 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from db_v4 import (MemoryStore, receive_profile_v4, generate_necessity_v4,
-                   vectorize_profile_v4, check_and_flag_regeneration,
-                   GEN_PREPARING, GEN_READY, GEN_NEEDS_REGEN)
+                   vectorize_profile_v4,
+                   GEN_PREPARING, GEN_READY)
 from necessity_gen import build_user_necessity, compute_gamma
 from pii_redaction import redact_for_storage
 from embedding_config import MODEL_TAG, FULL_DIM
@@ -175,42 +175,9 @@ def test_fallback_uses_injected_generator():
     assert store.get_necessity("u1", MODEL_TAG)["necessity_text"] == "注入フォールバック像"
 
 
-# ── (iv) 再生成判定（B-3）─────────────────────────────────────────────────────
-def test_regeneration_flag_on_will_edit():
-    """意志を編集すると src_input_hash が食い違い needs_regeneration が立つ。"""
-    store = MemoryStore()
-    p = _profile_input(will="つなぎたい")
-    _receive_user_supplied(store, "u1", p, _supplied())
-
-    # 未編集: 最新なのでフラグは立たない
-    assert check_and_flag_regeneration(store, "u1") is False
-    assert store.get_profile_status("u1")["generation_status"] == GEN_PREPARING
-
-    # 意志を編集（プロフィール本文が変わる）
-    store.profiles["u1"]["will_text"] = "まったく別の意志に書き換えた"
-    assert check_and_flag_regeneration(store, "u1") is True
-    assert store.get_profile_status("u1")["generation_status"] == GEN_NEEDS_REGEN
-
-
-def test_regeneration_flag_on_state_edit():
-    store = MemoryStore()
-    p = _profile_input()
-    _receive_user_supplied(store, "u1", p, _supplied())
-    store.profiles["u1"]["state_have"] = "新しく獲得した技術力"
-    assert check_and_flag_regeneration(store, "u1") is True
-    assert store.get_profile_status("u1")["generation_status"] == GEN_NEEDS_REGEN
-
-
-def test_no_regeneration_without_necessity():
-    """necessity 未保存なら判定不能として False（フラグを立てない）。"""
-    store = MemoryStore()
-    receive_profile_v4(store, "u1", _profile_input(), None)
-    assert check_and_flag_regeneration(store, "u1") is False
-
-
-def test_no_regeneration_for_missing_profile():
-    store = MemoryStore()
-    assert check_and_flag_regeneration(store, "ghost") is False
+# (iv) 再生成判定（B-3）は廃止（指示書28 §6-2 / 29 §3-4）。
+# needs_regeneration 状態と check_and_flag_regeneration を撤去したためテストも削除。
+# 編集は下書き→再確定で必要像を作り直す（旧「編集→再ベクトル化→ズレの印」は逆順のため廃止）。
 
 
 if __name__ == "__main__":

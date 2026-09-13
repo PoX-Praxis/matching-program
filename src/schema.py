@@ -165,7 +165,9 @@ _SQLITE_DDL = [
         origin          TEXT NOT NULL,
         generator       TEXT,
         prev_necessity  TEXT,
-        created_at      TEXT NOT NULL
+        created_at      TEXT NOT NULL,
+        seeking         TEXT,
+        canon_version   TEXT
     )""",
     # evidence_span の平文と salt（削除可能・§7-2）。salt を消せばコミットメントは開けなくなる。
     """CREATE TABLE IF NOT EXISTS necessity_evidence (
@@ -354,7 +356,9 @@ _PG_DDL = [
         origin          TEXT NOT NULL,
         generator       TEXT,
         prev_necessity  TEXT,
-        created_at      TEXT NOT NULL
+        created_at      TEXT NOT NULL,
+        seeking         TEXT,
+        canon_version   TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS necessity_evidence (
         necessity_id  TEXT PRIMARY KEY,
@@ -461,6 +465,9 @@ def _migrate_columns(con) -> None:
                            "TIMESTAMPTZ" if is_postgres() else "TEXT")
     # messages の添付列（messages.py は SQLite のみ自己修復）。
     _add_column_if_missing(con, "messages", "attachment_url", "TEXT")
+    # necessities の seeking / canon_version（指示書28 §3-3/§3-4）。
+    _add_column_if_missing(con, "necessities", "seeking", "TEXT")
+    _add_column_if_missing(con, "necessities", "canon_version", "TEXT")
 
 
 def _migrate_user_snapshots(con) -> None:

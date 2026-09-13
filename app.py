@@ -587,7 +587,7 @@ def _run_with_retry(fn, *, tries=3, base_delay=2.0):
 
 
 def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
-                  final_status=None, snapshot=False):
+                  final_status=None, snapshot=False, publish_ledger=True):
     """
     非同期ジョブ（daemon スレッド）: 必要像生成（フォールバック時のみ）＋4ベクトル生成。
     生成状態は generation_status（preparing→ready / error）で追跡する。
@@ -619,10 +619,13 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
             store.set_generation_status(profile_id, final_status, error=None)
         if snapshot:                  # 登録経路のみ: 時点スナップショットを1点（churn は関数側で防止）
             _save_snapshot_best_effort(profile_id, profile_input, necessity)
-        # 主体の構造化時点を台帳へ（指示書17 §5-2/§5-3・best-effort・churn は関数側で防止）。
-        _publish_profile_structured_best_effort(profile_id, profile_input)
-        # 必要像を 1:N 台帳へ記録＋ベクトル化（指示書17 §7・best-effort・churn は関数側で防止）。
-        _publish_necessity_best_effort(profile_id, profile_input, necessity)
+        # 下書き→確定の経路では台帳は confirm が同期で書き済み（生成元ピン留め等の付帯情報つき）。
+        # その場合 publish_ledger=False で二重書きを避ける。旧 /v4/seekers 経路は従来どおり best-effort。
+        if publish_ledger:
+            # 主体の構造化時点を台帳へ（指示書17 §5-2/§5-3・best-effort・churn は関数側で防止）。
+            _publish_profile_structured_best_effort(profile_id, profile_input)
+            # 必要像を 1:N 台帳へ記録＋ベクトル化（指示書17 §7・best-effort・churn は関数側で防止）。
+            _publish_necessity_best_effort(profile_id, profile_input, necessity)
     except Exception as e:  # noqa: BLE001
         try:
             store.set_generation_status(profile_id, GEN_ERROR, error=str(e)[:500])
@@ -692,15 +695,15 @@ def _publish_necessity_best_effort(profile_id, profile_input, necessity):
 
 
 def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback,
-                  final_status=None, snapshot=False):
+                  final_status=None, snapshot=False, publish_ledger=True):
     t = threading.Thread(
         target=_v4_async_job, args=(profile_id, profile_input, necessity),
         kwargs={"is_fallback": is_fallback, "final_status": final_status,
-                "snapshot": snapshot}, daemon=True)
+                "snapshot": snapshot, "publish_ledger": publish_ledger}, daemon=True)
     t.start()
 
 
-def _ingest_v4_from_flat(body, *, profile_id=None):
+def _ingest_v4_from_flat(body, *, profile_id=None, publish_ledger=True):
     """
     フラット化済み body から v4 受付＋非同期ベクトル化を起動する共通処理
     （/v4/seekers と /seekers の dual-write が共有）。
@@ -732,7 +735,8 @@ def _ingest_v4_from_flat(body, *, profile_id=None):
     receive_profile_v4(store, pid, profile_input, necessity,
                        generation_status=GEN_PREPARING)
     # snapshot=True: 登録/再構造化のみ時点スナップショットを残す（編集・retry は残さない）。
-    _spawn_v4_job(pid, profile_input, necessity, is_fallback=is_fallback, snapshot=True)
+    _spawn_v4_job(pid, profile_input, necessity, is_fallback=is_fallback, snapshot=True,
+                  publish_ledger=publish_ledger)
     return pid, necessity, is_fallback
 
 
@@ -960,21 +964,32 @@ def confirm_draft(draft_id):
         return jsonify({"error": "will_text が空です。①をやり直してください"}), 400
 
     # 受付（profiles_v4 / derived_necessity へ）＋ベクトル化ジョブ起動（非同期）。
+    # 台帳は confirm が同期で書くので、ジョブ側の台帳書き込みは抑止（publish_ledger=False）。
     try:
-        pid, necessity, is_fallback = _ingest_v4_from_flat(flat, profile_id=d["subject_id"])
+        pid, necessity, is_fallback = _ingest_v4_from_flat(
+            flat, profile_id=d["subject_id"], publish_ledger=False)
     except (ValueError, TypeError) as e:
         return jsonify({"error": f"必要像フィールド不正: {e}"}), 400
 
     # ── 台帳が先（同期・確定イベント）──────────────────────────────
-    # ベクトル化ジョブは best-effort で同じ台帳を書くが churn 防止で skip されるため二重にならない。
     from subject_ledger import publish_profile_structured
     import necessities as _nec
     profile_input = _v4_profile_input(flat)
-    publish_profile_structured(pid, profile_input, actor=pid, db_path=DB)
+    # profile.structured（生成元）を書き、その content_hash を必要像のピン留めに使う（§3-1）。
+    prof = publish_profile_structured(pid, profile_input, actor=pid, db_path=DB)
     if necessity is not None:
-        nec_in = {**necessity, "will_text": profile_input.get("will_text", "")}
-        _nec.publish_necessity(pid, "subject", nec_in, origin="generated",
-                               generator=necessity.get("generator_name") or "", actor=pid, db_path=DB)
+        sm = profile_input.get("supporting_raw") or {}
+        seeking = sm.get("求めている") or ""                       # §3-3: content_hash に含める
+        prompt_ver = ((d["payload"].get("_meta") or {}).get("source")) or ""
+        model_fam = _nec.normalize_generator(necessity.get("generator_name") or "")
+        generator_tag = f"{prompt_ver}/{model_fam}" if prompt_ver else model_fam
+        nec_in = {**necessity, "will_text": profile_input.get("will_text", ""), "seeking": seeking}
+        _nec.publish_necessity(
+            pid, "subject", nec_in, origin="generated",
+            generator=necessity.get("generator_name") or "",
+            seeking=seeking, source_snapshot_hash=prof.get("content_hash"),
+            generator_tag=generator_tag, attempt_n=d["attempt_n"],
+            actor=pid, db_path=DB)
 
     # プライバシーポリシー同意の証跡（確定時に記録・best-effort。従来 /seekers で記録していた分）。
     cbody = request.get_json(force=True, silent=True) or {}

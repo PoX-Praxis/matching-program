@@ -25,7 +25,7 @@ import secrets
 from datetime import datetime, timezone
 
 from db_connect import get_connection, is_postgres
-from canon import canonicalize, sha256_hex
+from canon import canonicalize, sha256_hex, CANON_VERSION
 import ledger_events as le
 
 _NUM_KEYS = ("gate_s", "gate_u", "p_sharpness", "alpha", "beta")
@@ -46,8 +46,15 @@ def _connect(db_path: str = "pox.db"):
             "necessity_text TEXT NOT NULL, necessity_vec TEXT, "
             "gate_s REAL, gate_u REAL, p_sharpness REAL, alpha REAL, beta REAL, "
             "evidence_commit TEXT, content_hash TEXT NOT NULL, origin TEXT NOT NULL, "
-            "generator TEXT, prev_necessity TEXT, created_at TEXT NOT NULL)"
+            "generator TEXT, prev_necessity TEXT, created_at TEXT NOT NULL, "
+            "seeking TEXT, canon_version TEXT)"    # 指示書28 §3-3/§3-4
         )
+        # 既存 SQLite DB への後付け（冪等・本番 Postgres は schema._migrate_columns）。
+        for col in ("seeking TEXT", "canon_version TEXT"):
+            try:
+                con.execute(f"ALTER TABLE necessities ADD COLUMN {col}")
+            except Exception:  # noqa: BLE001（既存なら無視）
+                pass
         con.execute(
             "CREATE TABLE IF NOT EXISTS necessity_evidence ("
             "necessity_id TEXT PRIMARY KEY, evidence_span TEXT, salt TEXT)"
@@ -102,17 +109,32 @@ def evidence_commitment(evidence_span: str, salt: str) -> str:
     return sha256_hex((salt + "\x1f" + (evidence_span or "")).encode("utf-8"))
 
 
-def compute_content_hash(necessity_text: str, numbers: dict, ev_commit: str) -> str:
-    """content_hash = H(necessity_text ‖ 数値素材 ‖ commit(evidence_span, salt))（§7-2）。
+def compute_content_hash(necessity_text: str, numbers: dict, ev_commit: str,
+                         seeking: str = "", *, canon_version: str = None) -> str:
+    """content_hash（§7-2 / 指示書28 §3-3）。版で規則が変わる:
+
+    - c1: H(necessity_text ‖ 数値素材 ‖ commit(evidence_span, salt))
+    - c2: 上に **seeking(求めている) を平文で追加**（表示され照合材料になる本人語を凍結する）。
 
     数値素材は平文でハッシュに含める（含めないと第三者が再計算できず検証が成立しない）。
     evidence_span 本文は入れず、その **コミットメント** を束ねる（束縛は切らさない）。
+    canon_version=None のときは現行版（CANON_VERSION）。過去 c1 の再計算は "c1" を渡す。
     """
+    v = canon_version or CANON_VERSION
     nums = {k: numbers.get(k) for k in _NUM_KEYS}
+    if v == "c1":
+        # c1 の形は凍結（過去イベントの再導出をビット単位で再現するため変えない）。
+        return sha256_hex(canonicalize({
+            "necessity_text": necessity_text or "",
+            "numbers": nums,
+            "evidence_commit": ev_commit or "",
+        }))
+    # c2 以降: seeking を含める。
     return sha256_hex(canonicalize({
         "necessity_text": necessity_text or "",
         "numbers": nums,
         "evidence_commit": ev_commit or "",
+        "seeking": seeking or "",
     }))
 
 
@@ -127,6 +149,8 @@ def _latest_for_owner(con, owner_ref: str):
 
 def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
                       origin: str = "generated", generator: str = "",
+                      seeking: str = "", source_snapshot_hash: str = None,
+                      generator_tag: str = None, attempt_n: int = None,
                       actor: str = None, skip_if_unchanged: bool = True,
                       db_path: str = "pox.db") -> dict:
     """必要像を1件発行する。necessities 行を書き、necessity.published を台帳へ追記する。
@@ -150,26 +174,33 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
     necessity_text = necessity.get("necessity_text") or ""
     evidence_span = necessity.get("evidence_span") or ""
     gen = normalize_generator(generator or necessity.get("generator_name") or "")
+    # seeking(求めている) は c2 で content_hash に平文で含める（§3-3）。"未取得"/空は空に落とす。
+    seeking = seeking or necessity.get("seeking") or necessity.get("求めている") or ""
+    if seeking == "未取得":
+        seeking = ""
 
     salt = make_salt()
     ev_commit = evidence_commitment(evidence_span, salt)
-    content_hash = compute_content_hash(necessity_text, numbers, ev_commit)
+    content_hash = compute_content_hash(necessity_text, numbers, ev_commit, seeking)
 
     with _connect(db_path) as con:
         latest = con.execute(
-            "SELECT necessity_id, n, content_hash FROM necessities WHERE owner_ref=%s "
+            "SELECT necessity_id, n, content_hash, canon_version FROM necessities WHERE owner_ref=%s "
             "ORDER BY n DESC LIMIT 1", (owner_ref,),
         ).fetchone()
         # churn 判定: salt はレコード毎に乱数のため content_hash 直比較はできない。
         # 「直前レコードの salt」で新内容のハッシュを再計算し、一致＝同一内容として弾く。
+        # 直前レコードの canon_version の規則で再計算する（c1 行なら seeking を無視して比較）。
         if skip_if_unchanged and latest:
+            prev_canon = latest[3] or "c1"   # 既存行（NULL）は c1 扱い
             prev_salt = con.execute(
                 "SELECT salt FROM necessity_evidence WHERE necessity_id=%s", (latest[0],)
             ).fetchone()
             if prev_salt and prev_salt[0] is not None:
                 same = compute_content_hash(
                     necessity_text, numbers,
-                    evidence_commitment(evidence_span, prev_salt[0])) == latest[2]
+                    evidence_commitment(evidence_span, prev_salt[0]),
+                    seeking, canon_version=prev_canon) == latest[2]
                 if same:
                     return {"necessity_id": latest[0], "n": latest[1],
                             "content_hash": latest[2], "prev_necessity": None,
@@ -179,12 +210,13 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
         con.execute(
             "INSERT INTO necessities (necessity_id, owner_ref, owner_kind, n, will_text, "
             "will_vec, necessity_text, necessity_vec, gate_s, gate_u, p_sharpness, alpha, beta, "
-            "evidence_commit, content_hash, origin, generator, prev_necessity, created_at) "
-            "VALUES (%s,%s,%s,%s,%s,NULL,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "evidence_commit, content_hash, origin, generator, prev_necessity, created_at, "
+            "seeking, canon_version) "
+            "VALUES (%s,%s,%s,%s,%s,NULL,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (necessity_id, owner_ref, owner_kind, n, will_text, necessity_text,
              numbers["gate_s"], numbers["gate_u"], numbers["p_sharpness"],
              numbers["alpha"], numbers["beta"], ev_commit, content_hash,
-             origin, gen, prev_id, _now()),
+             origin, gen, prev_id, _now(), seeking, CANON_VERSION),
         )
         # 平文・salt は削除可能な別テーブル（§7-2）。
         con.execute(
@@ -193,11 +225,20 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
         )
 
     # 台帳へ（本文は載せない・content_hash のみ・§4-2）。
-    le.append_event(actor or owner_ref, "necessity.published", {
+    # 生成元のピン留め（§3-1）と試行回数（§3-2）を含める。None のキーは載せない
+    # （旧経路との互換・payload を汚さない）。
+    payload = {
         "necessity_id": necessity_id, "owner_ref": owner_ref, "owner_kind": owner_kind,
         "n": n, "content_hash": content_hash, "prev_necessity": prev_id,
         "origin": origin, "generator": gen,
-    }, db_path=db_path)
+    }
+    if source_snapshot_hash is not None:
+        payload["source_snapshot_hash"] = source_snapshot_hash
+    if generator_tag is not None:
+        payload["generator_tag"] = generator_tag
+    if attempt_n is not None:
+        payload["attempt_n"] = attempt_n
+    le.append_event(actor or owner_ref, "necessity.published", payload, db_path=db_path)
 
     return {"necessity_id": necessity_id, "n": n,
             "content_hash": content_hash, "prev_necessity": prev_id, "skipped": False}

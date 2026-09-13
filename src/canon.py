@@ -16,7 +16,10 @@ canon_version は正準化規則の版であり、将来規則を変えたとき
 import json
 import hashlib
 
-CANON_VERSION = "c1"
+# c1 → c2（指示書28 §3-4）: necessity の content_hash に seeking(求めている) を含める規則へ。
+# 過去の c1 イベントは書き換えず、c1 の規則で検証できる（verify_chain は保存済み payload を
+# 再直列化するだけなので版に非依存。content_hash の再導出のみ版で分岐する）。
+CANON_VERSION = "c2"
 
 
 def canonicalize(obj) -> bytes:

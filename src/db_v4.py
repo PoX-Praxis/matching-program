@@ -20,7 +20,7 @@ PoX v4 データアクセス + 取り込み/照合オーケストレーション
 """
 from embedding_config import MODEL_TAG, FULL_DIM
 from pii_redaction import redact_for_storage, redact_profile_fields
-from necessity_gen import generate_necessity, needs_regeneration
+from necessity_gen import generate_necessity
 from embedding_service import build_vectors, cosine  # noqa: F401 (cosine は将来用)
 from matcher_v4 import rank_candidates
 
@@ -35,7 +35,6 @@ _PROFILE_FIELDS = ("will_text", "state_have", "state_can_type",
 GEN_PREPARING = "preparing"
 GEN_READY     = "ready"
 GEN_ERROR     = "error"
-GEN_NEEDS_REGEN = "needs_regeneration"
 
 
 def _necessity_row(n):
@@ -101,23 +100,8 @@ def generate_necessity_v4(store, profile_id, profile_input, *,
     return necessity
 
 
-def check_and_flag_regeneration(store, profile_id, *, model_tag=MODEL_TAG):
-    """
-    B-3: 意志/現状（＋素材/prompt/model_tag）が編集され、保存済み necessity の
-    src_input_hash と食い違う場合に generation_status=needs_regeneration を立てる。
-    戻り値: True=再生成が必要（フラグを立てた） / False=最新（何もしない）。
-    保存済み necessity が無い場合は判定不能として False。
-    """
-    profile = store.get_profile(profile_id)
-    if profile is None:
-        return False
-    nec = store.get_necessity(profile_id, model_tag)
-    if not nec or not nec.get("src_input_hash"):
-        return False
-    if needs_regeneration(profile, nec["src_input_hash"], model_tag=model_tag):
-        store.set_generation_status(profile_id, GEN_NEEDS_REGEN, error=None)
-        return True
-    return False
+# check_and_flag_regeneration は廃止（指示書28 §6-2 / 29 §3-4）。needs_regeneration 状態を
+# 立てる経路は無くなった。編集は下書き→再確定で必要像を作り直す（§1-4）。
 
 
 def vectorize_profile_v4(store, profile_id, profile_input, necessity_text, *,

@@ -27,6 +27,8 @@
   .input-row textarea { flex:1; padding:8px; border:1px solid #ccc; border-radius:4px; font-size:13px; resize:none; height:60px; }
   #notice { font-size: 13px; margin-top: 6px; color: #c00; }
   .pending-badge { background:#fff3cd; color:#856404; border-radius:3px; padding:2px 8px; font-size:11px; }
+  .ok { color:#1a8a1a; font-weight:bold; }
+  .err { color:#c00; }
 </style>
 </head>
 <body>
@@ -73,6 +75,22 @@
   <!-- ── 進行中の意志形成 ── -->
   <h2>進行中の意志形成</h2>
   <div id="intentsBox" style="font-size:13px"></div>
+
+  <!-- ── コミュニティ版①から提起（メンバーのみ・指示書29 §3-1）── -->
+  <div id="communityDeclareSection" style="display:none;margin-top:16px;border:1px solid #ddd;border-radius:8px;padding:16px;background:#fafafa">
+    <h3 style="margin:0 0 6px;font-size:1rem">コミュニティ版①から提起する</h3>
+    <p style="font-size:12px;color:#666;margin:0 0 10px">コミュニティ構造化プロンプト（全体用／目的別用）の出力JSONを貼ると、<b>中身を確認してから</b>提起できます。貼った瞬間には確定しません。</p>
+
+    <!-- 完了した取り組み（型抽出用・§3-2）。全体用①に貼る材料。 -->
+    <details id="episodesBox" style="margin:0 0 12px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--pox-navy,#1a3a5c)">完了した取り組み（全体用①の「できること_型」抽出に使う）</summary>
+      <div id="episodesBody" style="margin-top:8px"><span class="pox-state">読み込み中です</span></div>
+    </details>
+
+    <textarea id="commDeclJson" placeholder="コミュニティ版①の出力JSONを貼り付け" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:12px;height:100px;resize:vertical;font-family:monospace"></textarea>
+    <div style="margin-top:8px"><button class="btn btn-primary" onclick="previewCommunityDeclaration(this)">内容を確認する</button></div>
+    <div id="commDeclPreview" style="display:none;margin-top:12px"></div>
+  </div>
 
   <!-- 提起フォーム（メンバーのみ） -->
   <div id="proposeSection" style="display:none;margin-top:16px;border:1px solid #ddd;border-radius:8px;padding:16px;background:#fafafa">
@@ -255,7 +273,98 @@ function renderIntents() {
 }
 
 function renderProposeSection() {
-  document.getElementById("proposeSection").style.display = isActingMember() ? "block" : "none";
+  const show = isActingMember() ? "block" : "none";
+  document.getElementById("proposeSection").style.display = show;
+  document.getElementById("communityDeclareSection").style.display = show;
+  if (isActingMember()) loadCompletedEpisodes();
+}
+
+/* ── 完了した取り組みの提示（§3-2）。全体用①の「できること_型」抽出材料。 ── */
+async function loadCompletedEpisodes() {
+  const box = document.getElementById("episodesBody");
+  let data;
+  try {
+    const r = await fetch(`/api/community/${encodeURIComponent(communityId)}/completed-episodes`);
+    if (!r.ok) { box.innerHTML = '<span class="pox-state">取得できませんでした。</span>'; return; }
+    data = await r.json();
+  } catch (e) { box.innerHTML = '<span class="pox-state">取得できませんでした。</span>'; return; }
+  if (!data.count) {   // 0件は明示（①側に分岐があるため空欄にしない）
+    box.innerHTML = '<p class="pox-empty">完了した取り組みはありません。</p>';
+    return;
+  }
+  // 提起者が①にそのまま貼れるプレーンテキスト（コピーしやすい形）
+  const text = data.episodes.map((e, i) =>
+    `${i + 1}. ${e.body || "（記述なし）"}${e.result ? "\n   結果: " + e.result : ""}`).join("\n");
+  const note = data.count > 3 ? `（完了 ${data.count} 件のうち直近3件）` : `（完了 ${data.count} 件・全件）`;
+  box.innerHTML =
+    `<p style="font-size:12px;color:#666;margin:0 0 6px">${note} ①の「完了した取り組み」欄にそのまま貼れます。</p>` +
+    `<textarea readonly style="width:100%;box-sizing:border-box;height:120px;font-size:12px;font-family:monospace;border:1px solid #ccc;border-radius:4px;padding:8px">${escHtml(text)}</textarea>` +
+    `<button class="btn btn-sm" style="margin-top:6px" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value)">コピー</button>`;
+}
+
+/* ── コミュニティ版①の下書きプレビュー→提起（§3-1）── */
+let _commDeclParsed = null;
+function _num(v) { return (typeof v === "number") ? v : "—"; }
+function previewCommunityDeclaration(btn) {
+  const box = document.getElementById("commDeclPreview");
+  let raw = (document.getElementById("commDeclJson").value || "").trim()
+    .replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+  if (!raw) { box.style.display = "block"; box.innerHTML = '<span class="err">JSONを貼り付けてください。</span>'; return; }
+  let p;
+  try { p = JSON.parse(raw); } catch (e) {
+    box.style.display = "block"; box.innerHTML = '<span class="err">JSONとして読めません。①の第3段（純JSON）をそのまま貼ってください。</span>'; return;
+  }
+  const isOverall = p.subject_kind === "community";
+  const isIntent = p.kind === "intent_necessity";
+  if (!isOverall && !isIntent) {
+    box.style.display = "block";
+    box.innerHTML = '<span class="err">コミュニティ版①のJSONではありません（subject_kind=community か kind=intent_necessity が必要）。</span>';
+    return;
+  }
+  _commDeclParsed = p;
+  const nec = p.necessity || {};
+  const sm = p.supporting_material || {};
+  let h = '<div style="border:1px solid #cfd3d9;border-radius:8px;padding:14px 16px;background:#fff">';
+  h += '<p style="font-weight:700;margin:0 0 8px">内容を確認してください（提起するまで台帳に記録されません）。</p>';
+  if (isOverall) {
+    const seeker = p.seeker || {}; const state = seeker["現状"] || {};
+    if (seeker["意志"]) h += `<p style="margin:6px 0"><b>意志</b><br>${escHtml(seeker["意志"])}</p>`;
+    const slots = [["持っているもの","持っているもの"],["できること_型","できること（型）"],["縛られているもの","縛られているもの"],["未分類","未分類"]];
+    const stateHtml = slots.map(([k,l]) => (state[k] && state[k] !== "未取得") ? `<li><b>${l}</b>: ${escHtml(state[k])}</li>` : "").join("");
+    if (stateHtml) h += `<p style="margin:6px 0"><b>現状</b></p><ul style="margin:4px 0 8px">${stateHtml}</ul>`;
+  } else {
+    if (p.purpose_text) h += `<p style="margin:6px 0"><b>この取り組みの目的</b><br>${escHtml(p.purpose_text)}</p>`;
+  }
+  h += `<p style="margin:6px 0"><b>必要像（システム生成の仮説）</b><br>${escHtml(nec.necessity_text || "（なし）")}</p>`;
+  h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">数値素材: gate_s=${_num(nec.gate_s)} / gate_u=${_num(nec.gate_u)} / p_sharpness=${_num(nec.p_sharpness)} / alpha=${_num(nec.alpha)} / beta=${_num(nec.beta)}</p>`;
+  h += `<p style="font-size:12px;color:#888;margin:2px 0 10px">これは求人票ではありません。意志と現状の差分を埋める存在の記述です。必要像は直接編集できません（訂正は①の会話に戻って貼り直し）。</p>`;
+  h += `<button class="btn btn-primary" onclick="proposeCommunityDeclaration(this)">提起する</button>`;
+  h += `<span id="commDeclNotice" style="font-size:12px;margin-left:8px"></span>`;
+  h += '</div>';
+  box.style.display = "block"; box.innerHTML = h;
+}
+
+async function proposeCommunityDeclaration(btn) {
+  const note = document.getElementById("commDeclNotice");
+  if (!_commDeclParsed) return;
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
+  btn.disabled = true; note.textContent = "提起中…";
+  let res;
+  try {
+    res = await fetch(`/api/community/${encodeURIComponent(communityId)}/declare`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proposer: sid, payload: _commDeclParsed }),
+    });
+  } catch (e) { note.textContent = "通信エラー"; btn.disabled = false; return; }
+  if (PoX.handle(res, { on403: m => { note.textContent = m; } })) { btn.disabled = false; return; }
+  const d = await res.json();
+  if (res.ok) {
+    note.innerHTML = '<span class="ok">✅ 提起しました。メンバーの合意で確定します。</span>';
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    note.innerHTML = '<span class="err">エラー: ' + escHtml(d.error || "") + '</span>'; btn.disabled = false;
+  }
 }
 
 function intentPeople(i) {

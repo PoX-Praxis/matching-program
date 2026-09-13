@@ -455,6 +455,19 @@ function renderDraftPreview(draft) {
       .map(k => `${k}=${nec[k]}`).join(" / ");
     if (nums) h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">数値素材: ${esc(nums)}</p>`;
   }
+  // 拒否理由（§3-3）: 種別で区別して表示。fact_error は再生成、discomfort は不確実性へ反映。
+  const rej = draft.rejections || [];
+  if (rej.length) {
+    const fe = rej.filter(r => r.kind === "fact_error").length;
+    const dc = rej.filter(r => r.kind === "discomfort").length;
+    h += `<div style="border:1px solid #f0c9c9;background:#fbeeee;border-radius:6px;padding:10px 12px;margin:8px 0">`;
+    h += `<p style="font-weight:700;margin:0 0 6px;font-size:13px">これまでの指摘（${rej.length}件）</p>`;
+    if (fe) h += `<p style="font-size:12px;margin:2px 0"><b>事実誤認</b> ${fe}件 — 言っていないことが書かれている等。<b>①の会話に戻って訂正し、貼り直してください</b>（回数が記録されます）。</p>`;
+    if (dc) h += `<p style="font-size:12px;margin:2px 0"><b>違和感</b> ${dc}件 — 語りは正しいが合意したくない。<b>必要像は仮説として維持され、不確実性の値（gate_u）に反映されます</b>（書き換えではありません）。</p>`;
+    const notes = rej.filter(r => r.note).map(r => `・[${r.kind === "fact_error" ? "事実誤認" : "違和感"}] ${esc(r.note)}`).join("<br>");
+    if (notes) h += `<p style="font-size:12px;color:#555;margin:6px 0 0">${notes}</p>`;
+    h += `</div>`;
+  }
   h += `<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
     <button type="button" onclick="confirmDraft('${esc(draft.draft_id)}', this)"
       style="background:#1f3a5f;color:#fff;border:none;border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer">確定する</button>

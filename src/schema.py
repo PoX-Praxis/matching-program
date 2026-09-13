@@ -182,6 +182,19 @@ _SQLITE_DDL = [
         result           TEXT,
         updated_at       TEXT NOT NULL
     )""",
+    # 宣言の下書き（指示書28 段階1）。確定するまで台帳に載せない・第三者に見えない・削除自由。
+    """CREATE TABLE IF NOT EXISTS declaration_drafts (
+        draft_id         TEXT PRIMARY KEY,
+        subject_id       TEXT NOT NULL,
+        owner_kind       TEXT NOT NULL,
+        target_intent_id TEXT,
+        payload_json     TEXT NOT NULL,
+        attempt_n        INTEGER NOT NULL,
+        status           TEXT NOT NULL,
+        reject_json      TEXT,
+        created_at       TEXT NOT NULL,
+        updated_at       TEXT NOT NULL
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -354,6 +367,19 @@ _PG_DDL = [
         body             TEXT,
         declaration_json TEXT,
         result           TEXT,
+        updated_at       TEXT NOT NULL
+    )""",
+    # 宣言の下書き（指示書28 段階1）。SQLite 版と同一スキーマ。
+    """CREATE TABLE IF NOT EXISTS declaration_drafts (
+        draft_id         TEXT PRIMARY KEY,
+        subject_id       TEXT NOT NULL,
+        owner_kind       TEXT NOT NULL,
+        target_intent_id TEXT,
+        payload_json     TEXT NOT NULL,
+        attempt_n        INTEGER NOT NULL,
+        status           TEXT NOT NULL,
+        reject_json      TEXT,
+        created_at       TEXT NOT NULL,
         updated_at       TEXT NOT NULL
     )""",
 ]

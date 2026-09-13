@@ -405,19 +405,15 @@ async function register(btn) {
     .replace(/[‘’]/g, "'");
 
   if (btn) btn.disabled = true;                    // 二重押下防止
-  el.textContent = "登録中...";
+  el.textContent = "下書きを作成中...";
 
-  // raw_text をサーバへ。``` 除去・パース・正規化はサーバ側が行う。id はサーバがセッションから取る。
-  // ポリシー同意は既存 consent とは別フィールドで送る（サーバー側で証跡記録）。
-  const payload = { raw_text: rawText,
-                    privacy_policy_agreed: true,
-                    privacy_policy_version: PRIVACY_POLICY_VERSION };
-
+  // 貼った瞬間には確定しない（指示書28）。まず下書きに保存し、内容を確認してから「確定」。
+  // raw_text は ``` 除去・パース・正規化をサーバ側が行う。id はサーバがセッションから取る。
   let res;
   try {
-    res = await fetch("/seekers", {
+    res = await fetch("/v4/drafts", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ raw_text: rawText }),
     });
   } catch (e) {
     el.className = "err"; el.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
@@ -425,16 +421,78 @@ async function register(btn) {
   }
   if (PoX.handle(res, { on403: m => { el.className = "err"; el.textContent = m; } })) { if (btn) btn.disabled = false; return; }
   const data = await res.json();
+  if (!res.ok) {
+    el.className = "err";
+    el.textContent = "エラー: " + (data.error || JSON.stringify(data));
+    if (btn) btn.disabled = false; return;
+  }
+  renderDraftPreview(data);
+  if (btn) btn.disabled = false;
+}
+
+/* 下書きの内容を確認してから確定する（意志・現状・必要像・数値を表示）。 */
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function renderDraftPreview(draft) {
+  const el = document.getElementById("msg");
+  const p = draft.payload || {};
+  const seeker = p.seeker || {};
+  const will = seeker["意志"] || p.will_text || "";
+  const state = seeker["現状"] || {};
+  const nec = p.necessity || {};
+  const attempt = draft.attempt_n;
+
+  let h = `<div class="draft-preview" style="text-align:left;border:1px solid #cfd3d9;border-radius:8px;padding:14px 16px;margin-top:8px">`;
+  h += `<p style="font-weight:700;margin:0 0 8px">下書きを作成しました（${attempt}回目）。内容を確認して確定してください。</p>`;
+  h += `<p style="font-size:12px;color:#666;margin:0 0 12px">確定するまで台帳に記録されず、第三者にも公開されません。</p>`;
+  if (will) h += `<p style="margin:6px 0"><b>意志</b><br>${esc(will)}</p>`;
+  const slots = [["持っているもの","持っているもの"],["できること_型","できること（型）"],["縛られているもの","縛られているもの"],["未分類","未分類"]];
+  let stateHtml = slots.map(([k,label]) => (state[k] && state[k] !== "未取得") ? `<li><b>${label}</b>: ${esc(state[k])}</li>` : "").join("");
+  if (stateHtml) h += `<p style="margin:6px 0"><b>現状</b></p><ul style="margin:4px 0 8px">${stateHtml}</ul>`;
+  if (nec.necessity_text) {
+    h += `<p style="margin:6px 0"><b>必要像（システム生成の仮説）</b><br>${esc(nec.necessity_text)}</p>`;
+    const nums = ["gate_s","gate_u","p_sharpness","alpha","beta"].filter(k => nec[k] !== undefined)
+      .map(k => `${k}=${nec[k]}`).join(" / ");
+    if (nums) h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">数値素材: ${esc(nums)}</p>`;
+  }
+  h += `<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+    <button type="button" onclick="confirmDraft('${esc(draft.draft_id)}', this)"
+      style="background:#1f3a5f;color:#fff;border:none;border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer">確定する</button>
+    <span style="font-size:12px;color:#888;align-self:center">修正するには、①をやり直して JSON を貼り直してください（回数が記録されます）。</span>
+  </div></div>`;
+  el.className = "";
+  el.innerHTML = h;
+}
+
+async function confirmDraft(draftId, btn) {
+  const el = document.getElementById("msg");
+  if (btn) btn.disabled = true;
+  const prev = btn ? btn.textContent : "";
+  if (btn) btn.textContent = "確定中...";
+  let res;
+  try {
+    res = await fetch(`/v4/drafts/${encodeURIComponent(draftId)}/confirm`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ privacy_policy_agreed: true,
+                             privacy_policy_version: PRIVACY_POLICY_VERSION }),
+    });
+  } catch (e) {
+    el.className = "err"; el.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
+    if (btn) { btn.disabled = false; btn.textContent = prev; } return;
+  }
+  if (PoX.handle(res, { on403: m => { el.className = "err"; el.textContent = m; } })) { return; }
+  const data = await res.json();
   if (res.ok) {
-    localStorage.setItem("pox_my_id", data.id);    // 表示上の利便のみ（認可には使わない）
+    localStorage.setItem("pox_my_id", data.id);
     el.className = "ok";
-    el.innerHTML = `✅ 登録完了！ ID: <strong>${data.id}</strong>
+    el.innerHTML = `✅ 確定しました！ ID: <strong>${esc(data.id)}</strong>
       &nbsp; <a href="/mypage?id=${encodeURIComponent(data.id)}">マイページを開く →</a>
-      &nbsp; <a href="/connect">つながる →</a>`;
+      &nbsp; <a href="/connect">つながる →</a>
+      <br><span style="font-size:12px;color:#666">照合用のベクトル化はこの後バックグラウンドで進みます（マイページで状態を確認できます）。</span>`;
   } else {
     el.className = "err";
     el.textContent = "エラー: " + (data.error || JSON.stringify(data));
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = prev; }
   }
 }
 </script>

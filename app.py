@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session
 from werkzeug.utils import secure_filename
 from db_connect import is_postgres
-import auth, mailer, anchor
+import auth, mailer, anchor, drafts
 from ledger_events import append_event
 from canon import sha256_hex
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
@@ -862,6 +862,134 @@ def retry_v4_seeker(profile_id):
         "id": profile_id, "generation_status": GEN_PREPARING,
         "route": "fallback" if is_fallback else "user-supplied",
         "status_url": f"/v4/seekers/{profile_id}/status",
+    }), 202
+
+
+# ── 下書きと承認の動線（指示書28 段階1）─────────────────────────────────────────
+# ①の出力JSONは貼った瞬間には台帳に載せず、まず下書き（通常DB・第三者非公開・削除自由）へ。
+# 「確定」で初めて台帳へ profile.structured + necessity.published を書き、その後にベクトル化。
+# 台帳が先・外部依存（埋め込み）が後（§1-2）。
+
+def _draft_preview(draft):
+    """下書きの表示用サマリ（本人が確認する材料）。生の payload も返す（本人限定）。"""
+    return {
+        "draft_id": draft["draft_id"],
+        "subject_id": draft["subject_id"],
+        "owner_kind": draft["owner_kind"],
+        "target_intent_id": draft.get("target_intent_id"),
+        "attempt_n": draft["attempt_n"],
+        "status": draft["status"],
+        "payload": draft["payload"],
+        "rejections": draft.get("rejections", []),
+        "updated_at": draft["updated_at"],
+    }
+
+
+@app.post("/v4/drafts")
+@login_required
+def post_draft():
+    """①の出力JSON（または raw_text）を下書きに保存する（貼るたびに attempt_n +1・§3-2）。
+    台帳には書かない。raw_text は ``` 除去・スマートクォート正規化・JSON パースをサーバ側で行う。"""
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "JSON が読めません"}), 400
+    raw_text = body.get("raw_text")
+    if raw_text is not None:
+        try:
+            parsed = parse_registration_text(raw_text)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+    else:
+        parsed = {k: v for k, v in body.items() if k != "user_id"}
+    flat = _normalize_v4_body(parsed)
+    if not (flat.get("will_text") or "").strip():
+        return jsonify({"error": "will_text が必要です（意志が空です）"}), 400
+    subject_id = require_self(body.get("user_id"))
+    if not subject_id:
+        return jsonify({"error": "ログインが必要です"}), 401
+    draft = drafts.save_draft(subject_id, parsed, owner_kind="subject", db_path=DB)
+    return jsonify(_draft_preview(draft)), 201
+
+
+@app.get("/v4/drafts/mine")
+@login_required
+def get_my_drafts():
+    """本人の下書き一覧（確定前も確定済みも含む・本人限定）。"""
+    subject_id = current_subject_id() or require_self(request.args.get("id"))
+    return jsonify({"drafts": [_draft_preview(d) for d in drafts.list_drafts(subject_id, db_path=DB)]})
+
+
+@app.get("/v4/drafts/<draft_id>")
+@login_required
+def get_draft_by_id(draft_id):
+    d = drafts.get_draft(draft_id, db_path=DB)
+    if d is None:
+        return jsonify({"error": "下書きが見つかりません"}), 404
+    require_self(d["subject_id"])   # 他人の下書きは 403
+    return jsonify(_draft_preview(d))
+
+
+@app.delete("/v4/drafts/<draft_id>")
+@login_required
+def delete_draft_by_id(draft_id):
+    d = drafts.get_draft(draft_id, db_path=DB)
+    if d is None:
+        return jsonify({"deleted": True}), 200   # 冪等
+    require_self(d["subject_id"])
+    drafts.delete_draft(draft_id, db_path=DB)
+    return jsonify({"deleted": True}), 200
+
+
+@app.post("/v4/drafts/<draft_id>/confirm")
+@login_required
+def confirm_draft(draft_id):
+    """個人の「確定」（§2-2）。台帳に profile.structured + necessity.published を **同期で**
+    書き（台帳が先）、その後にベクトル化を非同期で回す（外部依存が後・§1-2）。
+    ベクトル化の成否は台帳に影響しない。"""
+    d = drafts.get_draft(draft_id, db_path=DB)
+    if d is None:
+        return jsonify({"error": "下書きが見つかりません"}), 404
+    require_self(d["subject_id"])
+    if d["owner_kind"] != "subject":
+        return jsonify({"error": "この下書きは個人の確定対象ではありません"}), 400
+    if not is_postgres():
+        return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
+
+    flat = _normalize_v4_body(d["payload"])
+    if not (flat.get("will_text") or "").strip():
+        return jsonify({"error": "will_text が空です。①をやり直してください"}), 400
+
+    # 受付（profiles_v4 / derived_necessity へ）＋ベクトル化ジョブ起動（非同期）。
+    try:
+        pid, necessity, is_fallback = _ingest_v4_from_flat(flat, profile_id=d["subject_id"])
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": f"必要像フィールド不正: {e}"}), 400
+
+    # ── 台帳が先（同期・確定イベント）──────────────────────────────
+    # ベクトル化ジョブは best-effort で同じ台帳を書くが churn 防止で skip されるため二重にならない。
+    from subject_ledger import publish_profile_structured
+    import necessities as _nec
+    profile_input = _v4_profile_input(flat)
+    publish_profile_structured(pid, profile_input, actor=pid, db_path=DB)
+    if necessity is not None:
+        nec_in = {**necessity, "will_text": profile_input.get("will_text", "")}
+        _nec.publish_necessity(pid, "subject", nec_in, origin="generated",
+                               generator=necessity.get("generator_name") or "", actor=pid, db_path=DB)
+
+    # プライバシーポリシー同意の証跡（確定時に記録・best-effort。従来 /seekers で記録していた分）。
+    cbody = request.get_json(force=True, silent=True) or {}
+    if cbody.get("privacy_policy_agreed"):
+        try:
+            record_policy_consent(pid, str(cbody.get("privacy_policy_version") or ""), db_path=DB)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[policy-consent] 記録skip（確定は成功）: {e}")
+
+    drafts.set_status(draft_id, "confirmed", db_path=DB)
+    return jsonify({
+        "id": pid, "draft_id": draft_id, "confirmed": True,
+        "attempt_n": d["attempt_n"],
+        "route": "fallback" if is_fallback else "user-supplied",
+        "status_url": f"/v4/seekers/{pid}/status",
     }), 202
 
 

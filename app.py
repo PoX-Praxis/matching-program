@@ -598,20 +598,16 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
     - snapshot=True（登録経路のみ）: ベクトル化成功後に user_snapshots へ1点保存（指示書12 §4-1）。
       編集・retry では False＝スナップショットを作らない。
     """
-    from db_v4 import (generate_necessity_v4, vectorize_profile_v4,
-                       GEN_ERROR)
+    from db_v4 import vectorize_profile_v4, GEN_ERROR
     store = _v4_store()
     try:
-        if is_fallback:
-            if not os.environ.get("ANTHROPIC_API_KEY"):
-                store.set_generation_status(
-                    profile_id, GEN_ERROR,
-                    error=("必要像フィールド未同梱かつサーバー生成キー未設定。"
-                           "各自AIで必要像を生成して同梱し再送するか、"
-                           "管理者に ② 生成キー設定を依頼してください。"))
-                return
-            necessity = _run_with_retry(
-                lambda: generate_necessity_v4(store, profile_id, profile_input))
+        if is_fallback or necessity is None:
+            # fallback B は廃止（指示書28 §6-1）。サーバー側の必要像生成はしない。
+            # 必要像は①が必ず出す前提。無い入力は受理側で弾くので、ここに来たら異常。
+            store.set_generation_status(
+                profile_id, GEN_ERROR,
+                error="必要像がありません。①をやり直して必要像を含めて再送してください。")
+            return
         _run_with_retry(
             lambda: vectorize_profile_v4(
                 store, profile_id, profile_input, necessity["necessity_text"]))
@@ -752,6 +748,9 @@ def _dual_write_v4(profile_id, raw):
     flat = _normalize_v4_body(raw)
     if not isinstance(flat, dict) or not (flat.get("will_text") or "").strip():
         return False  # v4 化する意志テキストが無い → v3 のみ
+    # fallback B 廃止（§6-1）: 必要像が無ければ v4 化しない（サーバー生成しない）。
+    if not (flat.get("necessity_text") or "").strip():
+        return False
     _ingest_v4_from_flat(flat, profile_id=profile_id)
     return True
 
@@ -782,6 +781,9 @@ def post_v4_seeker():
     body = _normalize_v4_body(body)
     if not (body.get("will_text") or "").strip():
         return jsonify({"error": "will_text が必要です（意志が空です）"}), 400
+    # fallback B 廃止（指示書28 §6-1）: 必要像フィールドが無い JSON は受理しない。
+    if not (body.get("necessity_text") or "").strip():
+        return jsonify({"error": "必要像がありません。①をやり直して必要像を含めて再送してください。"}), 400
 
     from db_v4 import GEN_PREPARING
 
@@ -999,6 +1001,9 @@ def confirm_draft(draft_id):
     flat = _normalize_v4_body(d["payload"])
     if not (flat.get("will_text") or "").strip():
         return jsonify({"error": "will_text が空です。①をやり直してください"}), 400
+    # fallback B 廃止（§6-1）: 必要像が無ければ確定させない（①をやり直す）。
+    if not (flat.get("necessity_text") or "").strip():
+        return jsonify({"error": "必要像がありません。①をやり直して必要像を含めて再送してください。"}), 400
 
     # 違和感(discomfort)の拒否があれば gate_u を引き上げる（§5-1）。ingest より前に反映し、
     # 照合に使う v4 ストア側の必要像にも同じ値が入るようにする（fact_error はここでは動かさない）。
@@ -1429,13 +1434,14 @@ def _revectorize_after_edit(profile_id):
     """
     「中身を編集」で意志/現状が変わったとき、登録と同じ経路で v4 ベクトルを作り直す。
     必要像は各自AIの所有物のため **サーバー生成しない**（is_fallback=False）。
-    既存の（古い）必要像テキストで再ベクトル化し、status=needs_regeneration を維持する。
-    derived_necessity は一切触らない。指示書08 §3-2/§3-3。
+    既存の（古い）必要像テキストで再ベクトル化し、status=ready にする（needs_regeneration は
+    廃止・指示書28 §6-2）。必要像を作り直したいときは①をやり直して下書き→確定する。
+    derived_necessity は一切触らない。
     v4 未登録・必要像未保存・非Postgres なら何もしない（v3 編集は既に保存済み）。
     """
     if not is_postgres():
         return
-    from db_v4 import receive_profile_v4, GEN_NEEDS_REGEN, MODEL_TAG
+    from db_v4 import receive_profile_v4, GEN_READY, MODEL_TAG
     store = _v4_store()
     existing = store.get_profile(profile_id)
     if existing is None:
@@ -1454,12 +1460,11 @@ def _revectorize_after_edit(profile_id):
         "state_unsorted": str(jotai.get("未分類") or ""),
         "supporting_raw": existing.get("supporting_raw") or {},  # 既存 v4 素材を保持
     }
-    # profiles_v4 の行を更新（will/state・necessity=None で derived_necessity 不変）→ needs_regeneration
+    # profiles_v4 の行を更新（will/state・necessity=None で derived_necessity 不変）。
     receive_profile_v4(store, profile_id, profile_input, necessity=None,
-                       generation_status=GEN_NEEDS_REGEN)
-    # ベクトルのみ再計算（②生成なし）。最終 status は needs_regeneration を維持。
-    _spawn_v4_job(profile_id, profile_input, nec, is_fallback=False,
-                  final_status=GEN_NEEDS_REGEN)
+                       generation_status=GEN_READY)
+    # ベクトルのみ再計算（②生成なし）。成功で ready（final_status 未指定＝ready）。
+    _spawn_v4_job(profile_id, profile_input, nec, is_fallback=False)
 
 
 @app.post("/api/profile/<user_id>/core")

@@ -110,18 +110,17 @@ def test_dual_write_noop_without_postgres():
 
 
 # ── necessity 無しの v4 形 → フォールバック経路で spawn（is_fallback=True）──────
-def test_dual_write_v4_without_necessity_falls_back():
+def test_dual_write_v4_without_necessity_is_skipped():
+    # 指示書28 §6-1: fallback B 廃止。必要像が無い JSON は v4 化しない（サーバー生成しない）。
     store, spawned = MemoryStore(), []
     orig = _patch(store, spawned)
     try:
         no_nec = {"seeker": {"意志": "つなぎたい", "現状": {"持っているもの": "知識"}},
                   "supporting_material": {}}
         ok = appmod._dual_write_v4("u_fb", no_nec)
-        assert ok is True
-        assert store.get_profile("u_fb") is not None
-        # necessity は未保存（サーバー生成は非同期ジョブ側）
-        assert store.get_necessity("u_fb", MODEL_TAG) is None
-        assert spawned and spawned[0][1].get("is_fallback") is True
+        assert ok is False                       # v4 化しない
+        assert store.get_profile("u_fb") is None  # profiles_v4 も書かれない
+        assert not spawned                        # 非同期ジョブも起動しない
     finally:
         _restore(orig)
 

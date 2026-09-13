@@ -111,6 +111,40 @@ def test_confirm_requires_postgres_after_auth():
     assert c.post(f"/v4/drafts/{did}/confirm").status_code == 503
 
 
+# ── 段階4: 拒否理由（§5）──────────────────────────────────────────────────────
+def test_gate_u_after_discomfort_rule():
+    assert drafts.gate_u_after_discomfort(0.3, 0) == 0.3        # 件数0は不変
+    assert drafts.gate_u_after_discomfort(0.3, 1) == 0.45       # +0.15
+    assert drafts.gate_u_after_discomfort(0.3, 2) == 0.6        # +0.30
+    assert drafts.gate_u_after_discomfort(0.9, 3) == 0.9        # 上限0.9
+    assert drafts.gate_u_after_discomfort(None, 2) is None      # 非数値は不変
+
+
+def test_reject_endpoint_records_and_reads():
+    db = _db(); appmod.DB = db
+    c = appmod.app.test_client()
+    _login(c, "a@example.com", db)
+    did = c.post("/v4/drafts", json={"will_text": "A"}).get_json()["draft_id"]
+    # 事実誤認
+    r = c.post(f"/v4/drafts/{did}/reject", json={"kind": "fact_error", "note": "言っていない"})
+    assert r.status_code == 200 and r.get_json()["status"] == "rejected"
+    # 違和感も追加
+    c.post(f"/v4/drafts/{did}/reject", json={"kind": "discomfort"})
+    d = c.get(f"/v4/drafts/{did}").get_json()
+    kinds = [x["kind"] for x in d["rejections"]]
+    assert kinds == ["fact_error", "discomfort"]
+    # 不正な種別は 400
+    assert c.post(f"/v4/drafts/{did}/reject", json={"kind": "bogus"}).status_code == 400
+
+
+def test_reject_endpoint_other_user_forbidden():
+    db = _db(); appmod.DB = db
+    c = appmod.app.test_client(); _login(c, "a@example.com", db)
+    did = c.post("/v4/drafts", json={"will_text": "A"}).get_json()["draft_id"]
+    c2 = appmod.app.test_client(); _login(c2, "b@example.com", db)
+    assert c2.post(f"/v4/drafts/{did}/reject", json={"kind": "fact_error"}).status_code == 403
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -161,6 +161,23 @@ def add_rejection(draft_id: str, kind: str, note: str = "", *,
         )
 
 
+def count_rejections(draft: dict, kind: str = None) -> int:
+    """下書きの拒否件数（kind 指定でその種別のみ）。"""
+    rej = (draft or {}).get("rejections") or []
+    return sum(1 for r in rej if kind is None or r.get("kind") == kind)
+
+
+def gate_u_after_discomfort(gate_u, n_discomfort: int):
+    """違和感(discomfort)の件数だけ gate_u を引き上げる（§5-1・決定的）。
+
+    1件につき +0.15、上限 0.9（①の最大ステップ）。fact_error は再生成の入力なので
+    ここでは動かさない。gate_u が数値でない/件数0 のときはそのまま返す。
+    """
+    if not isinstance(gate_u, (int, float)) or isinstance(gate_u, bool) or n_discomfort <= 0:
+        return gate_u
+    return min(0.9, round(float(gate_u) + 0.15 * n_discomfort, 4))
+
+
 def delete_draft(draft_id: str, db_path: str = "pox.db") -> None:
     """下書きを削除する（自由・台帳に痕跡を残さない）。"""
     with _connect(db_path) as con:

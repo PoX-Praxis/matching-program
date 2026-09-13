@@ -944,6 +944,43 @@ def delete_draft_by_id(draft_id):
     return jsonify({"deleted": True}), 200
 
 
+def _can_touch_draft(d):
+    """下書きを操作できるか（本人 or コミュニティメンバー）。403 のとき False。"""
+    if d["owner_kind"] == "intent":
+        from member_ledger import active_members_from_events
+        me = current_subject_id()
+        if _debug_enabled():
+            return True
+        return me is not None and me in active_members_from_events(d["subject_id"], db_path=DB)
+    # 個人の下書きは本人のみ（require_self は不一致で 403 abort する）
+    require_self(d["subject_id"])
+    return True
+
+
+@app.post("/v4/drafts/<draft_id>/reject")
+@login_required
+def reject_draft(draft_id):
+    """拒否理由を下書きに記録する（台帳には載せない・§5-2）。
+    種別: fact_error（事実誤認→再生成の入力）/ discomfort（違和感→gate_u 引き上げ）。
+    個人の下書きは本人、コミュニティの下書きはメンバーが記録できる。"""
+    d = drafts.get_draft(draft_id, db_path=DB)
+    if d is None:
+        return jsonify({"error": "下書きが見つかりません"}), 404
+    if not _can_touch_draft(d):
+        return jsonify({"error": "この下書きを操作する権限がありません"}), 403
+    body = request.get_json(force=True, silent=True) or {}
+    kind = (body.get("kind") or "").strip()
+    if kind not in ("fact_error", "discomfort"):
+        return jsonify({"error": "kind は fact_error または discomfort"}), 400
+    try:
+        drafts.add_rejection(draft_id, kind, body.get("note") or "",
+                             by=current_subject_id() or "", db_path=DB)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    d2 = drafts.get_draft(draft_id, db_path=DB)
+    return jsonify(_draft_preview(d2)), 200
+
+
 @app.post("/v4/drafts/<draft_id>/confirm")
 @login_required
 def confirm_draft(draft_id):
@@ -962,6 +999,12 @@ def confirm_draft(draft_id):
     flat = _normalize_v4_body(d["payload"])
     if not (flat.get("will_text") or "").strip():
         return jsonify({"error": "will_text が空です。①をやり直してください"}), 400
+
+    # 違和感(discomfort)の拒否があれば gate_u を引き上げる（§5-1）。ingest より前に反映し、
+    # 照合に使う v4 ストア側の必要像にも同じ値が入るようにする（fact_error はここでは動かさない）。
+    n_discomfort = drafts.count_rejections(d, "discomfort")
+    if n_discomfort and flat.get("gate_u") is not None:
+        flat["gate_u"] = drafts.gate_u_after_discomfort(flat["gate_u"], n_discomfort)
 
     # 受付（profiles_v4 / derived_necessity へ）＋ベクトル化ジョブ起動（非同期）。
     # 台帳は confirm が同期で書くので、ジョブ側の台帳書き込みは抑止（publish_ledger=False）。

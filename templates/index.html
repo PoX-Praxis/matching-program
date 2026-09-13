@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PoX マッチング</title>
+<title>PoX 照合</title>
 <style>
   body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #222; }
   h1  { font-size: 1.4rem; margin-bottom: 16px; }
@@ -26,7 +26,7 @@
 </head>
 <body>
 {% include "_nav.html" %}
-<h1>PoX マッチング プロトタイプ</h1>
+<h1>PoX 照合 プロトタイプ</h1>
 
 <!-- ── あなたのID（ログイン代わり） ── -->
 <div id="myIdBar">
@@ -49,13 +49,13 @@
 <h2>2. 登録済み seeker 一覧</h2>
 <button onclick="loadSeekers()">一覧を更新</button>
 <table>
-  <thead><tr><th>id</th><th>意志（抜粋）</th><th>一行紹介</th><th>マッチング</th></tr></thead>
+  <thead><tr><th>id</th><th>意志（抜粋）</th><th>一行紹介</th><th>照合</th></tr></thead>
   <tbody id="seekerRows"><tr><td colspan="4">読み込み中...</td></tr></tbody>
 </table>
 
-<!-- ── 3. マッチング結果 ── -->
-<h2>3. マッチング結果</h2>
-<div id="matchResult" style="color:#888;font-size:13px;">（一覧から「マッチング実行」を押すと表示されます）</div>
+<!-- ── 3. 照合結果 ── -->
+<h2>3. 照合結果</h2>
+<div id="matchResult" style="color:#888;font-size:13px;">（一覧から「照合実行」を押すと表示されます）</div>
 <div id="approveMsg"></div>
 
 <!-- ── 4. 台帳 ── -->
@@ -63,7 +63,7 @@
 <button onclick="loadLedger()">台帳を更新</button>
 <table>
   <thead>
-    <tr><th>vessel</th><th>創設者</th><th>参加者</th><th>承認状況</th><th>接続成立</th></tr>
+    <tr><th>接続</th><th>作成者</th><th>参加者</th><th>承認状況</th><th>接続成立</th></tr>
   </thead>
   <tbody id="ledgerRows"><tr><td colspan="5">まだ記録がありません</td></tr></tbody>
 </table>
@@ -153,14 +153,14 @@ async function loadSeekers() {
           <option value="similar">共鳴</option>
           <option value="balanced">バランス（両方）</option>
         </select>
-        <button class="sm" onclick="runMatch('${sid}')">マッチング実行</button>
+        <button class="sm" onclick="runMatch('${sid}')">照合実行</button>
         <button class="sm" onclick="runMatchV4('${sid}')" style="background:#2a7a4a">照合</button>
       </td>
     </tr>`;
   }).join("");
 }
 
-/* ── マッチング ── */
+/* ── 照合 ── */
 async function runMatch(seekerId) {
   const el   = document.getElementById("matchResult");
   const want = document.getElementById("want_" + seekerId).value;
@@ -219,7 +219,7 @@ async function runMatch(seekerId) {
     </table>`;
 }
 
-/* ── v4 マッチング（実験・Nomic 埋め込み。v3 と並存）── */
+/* ── v4 照合（実験・Nomic 埋め込み。v3 と並存）── */
 async function runMatchV4(seekerId) {
   const el = document.getElementById("matchResult");
   document.getElementById("approveMsg").textContent = "";

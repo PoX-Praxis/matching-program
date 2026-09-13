@@ -485,14 +485,8 @@ async function loadV4Status(id) {
     el.style.display = "block";
     return;
   }
-  if (s === "needs_regeneration") {
-    // 文言は違うが押し先は error と同じ retry（§2-2）。
-    el.className = "v4status warn";
-    el.innerHTML = "現状が変わりました。必要像を作り直せます。"
-      + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">作り直す</button>';
-    el.style.display = "block";
-    return;
-  }
+  // needs_regeneration は廃止（指示書28 §6-2）。編集で必要像を作り直したいときは
+  // ①をやり直して下書き→確定する。ここでは特別扱いしない。
   el.style.display = "none";   // 未知の値は出さない
 }
 

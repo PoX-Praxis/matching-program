@@ -198,6 +198,9 @@ def init_v4() -> None:
         con.execute(_DDL_PROFILES_V4)
         for sql in _DDL_PROFILES_V4_ADDCOLS:
             con.execute(sql)
+        # needs_regeneration は廃止（指示書28 §6-2）。既存行は ready へ倒す（ベクトルは有効なため）。
+        con.execute("UPDATE profiles_v4 SET generation_status='ready' "
+                    "WHERE generation_status='needs_regeneration'")
 
         # profile_vectors: 次元不一致なら再作成（束2a: 768化）
         if _table_exists(con, "profile_vectors"):

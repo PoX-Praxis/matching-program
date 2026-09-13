@@ -145,6 +145,24 @@ def test_reject_endpoint_other_user_forbidden():
     assert c2.post(f"/v4/drafts/{did}/reject", json={"kind": "fact_error"}).status_code == 403
 
 
+# ── 段階5: fallback B 廃止（§6-1）───────────────────────────────────────────────
+def test_confirm_rejects_without_necessity(monkeypatch):
+    db = _db(); appmod.DB = db
+    monkeypatch.setattr(appmod, "is_postgres", lambda: True)   # PG ゲートを通す
+    c = appmod.app.test_client(); _login(c, "a@example.com", db)
+    did = c.post("/v4/drafts", json={"will_text": "意志だけ"}).get_json()["draft_id"]
+    r = c.post(f"/v4/drafts/{did}/confirm")
+    assert r.status_code == 400 and "必要像" in r.get_json()["error"]
+
+
+def test_v4_seekers_rejects_without_necessity(monkeypatch):
+    db = _db(); appmod.DB = db
+    monkeypatch.setattr(appmod, "is_postgres", lambda: True)
+    c = appmod.app.test_client(); _login(c, "a@example.com", db)
+    r = c.post("/v4/seekers", json={"will_text": "意志だけ"})
+    assert r.status_code == 400 and "必要像" in r.get_json()["error"]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

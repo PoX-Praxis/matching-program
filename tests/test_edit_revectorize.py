@@ -44,7 +44,8 @@ def _run(store, edited_seeker):
         appmod.is_postgres, appmod._v4_store, appmod.get_seeker, appmod._spawn_v4_job = orig
 
 
-def test_revectorize_updates_vectors_and_flags_regen():
+def test_revectorize_updates_vectors_and_sets_ready():
+    # 指示書28 §6-2: needs_regeneration は廃止。編集の再ベクトル化は ready にする。
     store = MemoryStore()
     _seed(store)
     old_vec = list(store.get_bundle("u1", MODEL_TAG)["vectors"]["will_symmetric"])
@@ -57,7 +58,7 @@ def test_revectorize_updates_vectors_and_flags_regen():
     assert store.get_profile("u1")["will_text"] == "BRAND NEW will content"          # profiles_v4 更新
     new_vec = store.get_bundle("u1", MODEL_TAG)["vectors"]["will_symmetric"]
     assert list(new_vec) != old_vec                                                    # ベクトル再計算
-    assert store.get_profile_status("u1")["generation_status"] == "needs_regeneration"  # 鮮度フラグ
+    assert store.get_profile_status("u1")["generation_status"] == "ready"             # 廃止: needs_regeneration ではなく ready
     n = store.get_necessity("u1", MODEL_TAG)
     assert n["necessity_text"] == old_nec["necessity_text"]                             # 必要像本文 不変
     assert n["gate_s"] == old_nec["gate_s"] and n["gamma"] == old_nec["gamma"]          # 数値 不変

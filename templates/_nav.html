@@ -1,4 +1,22 @@
 <style>
+  /* ── 共通トークン（指示書29 §2-2）── _nav.html は全ページに include されるため、
+     ここが「1枚の共通CSS」の集約点。配色・本文幅・フォントを変数化し、各ページは
+     これを参照する。既存の個別 <style> を壊さないよう全体上書き（button/h1 等）はしない。 */
+  :root{
+    --pox-navy:#1a3a5c;      /* 主色（ナビ・ボタン・見出し） */
+    --pox-ink:#222;          /* 本文 */
+    --pox-sub:#666;          /* 補助テキスト */
+    --pox-muted:#888;        /* 空・読み込み等の淡色 */
+    --pox-rule:#e6e8ec;      /* 罫線 */
+    --pox-link:#1a3a5c;      /* リンク */
+    --pox-bg-soft:#f6f7f9;   /* 面の淡い背景 */
+    --pox-content:620px;     /* 本文幅の標準（generic ページ） */
+    --pox-font:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  }
+  /* 状態表示の共通ヘルパ（§2-3・opt-in）。空/読み込み中/エラーの淡色表現をそろえる。 */
+  .pox-state{ color:var(--pox-muted); font-size:13px; line-height:1.8; }
+  .pox-empty{ color:var(--pox-muted); font-size:13px; line-height:1.8; }
+
   /* リボン（ナビ帯）を全ページで画面の端までそろえる（body の max-width/margin/padding に依存させない）。
      一部ページは body が中央寄せの枠のため帯が端まで届かなかった → 全幅・上端そろえに統一。 */
   #poxNav{ box-sizing:border-box; width:100vw; margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw); margin-top:0; }

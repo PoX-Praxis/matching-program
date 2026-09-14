@@ -36,7 +36,14 @@
 
   /* ---------- ヘッダ ---------- */
   .mypage .mp-title{font-size:22px;font-weight:700;letter-spacing:.01em;margin:20px 0 2px}
-  .mypage .mp-handle{font-size:11.5px;color:#8a9099;letter-spacing:.06em;margin:0 0 20px}
+  .mypage .mp-handle{font-size:11.5px;color:#8a9099;letter-spacing:.06em;margin:0 0 12px}
+  .dn-editor{margin:0 0 24px;padding:12px 14px;background:#fafafa;border:1px solid #eee;border-radius:6px}
+  .dn-label{display:block;font-size:12px;color:#667;margin-bottom:6px}
+  .dn-row{display:flex;gap:8px;flex-wrap:wrap}
+  .dn-row input{flex:1;min-width:0;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px}
+  .dn-row button{padding:6px 16px;background:#1a3a5c;color:#fff;border:none;border-radius:4px;font-size:13px;cursor:pointer}
+  .dn-row button:disabled{opacity:.5;cursor:default}
+  .dn-note{display:block;font-size:12px;color:#888;margin-top:6px;min-height:1em}
 
   .mypage .mp-err{
     background:#fbe9ea;color:#8c2f34;font-size:13px;line-height:1.7;
@@ -212,6 +219,16 @@
   <h1 id="mpTitle" class="mp-title"></h1>
   <p id="mpHandle" class="mp-handle"></p>
 
+  <!-- 表示名の設定（本人のみ・指示書30）。一意性なし・30字上限・空で subject_id に戻る。 -->
+  <div id="dnEditor" class="dn-editor">
+    <label for="dnInput" class="dn-label">表示名（任意・30字まで）</label>
+    <div class="dn-row">
+      <input id="dnInput" type="text" maxlength="30" placeholder="未設定（IDが表示されます）">
+      <button id="dnSave" onclick="saveDisplayName(this)">保存</button>
+    </div>
+    <span id="dnNote" class="dn-note"></span>
+  </div>
+
   <!-- 照合の準備状態（所有者のみ・指示書08。本改修では位置だけ整える） -->
   <div id="v4Status" class="v4status" style="display:none"></div>
 
@@ -251,6 +268,31 @@ function handleAuth(res) {
   return PoX.handle(res);
 }
 
+/* 表示名の保存（本人のみ・指示書30）。redact/30字上限はサーバー側で最終確定。 */
+async function saveDisplayName(btn) {
+  const sid = await PoX.me();                       // 同一性はセッション
+  if (!sid) { PoX.loginRedirect(); return; }
+  const note = document.getElementById("dnNote");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/my/display-name", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: sid, name: document.getElementById("dnInput").value || "" }),
+    });
+    if (PoX.handle(res)) { if (btn) btn.disabled = false; return; }
+    const data = await res.json();
+    if (!res.ok) { note.textContent = "エラー: " + (data.error || res.status); if (btn) btn.disabled = false; return; }
+    // サーバーが確定した表示名（未設定なら subject_id）を反映。
+    const shown = data.is_set ? data.display_name : "";
+    document.getElementById("dnInput").value = shown;
+    document.getElementById("mpTitle").textContent = shown || (data.subject_id || sid);
+    note.textContent = data.is_set ? "保存しました" : "未設定にしました（IDが表示されます）";
+  } catch (e) {
+    note.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
+  }
+  if (btn) btn.disabled = false;
+}
+
 if (!myId) {
   document.getElementById("loading").innerHTML =
     '<span style="color:#c00">URL に ?id= が指定されていません。<a href="/">トップ</a>から「マイページ」を開いてください。</span>';
@@ -278,9 +320,12 @@ async function init() {
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display    = "block";
 
-  // §3-4 表示名 → 現状 display_name フィールドは存在しないため ID にフォールバック（§6-1 で報告）。
-  document.getElementById("mpTitle").textContent  = myId;
-  document.getElementById("mpHandle").textContent = `${myId} ・ マイページ`;
+  // 表示名（指示書30）。未設定なら subject_id を表示。タイトルは表示名、ハンドルは subject_id 併記。
+  const sid = pv.subject_id || myId;
+  const dn  = (pv.display_name && pv.display_name !== sid) ? pv.display_name : "";
+  document.getElementById("mpTitle").textContent  = dn || sid;
+  document.getElementById("mpHandle").textContent = `${sid} ・ マイページ`;
+  document.getElementById("dnInput").value = dn;
   document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
 
   renderProfileView(pv);

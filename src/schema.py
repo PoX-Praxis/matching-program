@@ -197,6 +197,12 @@ _SQLITE_DDL = [
         created_at       TEXT NOT NULL,
         updated_at       TEXT NOT NULL
     )""",
+    # 表示名（指示書30）。通常DBの可変値・履歴なし・台帳/ハッシュ/三つ組には入れない。
+    """CREATE TABLE IF NOT EXISTS display_names (
+        subject_id TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -385,6 +391,12 @@ _PG_DDL = [
         reject_json      TEXT,
         created_at       TEXT NOT NULL,
         updated_at       TEXT NOT NULL
+    )""",
+    # 表示名（指示書30）。SQLite 版と同一スキーマ。
+    """CREATE TABLE IF NOT EXISTS display_names (
+        subject_id TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     )""",
 ]
 

@@ -14,6 +14,7 @@
   .badge-action { background: #f8d7da; color: #721c24; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
   .badge-unread { background: #cce5ff; color: #004085; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
   a { color: #1a3a5c; }
+  .subject-id { color: #999; font-size: 12px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
   #loading { color: #888; margin-top: 40px; }
 </style>
 </head>
@@ -83,9 +84,11 @@ function renderApprovals(vessels, myId) {
   tbody.innerHTML = needAction.map(v => {
     const j = (v.joins || [])[0] || {};
     const other = v.founder === myId ? (j.joiner || "-") : v.founder;
+    const oname = v.founder === myId ? (j.joiner_name || other) : (v.founder_name || other);
     const oid = encodeURIComponent(other);
+    // 承認画面は相手特定の場面 → 表示名＋subject_id を併記（指示書30）
     return `<tr>
-      <td><a href="/profile/${oid}">${escHtml(other)}</a></td>
+      <td><a href="/profile/${oid}">${escHtml(oname)}</a> <span class="subject-id">${escHtml(other)}</span></td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
       <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;
@@ -101,8 +104,9 @@ function renderMessages(convs) {
     const unread = c.unread > 0
       ? `<span class="badge-unread">${c.unread}</span>` : "0";
     const href = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(c.other_id)}`;
+    // メッセージ一覧は表示名のみ（指示書30）
     return `<tr>
-      <td><a href="/profile/${encodeURIComponent(c.other_id)}">${escHtml(c.other_id)}</a></td>
+      <td><a href="/profile/${encodeURIComponent(c.other_id)}">${escHtml(c.other_name || c.other_id)}</a></td>
       <td>${escHtml((c.last_body || "").slice(0, 60))}${c.last_body && c.last_body.length > 60 ? "…" : ""}</td>
       <td>${unread}</td>
       <td><a href="${href}">会話を開く</a></td>

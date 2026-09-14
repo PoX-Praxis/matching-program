@@ -15,6 +15,7 @@
   .btn-primary { background: #1a3a5c; color: white; }
   .btn-sm { padding: 3px 10px; font-size: 12px; cursor: pointer; background: #1a3a5c; color: white; border: none; border-radius: 3px; }
   .badge-founder { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 1px 6px; font-size: 11px; }
+  .subject-id { color: #999; font-size: 12px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
   #chatBox {
     border: 1px solid #ddd; border-radius: 6px; height: 350px;
     overflow-y: auto; padding: 12px; background: #fafafa; margin: 12px 0;
@@ -189,7 +190,7 @@ async function init() {
 
   document.getElementById("cName").textContent    = communityData.name;
   document.getElementById("cDesc").textContent    = communityData.description || "";
-  document.getElementById("cFounder").textContent = communityData.founder;
+  document.getElementById("cFounder").textContent = communityData.founder_name || communityData.founder;
   document.getElementById("memberCount").textContent = communityData.members.length;
 
   renderJoinSection();
@@ -575,7 +576,7 @@ function renderMembers() {
   tbody.innerHTML = communityData.members.map(m => {
     const isFounder = m.member_id === communityData.founder;
     return `<tr>
-      <td><a href="/profile/${encodeURIComponent(m.member_id)}">${escHtml(m.member_id)}</a></td>
+      <td><a href="/profile/${encodeURIComponent(m.member_id)}">${escHtml(m.display_name || m.member_id)}</a></td>
       <td>${isFounder ? '<span class="badge-founder">作成者</span>' : "メンバー"}</td>
       <td>${myId && myId !== m.member_id ? `<a href="/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(m.member_id)}" style="font-size:12px">DM</a>` : ""}</td>
     </tr>`;
@@ -589,7 +590,7 @@ function renderPending() {
     tbody.innerHTML = "<tr><td colspan='3'>申請者なし</td></tr>"; return;
   }
   tbody.innerHTML = pending.map(m => `<tr>
-    <td>${escHtml(m.member_id)}</td>
+    <td>${escHtml(m.display_name || m.member_id)} <span class="subject-id">${escHtml(m.member_id)}</span></td>
     <td>${(m.joined_at || "").slice(0, 10)}</td>
     <td><button class="btn-sm" onclick="approveMember('${escHtml(m.member_id)}', this)">承認</button></td>
   </tr>`).join("");
@@ -605,7 +606,7 @@ function renderChat() {
       <div class="bubble ${isMine ? "mine" : "theirs"}">
         ${m.body ? escHtml(m.body) : ""}
         ${renderAttachment(m.attachment_url)}
-        <div class="meta">${escHtml(m.from_id)} ${time}</div>
+        <div class="meta">${isMine ? "あなた" : escHtml(m.from_name || m.from_id)} ${time}</div>
       </div>
     </div>`;
   }).join("") || '<p style="color:#aaa;text-align:center;margin-top:40px">まだメッセージがありません</p>';

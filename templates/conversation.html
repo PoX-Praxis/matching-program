@@ -79,7 +79,7 @@ async function loadConversation() {
       <div class="bubble ${isMine ? "mine" : "theirs"}">
         ${m.body ? escHtml(m.body) : ""}
         ${renderAttachment(m.attachment_url)}
-        <div class="meta">${isMine ? "あなた" : escHtml(m.from_id)} ${time}</div>
+        <div class="meta">${isMine ? "あなた" : escHtml(m.from_name || m.from_id)} ${time}</div>
       </div>
     </div>`;
   }).join("") || '<p style="color:#aaa;text-align:center;margin-top:40px">まだメッセージがありません</p>';

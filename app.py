@@ -1377,6 +1377,16 @@ def api_my_vessels():
         if v.get("founder") == my_id
         or ((v.get("joins") or [{}])[0].get("joiner") == my_id)
     ]
+    # 表示名を各 vessel に併記（指示書30）。承認画面は相手特定の場面なので表示名＋subject_id。
+    ids = [v.get("founder") for v in mine]
+    for v in mine:
+        for j in (v.get("joins") or []):
+            ids.append(j.get("joiner"))
+    names = _resolve_names(ids)
+    for v in mine:
+        v["founder_name"] = names.get(v.get("founder"), v.get("founder"))
+        for j in (v.get("joins") or []):
+            j["joiner_name"] = names.get(j.get("joiner"), j.get("joiner"))
     return jsonify(mine)
 
 
@@ -1402,6 +1412,9 @@ def api_profile(user_id):
     pub_nec = get_public_necessity(user_id)   # None なら足さない（既存分・未生成は出ない）
     if pub_nec:
         pv["necessity_text"] = pub_nec["necessity_text"]
+    # 表示名（指示書30）。プロフィールページは表示名＋subject_id を併記する（相手特定の場面）。
+    pv["subject_id"] = user_id
+    pv["display_name"] = _resolve_name(user_id)
     return jsonify(pv)
 
 
@@ -1583,6 +1596,43 @@ def post_message():
     return jsonify(msg), 201
 
 
+# ── 表示名の解決（指示書30）─────────────────────────────────────────────────
+# 同一性は subject_id。表示名は通常DBの可変値で、台帳/ハッシュ/三つ組には入れない。
+# コミュニティは communities.name を正とし、display_names には二重に持たない（食い違い防止）。
+
+def _resolve_names(subject_ids):
+    """複数 subject_id → {sid: 表示名}。community は communities.name、個人は display_names、
+    無ければ subject_id にフォールバック。"""
+    import display_names
+    ids = [s for s in {s for s in subject_ids if s}]
+    if not ids:
+        return {}
+    dn = display_names.get_many(ids, db_path=DB)
+    out = {}
+    for s in ids:
+        c = get_community(s, db_path=DB)          # community_id は subject_id と同空間
+        out[s] = (c["name"] if c else None) or dn.get(s) or s
+    return out
+
+
+def _resolve_name(subject_id):
+    return _resolve_names([subject_id]).get(subject_id, subject_id) if subject_id else subject_id
+
+
+@app.post("/api/my/display-name")
+@login_required
+def set_my_display_name():
+    """本人の表示名を設定/変更（上書き・履歴なし）。空にすると未設定＝subject_id 表示に戻る。
+    redact・30字上限・本人限定（require_self）。一意性は課さない。"""
+    body = request.get_json(force=True, silent=True) or {}
+    sid = require_self(body.get("id"))
+    if not sid:
+        return jsonify({"error": "ログインが必要です"}), 401
+    import display_names
+    saved = display_names.set_display_name(sid, body.get("name") or "", db_path=DB)
+    return jsonify({"subject_id": sid, "display_name": saved or sid, "is_set": saved is not None})
+
+
 @app.get("/api/conversation")
 @login_required
 def api_conversation():
@@ -1592,7 +1642,10 @@ def api_conversation():
     if not me or not other:
         return jsonify({"error": "me と with が必要です"}), 400
     msgs = get_conversation(me, other, db_path=DB)
-    return jsonify(msgs)
+    names = _resolve_names([m["from_id"] for m in msgs] + [me, other])
+    for m in msgs:
+        m["from_name"] = names.get(m["from_id"], m["from_id"])
+    return jsonify(msgs)   # 配列のまま（各要素に from_name を付与・後方互換）
 
 
 # ── ファイルアップロード API ──────────────────────────────────
@@ -1621,6 +1674,10 @@ def api_inbox():
     if not my_id:
         return jsonify({"error": "id が必要です"}), 400
     convs   = get_inbox_summary(my_id, db_path=DB)
+    # メッセージ一覧は表示名のみでよい（指示書30）。
+    names = _resolve_names([c.get("other_id") for c in convs])
+    for c in convs:
+        c["other_name"] = names.get(c.get("other_id"), c.get("other_id"))
     unread  = get_unread_count(my_id, db_path=DB)
     vessels = load_all_vessels(db_path=DB)
     need_approval = sum(
@@ -1671,11 +1728,23 @@ def api_get_community(community_id):
     members  = get_members(community_id, db_path=DB)
     pending  = get_pending_requests(community_id, db_path=DB)
     messages = get_community_messages(community_id, db_path=DB)
+    # 表示名を解決（指示書30）。メンバー一覧・チャットは表示名のみ、承認待ちは併記。
+    names = _resolve_names([m.get("member_id") for m in members]
+                           + [m.get("member_id") for m in pending]
+                           + [m.get("from_id") for m in messages]
+                           + [c.get("founder")])
+    for m in members:
+        m["display_name"] = names.get(m.get("member_id"), m.get("member_id"))
+    for m in pending:
+        m["display_name"] = names.get(m.get("member_id"), m.get("member_id"))
+    for m in messages:
+        m["from_name"] = names.get(m.get("from_id"), m.get("from_id"))
     # 宣言と実績（指示書23 §3-1）。第三者（未ログイン）にも見える。数値は出さない。
     from intent_ledger import list_intent_details, latest_policy_declaration
     declaration = latest_policy_declaration(community_id, db_path=DB)
     intents = list_intent_details(community_id, db_path=DB)
     return jsonify({**c, "members": members, "pending": pending, "messages": messages,
+                    "founder_name": names.get(c.get("founder"), c.get("founder")),
                     "declaration": declaration, "intents": intents})
 
 

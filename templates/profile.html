@@ -10,6 +10,11 @@
   a.back:hover { text-decoration: underline; }
   h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
 
+  /* 表示名＋subject_id 併記（指示書30）*/
+  #nameHeader { margin: 0 0 8px; }
+  .display-name { font-size: 1.15rem; font-weight: 600; color: #222; margin-right: 8px; }
+  .subject-id { color: #999; font-size: 12px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
+
   /* v4 blocks */
   .headline-text { font-size: 1.05rem; line-height: 1.7; color: #333; margin: 20px 0 12px; }
 
@@ -95,6 +100,12 @@
 <div id="loading">読み込み中です</div>
 <div id="main" style="display:none">
 
+  <!-- 表示名＋subject_id 併記（指示書30・相手特定の場面）-->
+  <div id="nameHeader" style="display:none">
+    <span id="displayName" class="display-name"></span>
+    <span id="subjectId" class="subject-id"></span>
+  </div>
+
   <div id="profileBlock"></div>
 
   <!-- accordion: keys + trajectory -->
@@ -163,6 +174,15 @@ async function init() {
 }
 
 function renderProfileView(pv) {
+  // 表示名＋subject_id を併記（指示書30）。表示名未設定なら subject_id のみ。
+  const sid = pv.subject_id || "";
+  const dn = pv.display_name || sid;
+  if (sid) {
+    const header = document.getElementById("nameHeader");
+    document.getElementById("displayName").textContent = (dn && dn !== sid) ? dn : "";
+    document.getElementById("subjectId").textContent = sid;
+    header.style.display = "block";
+  }
   const container = document.getElementById("profileBlock");
   if (pv.schema_version === "v4") {
     container.innerHTML = renderV4(pv);

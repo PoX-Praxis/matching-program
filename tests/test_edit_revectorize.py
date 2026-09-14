@@ -32,16 +32,27 @@ def _seed(store):
     return nec
 
 
-def _run(store, edited_seeker):
-    orig = (appmod.is_postgres, appmod._v4_store, appmod.get_seeker, appmod._spawn_v4_job)
+def _fields(will, jotai):
+    """/core ルートが body から組む fields 形（意志 + state_*）を作る。"""
+    m = {"持っているもの": "state_have", "できること_型": "state_can_type",
+         "縛られているもの": "state_bound", "未分類": "state_unsorted"}
+    f = {"意志": will}
+    for jp, eng in m.items():
+        if jp in (jotai or {}):
+            f[eng] = jotai[jp]
+    return f
+
+
+def _run(store, will, jotai):
+    # 指示書18 作業C: 編集は profiles_v4 に直接反映（_edit_core_v4）。get_seeker には依存しない。
+    orig = (appmod.is_postgres, appmod._v4_store, appmod._spawn_v4_job)
     appmod.is_postgres = lambda: True
     appmod._v4_store = lambda: store
-    appmod.get_seeker = lambda pid, db_path=None: edited_seeker
     appmod._spawn_v4_job = lambda *a, **k: appmod._v4_async_job(*a, **k)  # 同期実行
     try:
-        appmod._revectorize_after_edit("u1")
+        return appmod._edit_core_v4("u1", _fields(will, jotai))
     finally:
-        appmod.is_postgres, appmod._v4_store, appmod.get_seeker, appmod._spawn_v4_job = orig
+        appmod.is_postgres, appmod._v4_store, appmod._spawn_v4_job = orig
 
 
 def test_revectorize_updates_vectors_and_sets_ready():
@@ -51,9 +62,8 @@ def test_revectorize_updates_vectors_and_sets_ready():
     old_vec = list(store.get_bundle("u1", MODEL_TAG)["vectors"]["will_symmetric"])
     old_nec = store.get_necessity("u1", MODEL_TAG)
 
-    edited = {"意志": "BRAND NEW will content", "現状": {
-        "持っているもの": "h", "できること_型": "", "縛られているもの": "", "未分類": ""}}
-    _run(store, edited)
+    _run(store, "BRAND NEW will content", {
+        "持っているもの": "h", "できること_型": "", "縛られているもの": "", "未分類": ""})
 
     assert store.get_profile("u1")["will_text"] == "BRAND NEW will content"          # profiles_v4 更新
     new_vec = store.get_bundle("u1", MODEL_TAG)["vectors"]["will_symmetric"]
@@ -70,7 +80,7 @@ def test_no_server_necessity_generation_on_edit():
     orig = db_v4.generate_necessity_v4
     db_v4.generate_necessity_v4 = lambda *a, **k: (called.__setitem__("gen", True), orig(*a, **k))[1]
     try:
-        _run(store, {"意志": "changed will here", "現状": {"持っているもの": "h"}})
+        _run(store, "changed will here", {"持っているもの": "h"})
     finally:
         db_v4.generate_necessity_v4 = orig
     assert called["gen"] is False   # is_fallback=False ＝ サーバー②生成に入らない
@@ -78,18 +88,27 @@ def test_no_server_necessity_generation_on_edit():
 
 def test_revectorize_skips_when_no_v4_profile():
     store = MemoryStore()   # u1 は v4 未登録
-    _run(store, {"意志": "x", "現状": {}})
-    assert store.get_profile("u1") is None   # 何も起きない（v3編集のみ）
+    assert _run(store, "x", {}) is False       # 何もしない（v3編集のみ・表示は v3 フォールバック）
+    assert store.get_profile("u1") is None
 
 
-def test_revectorize_skips_when_no_necessity():
+def test_edit_updates_v4_display_even_without_necessity():
+    # 指示書18 作業C: 必要像が無くても profiles_v4 の will/state は更新する（表示反映）。
+    # ただしベクトルは作らない（②生成しない方針）。
     store = MemoryStore()
-    # profile はあるが necessity 未保存 → 再ベクトル化しない（②生成しない方針）
     pin = {"will_text": "w", "state_have": "h", "state_can_type": "",
            "state_bound": "", "state_unsorted": "", "supporting_raw": {}}
     receive_profile_v4(store, "u1", pin, None, generation_status=GEN_READY)
-    _run(store, {"意志": "new", "現状": {"持っているもの": "h"}})
-    assert store.get_bundle("u1", MODEL_TAG) is None  # ベクトルは作られない
+    assert _run(store, "new will", {"持っているもの": "h"}) is True
+    assert store.get_profile("u1")["will_text"] == "new will"   # 表示元は更新される
+    assert store.get_bundle("u1", MODEL_TAG) is None            # ベクトルは作られない
+
+
+def test_edit_noop_when_unchanged():
+    # 意志・現状が変わっていなければ False（churn 防止）。
+    store = MemoryStore(); _seed(store)
+    assert _run(store, "old will text", {"持っているもの": "h", "できること_型": "",
+                                         "縛られているもの": "", "未分類": ""}) is False
 
 
 if __name__ == "__main__":

@@ -15,38 +15,46 @@ def test_save_and_get_full_content():
                         supporting={"生テキスト": ["x"]},
                         necessity={"necessity_text": "n", "evidence_span": "e",
                                    "gate_s": 0.6, "src_input_hash": "H1"},
-                        src_input_hash="H1", schema_version="v4.3", db_path=db)
+                        content_hash="C1", src_input_hash="H1",
+                        schema_version="v4.3", db_path=db)
     assert sid
     s = get_snapshots("u1", db_path=db)[0]
     assert s["will_text"] == "w1" and s["state"]["state_have"] == "h"
     assert s["schema_version"] == "v4.3"            # 記録時のスキーマ版
     assert s["vulnerable_hidden"] is False          # 既定は非伏せ
     assert s["necessity"]["evidence_span"] == "e" and s["necessity"]["gate_s"] == 0.6
+    assert s["content_hash"] == "C1"                # churn 判定の基準（指示書18 §2）
+    assert s["src_input_hash"] == "H1"              # 保持（判定には使わない）
     assert latest_snapshot_id("u1", db_path=db) == sid
 
 
-def test_churn_same_hash_skipped():
+def test_churn_same_content_hash_skipped():
+    # churn 判定は content_hash（指示書18 §2）。src_input_hash が違っても content_hash が
+    # 同一ならスキップ（＝表示される宣言が変わっていない）。
     db = _db()
     save_snapshot("u1", will_text="w", state={}, supporting={}, necessity={},
-                  src_input_hash="H1", db_path=db)
+                  content_hash="C1", src_input_hash="H1", db_path=db)
     dup = save_snapshot("u1", will_text="w", state={}, supporting={}, necessity={},
-                        src_input_hash="H1", db_path=db)
+                        content_hash="C1", src_input_hash="H2", db_path=db)
     assert dup is None and len(get_snapshots("u1", db_path=db)) == 1
 
 
-def test_different_hash_adds_point():
+def test_different_content_hash_adds_point():
+    # content_hash が変われば記録する。表示用項目だけ変えても content_hash は変わるので
+    # 「台帳は記録・スナップショットはスキップ」という不整合が起きない。
     db = _db()
     save_snapshot("u1", will_text="w", state={}, supporting={}, necessity={},
-                  src_input_hash="H1", db_path=db)
-    assert save_snapshot("u1", will_text="w2", state={}, supporting={}, necessity={},
-                         src_input_hash="H2", db_path=db)
+                  content_hash="C1", src_input_hash="H1", db_path=db)
+    # src_input_hash が同一でも content_hash が違えば新規点（表示用項目のみ変更のケース）
+    assert save_snapshot("u1", will_text="w", state={}, supporting={"背景": "b2"},
+                         necessity={}, content_hash="C2", src_input_hash="H1", db_path=db)
     assert len(get_snapshots("u1", db_path=db)) == 2
 
 
 def test_set_hidden_owner_only():
     db = _db()
     sid = save_snapshot("u1", will_text="w", state={}, supporting={}, necessity={},
-                        src_input_hash="H", db_path=db)
+                        content_hash="C", src_input_hash="H", db_path=db)
     # 他人は変更できない
     assert set_snapshot_hidden(sid, "someone_else", True, db_path=db) is False
     assert get_snapshots("u1", db_path=db)[0]["vulnerable_hidden"] is False

@@ -128,25 +128,37 @@ def test_debug_bypass_allows_without_session():
         os.environ.pop("POX_DEBUG", None)
 
 
-# ── 登録はログイン後（選択肢1）。プロフィール id はセッションに束縛される ──────────
+# ── 旧 v3 登録の入口 /seekers は閉鎖済み（指示書18 作業C）──────────────────────
+def test_v3_seekers_entry_is_closed():
+    os.environ.pop("POX_DEBUG", None)
+    c, _ = _client()
+    # 未ログイン・ログイン済みのいずれでも 410（新規登録の入口としては使えない）
+    r = c.post("/seekers", json={"意志": "作りたい", "現状": {"持っているもの": "時間"}})
+    assert r.status_code == 410
+    _login(c, "u_alice")
+    r2 = c.post("/seekers", json={"意志": "作りたい", "現状": {"持っているもの": "時間"}})
+    assert r2.status_code == 410
+
+
+# ── 登録はログイン後（選択肢1）。入口は下書き /v4/drafts。id はセッションに束縛される ──
 def test_registration_requires_login():
     os.environ.pop("POX_DEBUG", None)
     c, _ = _client()
-    # 未ログインでは登録は 401（登録はログイン後・選択肢1）
-    r = c.post("/seekers", json={"意志": "何かを作りたい", "現状": {"持っているもの": "時間"}})
+    # 未ログインでは下書き作成は 401（登録はログイン後・選択肢1）
+    r = c.post("/v4/drafts", json={"will_text": "何かを作りたい", "necessity_text": "x"})
     assert r.status_code == 401
 
 
 def test_registration_binds_profile_to_session():
     os.environ.pop("POX_DEBUG", None)
     c, _ = _client()
-    with c.session_transaction() as sess:
-        sess["subject_id"] = "u_alice"
-    # user_id を送らなくても、プロフィール id はセッションの subject_id になる
-    r = c.post("/seekers", json={"意志": "作りたい", "現状": {"持っているもの": "時間"}})
-    assert r.status_code == 201 and r.get_json()["id"] == "u_alice"
-    # 他人の id を指定して上書きしようとしても 403（なりすまし阻止）
-    r2 = c.post("/seekers", json={"user_id": "u_victim", "意志": "x", "現状": {}})
+    _login(c, "u_alice")
+    # user_id を送らなくても、下書きはセッションの subject_id に束縛される
+    r = c.post("/v4/drafts", json={"will_text": "作りたい", "necessity_text": "x"})
+    assert r.status_code == 201 and r.get_json()["subject_id"] == "u_alice"
+    # 他人の id を指定しても 403（なりすまし阻止）
+    r2 = c.post("/v4/drafts", json={"user_id": "u_victim", "will_text": "x",
+                                    "necessity_text": "y"})
     assert r2.status_code == 403
 
 

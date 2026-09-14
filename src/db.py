@@ -11,9 +11,12 @@ profiles テーブル: save_profile で両カラムを同一トランザクシ�
 SQL : %s プレースホルダ統一（SQLite では db_connect が内部で ? に変換）。
 """
 import json
+import logging
 from datetime import datetime, timezone
 from db_connect import get_connection, is_postgres
 from profile_view import build_profile_view, apply_overrides
+
+_log = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -147,16 +150,73 @@ def save_profile(user_id: str, seeker: dict, db_path: str = "pox.db") -> None:
 
 # ── 読み出し（用途別）────────────────────────────────────────
 
+def _seeker_from_v4_row(row) -> dict:
+    """profiles_v4 の1行（will_text, state_*, supporting_raw）を build_profile_view が
+    期待する seeker 形へ組み直す（指示書18 作業B）。表示用6項目・求めている・系列素材・
+    attention候補はすべて supporting_raw の中にある。raw/evidence/数値は含めない。"""
+    def _load(x):
+        if isinstance(x, str):
+            try:
+                return json.loads(x)
+            except Exception:  # noqa: BLE001
+                return {}
+        return x or {}
+    (will_text, s_have, s_can, s_bound, s_unsorted, supporting_raw) = row
+    return {
+        "_meta": {"schema_version": "v4"},
+        "意志": will_text or "",
+        "現状": {
+            "持っているもの": s_have or "",
+            "できること_型": s_can or "",
+            "縛られているもの": s_bound or "",
+            "未分類": s_unsorted or "",
+        },
+        "supporting_material": _load(supporting_raw),
+    }
+
+
+def _profile_view_from_v4(con, user_id: str):
+    """profiles_v4 を正として profile_view（base・overrides 適用前）を組む。
+    行が無ければ None（呼び出し側が v3 にフォールバック）。Postgres 専用テーブル。"""
+    if not is_postgres():
+        return None
+    row = con.execute(
+        "SELECT will_text, state_have, state_can_type, state_bound, state_unsorted, "
+        "supporting_raw FROM profiles_v4 WHERE id = %s", (user_id,)
+    ).fetchone()
+    if not row:
+        return None
+    return build_profile_view(_seeker_from_v4_row(row))
+
+
+def _overrides_for(con, user_id: str) -> dict:
+    """表示オーバーレイ（view_overrides）は profiles テーブルに残す（指示書11 の設計を維持）。
+    v4 由来の base にも同じ overrides を重ねる。行が無ければ空。"""
+    row = con.execute(
+        "SELECT view_overrides FROM profiles WHERE user_id = %s", (user_id,)
+    ).fetchone()
+    return json.loads(row[0] or "{}") if row else {}
+
+
 def get_profile_view(user_id: str, db_path: str = "pox.db") -> dict | None:
     """
     公開表示用 profile_view を返す（view_overrides を重ねた結果）。seeker は絶対に返さない。
-    profiles に無い場合は seekers から自動生成（後方互換）。
+
+    指示書18 作業B: **profiles_v4 を表示の正**とする。台帳・スナップショットのハッシュは
+    profiles_v4 の内容から計算されるため、画面もそこを読むことで「記録した内容と表示した内容の
+    一致」を担保する。profiles_v4 に行が無い場合のみ、旧 profiles/seekers（v3 由来）へフォール
+    バックする（移行途中のユーザー救済・ログで v3 由来と分かるようにする）。
     """
     with _connect(db_path) as con:
+        v4 = _profile_view_from_v4(con, user_id)
+        if v4 is not None:
+            return apply_overrides(v4, _overrides_for(con, user_id))
+        # ── フォールバック（v3 由来）─────────────────────────────
         row = con.execute(
             "SELECT profile_view, view_overrides FROM profiles WHERE user_id = %s", (user_id,)
         ).fetchone()
         if row:
+            _log.info("[profile-view] v3 fallback (profiles table): %s", user_id)
             pv = json.loads(row[0])
             overrides = json.loads(row[1] or "{}")
             return apply_overrides(pv, overrides)
@@ -164,6 +224,7 @@ def get_profile_view(user_id: str, db_path: str = "pox.db") -> dict | None:
             "SELECT seeker_json FROM seekers WHERE id = %s", (user_id,)
         ).fetchone()
         if seeker_row:
+            _log.info("[profile-view] v3 fallback (seekers table): %s", user_id)
             return build_profile_view(json.loads(seeker_row[0]))
     return None
 
@@ -174,6 +235,10 @@ def get_profile_edit_data(user_id: str, db_path: str = "pox.db") -> dict | None:
     （所有者の編集用。seeker 原文は返さない。）
     """
     with _connect(db_path) as con:
+        # 表示の正は profiles_v4（指示書18 作業B）。見せ方編集のプレビューも同じ base を使う。
+        v4 = _profile_view_from_v4(con, user_id)
+        if v4 is not None:
+            return {"base": v4, "overrides": _overrides_for(con, user_id)}
         row = con.execute(
             "SELECT profile_view, view_overrides FROM profiles WHERE user_id = %s", (user_id,)
         ).fetchone()

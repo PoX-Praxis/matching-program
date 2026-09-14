@@ -311,63 +311,21 @@ def ledger_anchor():
 
 
 @app.post("/seekers")
-@login_required
 def post_seeker():
+    """【閉鎖】旧 v3 登録の入口（指示書18 作業C）。
+
+    表示の正を profiles_v4 に切り替えたため（作業B）、profiles/seekers にだけ書く
+    この経路を新規登録の入口としては閉じた。ここから登録すると v4 と食い違い、
+    「記録した内容と表示した内容の不一致」を再発させるため。
+
+    登録は ①→ `/v4/drafts`（下書き）→ `/v4/drafts/<id>/confirm`（確定）を使う。
+    dual-write 関数 `_dual_write_v4` は**削除せず保持**する（既存データの整合性と
+    将来の移行判断のため）。
     """
-    登録の受け口（修正指示書 v3.1 §3・§4）。
-      raw_text があれば strip_code_fence → parse → normalize_to_seeker を通す。
-      なければ body 自体を素JSONとみなして normalize する（後方互換）。
-
-    登録はログイン後に行う（選択肢1）。プロフィール id は **セッションの subject_id に束縛**する。
-    これにより「登録した id ≠ ログイン後の id」で登録が宙に浮く問題を解消し、
-    同時に他人の id を指定して他人のプロフィールを上書きする経路も塞ぐ。
-    （POX_DEBUG バイパス時のみ、セッションが無く body の user_id / 新規採番にフォールバック。）
-    """
-    body = request.get_json(force=True, silent=True)
-    if not isinstance(body, dict):
-        return jsonify({"error": "JSON が読めません"}), 400
-
-    raw_text = body.get("raw_text")
-    # id はセッション本人に束縛（body の user_id は一致必須・不一致は 403）。§選択肢1。
-    user_id  = require_self(body.get("user_id"))
-
-    if raw_text is not None:
-        try:
-            raw = parse_registration_text(raw_text)
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-    else:
-        # 後方互換: すでにパース済みの素JSONが直接来た場合
-        raw = {k: v for k, v in body.items() if k != "user_id"}
-
-    seeker = normalize_to_seeker(raw)
-
-    if not user_id:
-        user_id = f"u_{uuid.uuid4().hex[:8]}"   # UUID由来・連番ではない（不変条件4・DEBUG時のみ到達）
-
-    save_profile(user_id, seeker, db_path=DB)   # seeker + profile_view を同時保存（UPSERT）
-
-    # プライバシーポリシー同意の証跡（指示書13・既存 consent とは別物・best-effort）。
-    if body.get("privacy_policy_agreed"):
-        try:
-            record_policy_consent(user_id, str(body.get("privacy_policy_version") or ""), db_path=DB)
-        except Exception as e:  # noqa: BLE001
-            app.logger.warning(f"[policy-consent] 記録skip（登録は成功）: {e}")
-
-    # dual-write: v4 形の貼り付けJSONなら Nomic 取り込みも非同期起動（非破壊・ベストエフォート）。
-    # v4 側で何が起きても v3 登録は成功させる（登録を止めない）。
-    v4_status = None
-    try:
-        if _dual_write_v4(user_id, raw):
-            v4_status = "preparing"
-    except Exception as e:  # noqa: BLE001
-        app.logger.warning(f"[dual-write] v4 取り込みskip（v3は成功）: {e}")
-
-    out = {"id": user_id, "handle": seeker.get("id")}
-    if v4_status:
-        out["v4_generation_status"] = v4_status
-        out["v4_status_url"] = f"/v4/seekers/{user_id}/status"
-    return jsonify(out), 201
+    return jsonify({
+        "error": "この登録経路は終了しました。登録ページから①→下書き→確定でご登録ください。",
+        "moved_to": "/register",
+    }), 410
 
 
 @app.get("/seekers")
@@ -636,7 +594,11 @@ def _save_snapshot_best_effort(profile_id, profile_input, necessity):
     """再構造化の時点スナップショットを保存（失敗しても登録/ベクトル化には影響させない）。"""
     try:
         from snapshots import save_snapshot
+        from subject_ledger import profile_content_hash
         nec = necessity or {}
+        # churn 判定は content_hash に統一（指示書18 §2）。台帳 publish_profile_structured と
+        # 同一の profile_content_hash を同じ profile_input から算出 → 計算範囲が完全に一致する。
+        content_hash = profile_content_hash(profile_input)
         save_snapshot(
             profile_id,
             will_text=profile_input.get("will_text", ""),
@@ -644,7 +606,8 @@ def _save_snapshot_best_effort(profile_id, profile_input, necessity):
                    ("state_have", "state_can_type", "state_bound", "state_unsorted")},
             supporting=profile_input.get("supporting_raw") or {},
             necessity=nec,
-            src_input_hash=nec.get("src_input_hash"),
+            content_hash=content_hash,
+            src_input_hash=nec.get("src_input_hash"),   # 保持のみ（判定には使わない）
             schema_version=SNAPSHOT_SCHEMA_VERSION,
             db_path=DB,
         )
@@ -1443,41 +1406,56 @@ def api_profile_edit(user_id):
     return jsonify(data)
 
 
-def _revectorize_after_edit(profile_id):
-    """
-    「中身を編集」で意志/現状が変わったとき、登録と同じ経路で v4 ベクトルを作り直す。
-    必要像は各自AIの所有物のため **サーバー生成しない**（is_fallback=False）。
-    既存の（古い）必要像テキストで再ベクトル化し、status=ready にする（needs_regeneration は
-    廃止・指示書28 §6-2）。必要像を作り直したいときは①をやり直して下書き→確定する。
-    derived_necessity は一切触らない。
-    v4 未登録・必要像未保存・非Postgres なら何もしない（v3 編集は既に保存済み）。
+_CORE_STATE_KEYS = ("state_have", "state_can_type", "state_bound", "state_unsorted")
+
+
+def _edit_core_v4(profile_id, fields):
+    """「中身を編集」を **profiles_v4 に直接反映**する（指示書18 作業B/C）。
+
+    表示の正が profiles_v4 のため、編集を必ず表示へ通す。v3 seeker の有無に依存せず、
+    リクエストで来た項目（fields: 意志 / state_*）を既存 v4 行へ上書きする。v4 未登録の
+    ユーザー（＝表示が v3 フォールバックの人）は対象外で False を返す。
+
+    既存必要像があるときだけ登録と同じ経路で v4 ベクトルを作り直す（必要像は各自AIの
+    所有物のため **サーバー生成しない**・is_fallback=False。古い必要像テキストで再ベクトル化し
+    status=ready・needs_regeneration は廃止・指示書28 §6-2）。derived_necessity は触らない。
+
+    戻り値: profiles_v4 を更新したか（v4 未登録・非Postgres・変化なしは False）。
     """
     if not is_postgres():
-        return
+        return False
     from db_v4 import receive_profile_v4, GEN_READY, MODEL_TAG
     store = _v4_store()
     existing = store.get_profile(profile_id)
     if existing is None:
-        return  # v4 に未登録 → 再ベクトル化対象なし
-    nec = store.get_necessity(profile_id, MODEL_TAG)
-    if not nec or not (nec.get("necessity_text") or "").strip():
-        return  # 既存必要像が無い → ② 生成はしない方針のため再ベクトル化しない
+        return False  # v4 未登録 → 表示は v3 フォールバック。対象なし
 
-    seeker = get_seeker(profile_id, db_path=DB) or {}
-    jotai = seeker.get("現状") if isinstance(seeker.get("現状"), dict) else {}
+    def _pick(key_v4, key_field):
+        return str(fields[key_field]) if key_field in fields else (existing.get(key_v4) or "")
+
     profile_input = {
-        "will_text":      str(seeker.get("意志") or ""),
-        "state_have":     str(jotai.get("持っているもの") or ""),
-        "state_can_type": str(jotai.get("できること_型") or ""),
-        "state_bound":    str(jotai.get("縛られているもの") or ""),
-        "state_unsorted": str(jotai.get("未分類") or ""),
+        "will_text":      _pick("will_text", "意志"),
+        "state_have":     _pick("state_have", "state_have"),
+        "state_can_type": _pick("state_can_type", "state_can_type"),
+        "state_bound":    _pick("state_bound", "state_bound"),
+        "state_unsorted": _pick("state_unsorted", "state_unsorted"),
         "supporting_raw": existing.get("supporting_raw") or {},  # 既存 v4 素材を保持
     }
-    # profiles_v4 の行を更新（will/state・necessity=None で derived_necessity 不変）。
+    # 実変化が無ければ何もしない（churn 防止・不用意な状態遷移を避ける）。
+    unchanged = (profile_input["will_text"] == (existing.get("will_text") or "")
+                 and all(profile_input[k] == (existing.get(k) or "") for k in _CORE_STATE_KEYS))
+    if unchanged:
+        return False
+
+    nec = store.get_necessity(profile_id, MODEL_TAG)
+    will_vectorize = bool(nec and (nec.get("necessity_text") or "").strip())
+    keep_status = (store.get_profile_status(profile_id) or {}).get("generation_status") or GEN_READY
+    # 表示を必ず更新（necessity=None で derived_necessity 不変）。再ベクトル化時のみ READY。
     receive_profile_v4(store, profile_id, profile_input, necessity=None,
-                       generation_status=GEN_READY)
-    # ベクトルのみ再計算（②生成なし）。成功で ready（final_status 未指定＝ready）。
-    _spawn_v4_job(profile_id, profile_input, nec, is_fallback=False)
+                       generation_status=GEN_READY if will_vectorize else keep_status)
+    if will_vectorize:
+        _spawn_v4_job(profile_id, profile_input, nec, is_fallback=False)
+    return True
 
 
 @app.post("/api/profile/<user_id>/core")
@@ -1494,17 +1472,18 @@ def api_profile_core(user_id):
     for k in ("求めている", "能力", "フェーズ"):
         if k in body:
             fields[k] = body[k]
+    # v3（profiles/seekers）を更新（行があれば）。v4 のみのユーザーは False になる。
     out = {}
-    if not update_seeker_core(user_id, fields, db_path=DB, out=out):
+    v3_ok = update_seeker_core(user_id, fields, db_path=DB, out=out)
+    # v4（profiles_v4・表示の正）へ直接反映。v4 未登録なら False。
+    v4_changed = False
+    try:
+        v4_changed = _edit_core_v4(user_id, fields)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[edit-core-v4] skip（v3編集は保存済み）: {e}")
+    if not v3_ok and not v4_changed:
         return jsonify({"error": "プロフィールが見つかりません"}), 404
-
-    # 意志/現状が変わったら v4 を再ベクトル化＋必要像を needs_regeneration に（ベストエフォート）。
-    changed = bool(out.get("changed_core"))
-    if changed:
-        try:
-            _revectorize_after_edit(user_id)
-        except Exception as e:  # noqa: BLE001
-            app.logger.warning(f"[edit-revectorize] skip（v3編集は保存済み）: {e}")
+    changed = bool(out.get("changed_core")) or v4_changed
     return jsonify({"ok": True, "changed_core": changed})
 
 

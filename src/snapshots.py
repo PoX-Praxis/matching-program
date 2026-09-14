@@ -27,10 +27,14 @@ _DDL = """CREATE TABLE IF NOT EXISTS user_snapshots (
     supporting_json   TEXT,
     necessity_json    TEXT,
     src_input_hash    TEXT,
+    content_hash      TEXT,
     vulnerable_hidden INTEGER NOT NULL DEFAULT 0
 )"""
 
-_ADDCOLS = [("schema_version", "TEXT"), ("vulnerable_hidden", "INTEGER NOT NULL DEFAULT 0")]
+# content_hash（指示書18 §2）: churn 判定は content_hash に統一。src_input_hash は
+# 必要像再生成の内部値として保持するのみ（判定には使わない）。
+_ADDCOLS = [("schema_version", "TEXT"), ("content_hash", "TEXT"),
+            ("vulnerable_hidden", "INTEGER NOT NULL DEFAULT 0")]
 
 
 def _now() -> str:
@@ -50,29 +54,36 @@ def _connect(db_path: str = "pox.db"):
 
 
 def save_snapshot(user_id, *, will_text, state, supporting, necessity,
-                  src_input_hash, schema_version="", db_path="pox.db"):
+                  content_hash, src_input_hash=None, schema_version="", db_path="pox.db"):
     """
-    再構造化1回につき1点を保存（不変）。直前と src_input_hash が同一なら保存しない（churn 防止）。
+    再構造化1回につき1点を保存（不変）。**直前と content_hash が同一なら保存しない**（churn 防止）。
+
+    指示書18 §2: churn 判定を content_hash に統一した。判定に使うハッシュは
+    subject_ledger.profile_content_hash（表示される宣言のすべて＝意志・現状4・表示用6項目）で、
+    台帳 publish_profile_structured と**同一の計算範囲**。これにより「台帳は記録したが
+    スナップショットはスキップ」という不整合（台帳が存在しないスナップショットを指す）を防ぐ。
+
+    src_input_hash は必要像の再生成判断に使う内部値なので**保持する**（判定には使わない）。
     戻り値: 保存した snapshot_id / 重複スキップなら None。
     """
     with _connect(db_path) as con:
         last = con.execute(
-            "SELECT src_input_hash FROM user_snapshots WHERE user_id=%s "
+            "SELECT content_hash FROM user_snapshots WHERE user_id=%s "
             "ORDER BY created_at DESC LIMIT 1", (user_id,)
         ).fetchone()
-        if last and src_input_hash and last[0] == src_input_hash:
+        if last and content_hash and last[0] == content_hash:
             return None
         sid = "s_" + uuid.uuid4().hex[:12]
         con.execute(
             "INSERT INTO user_snapshots "
             "(snapshot_id, user_id, created_at, schema_version, will_text, state_json, "
-            " supporting_json, necessity_json, src_input_hash, vulnerable_hidden) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            " supporting_json, necessity_json, src_input_hash, content_hash, vulnerable_hidden) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (sid, user_id, _now(), schema_version or "", will_text or "",
              json.dumps(state or {}, ensure_ascii=False),
              json.dumps(supporting or {}, ensure_ascii=False),
              json.dumps(necessity or {}, ensure_ascii=False),
-             src_input_hash or "", 0),
+             src_input_hash or "", content_hash or "", 0),
         )
     return sid
 
@@ -92,7 +103,7 @@ def get_snapshots(user_id, db_path="pox.db"):
     with _connect(db_path) as con:
         rows = con.execute(
             "SELECT snapshot_id, created_at, schema_version, will_text, state_json, "
-            "supporting_json, necessity_json, src_input_hash, vulnerable_hidden "
+            "supporting_json, necessity_json, src_input_hash, vulnerable_hidden, content_hash "
             "FROM user_snapshots WHERE user_id=%s ORDER BY created_at ASC",
             (user_id,)
         ).fetchall()
@@ -106,6 +117,7 @@ def get_snapshots(user_id, db_path="pox.db"):
             "necessity": json.loads(r[6] or "{}"),
             "src_input_hash": r[7],
             "vulnerable_hidden": bool(r[8]),
+            "content_hash": r[9],
         })
     return out
 

@@ -187,8 +187,12 @@ def _safe_next(raw):
 
 @app.get("/login")
 def login_page():
-    # 401 で送られてきた元画面へ、ログイン後に戻れるように next を控える（指示書25 §4-2）。
     nxt = _safe_next(request.args.get("next"))
+    # 既にログイン済みなら、ログインフォームを見せず next かマイページへ（同一性はセッション）。
+    sid = current_subject_id()
+    if sid:
+        return redirect(nxt or f"/mypage?id={sid}")
+    # 401 で送られてきた元画面へ、ログイン後に戻れるように next を控える（指示書25 §4-2）。
     if nxt:
         session["login_next"] = nxt
     else:

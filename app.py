@@ -1437,16 +1437,29 @@ def _edit_core_v4(profile_id, fields):
     def _pick(key_v4, key_field):
         return str(fields[key_field]) if key_field in fields else (existing.get(key_v4) or "")
 
+    # 意志の編集を表示にも通す（指示書18 追補）。プロフィール表示の主要行
+    # 「いま目指していること」は will_where = supporting_raw['意志_どこへ'] を優先し、
+    # 無いときだけ will_text にフォールバックする。①由来の意志_どこへ があると、意志欄
+    # （will_text）だけ編集しても表示が変わらない。そこで意志を編集したときは、照合用の
+    # will_text と、表示用の意志_どこへ の**両方**を編集値に揃える（なぜ/経験の段は①の
+    # ままにして触らない）。
+    supporting = dict(existing.get("supporting_raw") or {})
+    if "意志" in fields and str(fields["意志"]) != (existing.get("will_text") or ""):
+        # 意志を実際に変更したときだけ、表示の主要行（意志_どこへ）も追従させる。
+        # 変更が無い再保存では①由来の意志_どこへ を上書きしない（churn 防止）。
+        supporting["意志_どこへ"] = str(fields["意志"])
+
     profile_input = {
         "will_text":      _pick("will_text", "意志"),
         "state_have":     _pick("state_have", "state_have"),
         "state_can_type": _pick("state_can_type", "state_can_type"),
         "state_bound":    _pick("state_bound", "state_bound"),
         "state_unsorted": _pick("state_unsorted", "state_unsorted"),
-        "supporting_raw": existing.get("supporting_raw") or {},  # 既存 v4 素材を保持
+        "supporting_raw": supporting,   # 既存 v4 素材を保持しつつ意志_どこへ のみ追従
     }
     # 実変化が無ければ何もしない（churn 防止・不用意な状態遷移を避ける）。
     unchanged = (profile_input["will_text"] == (existing.get("will_text") or "")
+                 and supporting == (existing.get("supporting_raw") or {})
                  and all(profile_input[k] == (existing.get(k) or "") for k in _CORE_STATE_KEYS))
     if unchanged:
         return False

@@ -65,7 +65,11 @@ def test_revectorize_updates_vectors_and_sets_ready():
     _run(store, "BRAND NEW will content", {
         "持っているもの": "h", "できること_型": "", "縛られているもの": "", "未分類": ""})
 
-    assert store.get_profile("u1")["will_text"] == "BRAND NEW will content"          # profiles_v4 更新
+    prof = store.get_profile("u1")
+    assert prof["will_text"] == "BRAND NEW will content"          # profiles_v4 更新（照合用）
+    # 表示の主要行「いま目指していること」は意志_どこへ を優先するため、意志編集を
+    # 意志_どこへ にも通す（指示書18 追補）。build_profile_view で will_where に反映される。
+    assert prof["supporting_raw"]["意志_どこへ"] == "BRAND NEW will content"
     new_vec = store.get_bundle("u1", MODEL_TAG)["vectors"]["will_symmetric"]
     assert list(new_vec) != old_vec                                                    # ベクトル再計算
     assert store.get_profile_status("u1")["generation_status"] == "ready"             # 廃止: needs_regeneration ではなく ready

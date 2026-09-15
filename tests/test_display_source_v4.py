@@ -18,6 +18,7 @@ import db as dbmod
 from profile_view import build_profile_view
 from subject_ledger import profile_content_hash
 import app as appmod
+from db_v4 import MemoryStore, receive_profile_v4, GEN_READY
 
 
 def _db():
@@ -115,6 +116,35 @@ def test_get_profile_view_v3_fallback_on_sqlite():
     pv = dbmod.get_profile_view("u_a", db_path=db)
     assert pv is not None and pv["pursuing"] == "作りたい"
     assert dbmod.get_profile_view("u_missing", db_path=db) is None
+
+
+# ── 意志の編集が表示（いま目指していること）に反映される（指示書18 追補）──────────
+def test_will_edit_surfaces_in_display():
+    """①由来の 意志_どこへ があると will_text だけ編集しても表示が変わらない不具合の是正。
+    _edit_core_v4 が意志編集を will_text と 意志_どこへ の両方へ通す → build_profile_view の
+    will_where（＝画面の「いま目指していること」）が編集後の値になる。"""
+    store = MemoryStore()
+    pin = {"will_text": "古い意志", "state_have": "h", "state_can_type": "",
+           "state_bound": "", "state_unsorted": "",
+           "supporting_raw": {"意志_どこへ": "①が作った意志_どこへ", "意志_なぜ": "なぜ",
+                              "経験": "経験", "求めている": "x"}}
+    receive_profile_v4(store, "u1", pin, None, generation_status=GEN_READY)
+
+    orig = (appmod.is_postgres, appmod._v4_store, appmod._spawn_v4_job)
+    appmod.is_postgres = lambda: True
+    appmod._v4_store = lambda: store
+    appmod._spawn_v4_job = lambda *a, **k: None
+    try:
+        assert appmod._edit_core_v4("u1", {"意志": "新しい意志"}) is True
+    finally:
+        appmod.is_postgres, appmod._v4_store, appmod._spawn_v4_job = orig
+
+    prof = store.get_profile("u1")
+    pv = build_profile_view(dbmod._seeker_from_v4_row((
+        prof["will_text"], prof["state_have"], prof["state_can_type"],
+        prof["state_bound"], prof["state_unsorted"], prof["supporting_raw"])))
+    assert pv["will_where"] == "新しい意志"          # 画面「いま目指していること」に反映
+    assert pv["will_why"] == "なぜ" and pv["will_origin"] == "経験"   # なぜ/経験 は①のまま
 
 
 # ── 作業C: /seekers は閉鎖（410）──────────────────────────────────────────────

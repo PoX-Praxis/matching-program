@@ -128,6 +128,21 @@ def test_debug_bypass_allows_without_session():
         os.environ.pop("POX_DEBUG", None)
 
 
+# ── /login はログイン済みならフォームを見せず遷移（ログイン済みで /login が出ない）──
+def test_login_page_redirects_when_logged_in():
+    os.environ.pop("POX_DEBUG", None)
+    c, _ = _client()
+    # 未ログインはフォーム（200）
+    assert c.get("/login").status_code == 200
+    # ログイン済みは自分のマイページへ（フォームを見せない）
+    _login(c, "u_alice")
+    r = c.get("/login")
+    assert r.status_code == 302 and "/mypage?id=u_alice" in r.headers["Location"]
+    # next 指定があればそちらへ戻す
+    r2 = c.get("/login?next=%2Finbox")
+    assert r2.status_code == 302 and "/inbox" in r2.headers["Location"]
+
+
 # ── 旧 v3 登録の入口 /seekers は閉鎖済み（指示書18 作業C）──────────────────────
 def test_v3_seekers_entry_is_closed():
     os.environ.pop("POX_DEBUG", None)

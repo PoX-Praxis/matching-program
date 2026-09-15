@@ -261,7 +261,9 @@
 
 <script>
 const params = new URLSearchParams(location.search);
-const myId = params.get("id");
+// 同一性の根拠はセッション（サーバーが /api/me で返す）。URL の ?id= は初期表示のヒントに
+// すぎず、認可には使わない。init() で必ずセッションの id に正規化する（指示書25 §2-2）。
+let myId = params.get("id");
 
 // 認証ゲート（指示書22/25）。401→/login（元画面へ）・403→権限表示。共通ハンドラに委譲。
 function handleAuth(res) {
@@ -293,20 +295,23 @@ async function saveDisplayName(btn) {
   if (btn) btn.disabled = false;
 }
 
-if (!myId) {
-  document.getElementById("loading").innerHTML =
-    '<span style="color:#c00">URL に ?id= が指定されていません。<a href="/">トップ</a>から「マイページ」を開いてください。</span>';
-}
-
 async function init() {
-  if (!myId) return;
+  // 同一性はセッション。ログインしていなければ /login へ、していれば URL の id に関わらず
+  // 自分の id を使う（古い/他人の ?id= でも自分のマイページを開く・不用意な /login 送りを防ぐ）。
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
+  if (myId !== sid) {
+    myId = sid;
+    // URL を自分の id に正規化（ブックマークや共有リンクのズレを吸収）。履歴は汚さない。
+    try { history.replaceState(null, "", `/mypage?id=${encodeURIComponent(sid)}`); } catch (_) {}
+  }
 
   const [profileRes, ledgerRes] = await Promise.all([
     fetch(`/api/profile/${encodeURIComponent(myId)}`),
     fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`),   // 当事者分のみ（全台帳公開の廃止）
   ]);
 
-  if (handleAuth(ledgerRes)) return;   // 未ログインで本人ページを開いた → /login へ
+  if (handleAuth(ledgerRes)) return;   // 万一の 401 は /login へ（セッション失効時）
 
   if (!profileRes.ok) {
     document.getElementById("loading").innerHTML =

@@ -296,48 +296,57 @@ async function saveDisplayName(btn) {
 }
 
 async function init() {
-  // 同一性はセッション。ログインしていなければ /login へ、していれば URL の id に関わらず
-  // 自分の id を使う（古い/他人の ?id= でも自分のマイページを開く・不用意な /login 送りを防ぐ）。
-  const sid = await PoX.me();
-  if (!sid) { PoX.loginRedirect(); return; }
-  if (myId !== sid) {
-    myId = sid;
-    // URL を自分の id に正規化（ブックマークや共有リンクのズレを吸収）。履歴は汚さない。
-    try { history.replaceState(null, "", `/mypage?id=${encodeURIComponent(sid)}`); } catch (_) {}
-  }
+  try {
+    // 同一性はセッション。ログインしていなければ /login へ、していれば URL の id に関わらず
+    // 自分の id を使う（古い/他人の ?id= でも自分のマイページを開く・不用意な /login 送りを防ぐ）。
+    const sid = await PoX.me();
+    if (!sid) { PoX.loginRedirect(); return; }
+    if (myId !== sid) {
+      myId = sid;
+      // URL を自分の id に正規化（ブックマークや共有リンクのズレを吸収）。履歴は汚さない。
+      try { history.replaceState(null, "", `/mypage?id=${encodeURIComponent(sid)}`); } catch (_) {}
+    }
 
-  const [profileRes, ledgerRes] = await Promise.all([
-    fetch(`/api/profile/${encodeURIComponent(myId)}`),
-    fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`),   // 当事者分のみ（全台帳公開の廃止）
-  ]);
+    // プロフィール本体は必須。取得できなければメッセージを出して終える（読み込み中で止めない）。
+    const profileRes = await fetch(`/api/profile/${encodeURIComponent(myId)}`);
+    if (profileRes.status === 401) { PoX.loginRedirect(); return; }
+    if (!profileRes.ok) {
+      document.getElementById("loading").innerHTML =
+        `<span style="color:#c00">プロフィール "${escHtml(myId)}" が見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
+      return;
+    }
+    const pv = await profileRes.json();
 
-  if (handleAuth(ledgerRes)) return;   // 万一の 401 は /login へ（セッション失効時）
+    // 接続（vessels）は本人限定の付随情報。失敗しても本体表示は止めない（読み込み中ハングの防止）。
+    let vessels = [];
+    try {
+      const ledgerRes = await fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`);
+      if (ledgerRes.status === 401) { PoX.loginRedirect(); return; }
+      if (ledgerRes.ok) vessels = await ledgerRes.json();
+    } catch (_) { vessels = []; }
 
-  if (!profileRes.ok) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("main").style.display    = "block";
+
+    // 表示名（指示書30）。未設定なら subject_id を表示。タイトルは表示名、ハンドルは subject_id 併記。
+    const shownId = pv.subject_id || myId;
+    const dn  = (pv.display_name && pv.display_name !== shownId) ? pv.display_name : "";
+    document.getElementById("mpTitle").textContent  = dn || shownId;
+    document.getElementById("mpHandle").textContent = `${shownId} ・ マイページ`;
+    document.getElementById("dnInput").value = dn;
+    document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
+
+    renderProfileView(pv);
+    try { renderConnections(vessels, myId); } catch (_) {}
+    loadV4Status(myId);        // 照合の準備状態（所有者のみ）
+    loadOwnerNecessity(myId);  // 自分の必要像（本人のみ・数値は出さない）
+    loadTimeline(myId, myId);  // 軌跡（本人ビュー）
+  } catch (e) {
+    // 予期せぬ失敗でも「読み込み中」で止めない。原因を出して再読込を促す。
     document.getElementById("loading").innerHTML =
-      `<span style="color:#c00">プロフィール "${escHtml(myId)}" が見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
-    return;
+      `<span style="color:#c00">読み込みに失敗しました（${escHtml(String(e && e.message || e))}）。`
+      + `<a href="#" onclick="location.reload();return false">再読み込み</a></span>`;
   }
-
-  const pv      = await profileRes.json();
-  const vessels = await ledgerRes.json();
-
-  document.getElementById("loading").style.display = "none";
-  document.getElementById("main").style.display    = "block";
-
-  // 表示名（指示書30）。未設定なら subject_id を表示。タイトルは表示名、ハンドルは subject_id 併記。
-  const sid = pv.subject_id || myId;
-  const dn  = (pv.display_name && pv.display_name !== sid) ? pv.display_name : "";
-  document.getElementById("mpTitle").textContent  = dn || sid;
-  document.getElementById("mpHandle").textContent = `${sid} ・ マイページ`;
-  document.getElementById("dnInput").value = dn;
-  document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
-
-  renderProfileView(pv);
-  renderConnections(vessels, myId);
-  loadV4Status(myId);        // 照合の準備状態（所有者のみ）
-  loadOwnerNecessity(myId);  // 自分の必要像（本人のみ・数値は出さない）
-  loadTimeline(myId, myId);  // 軌跡（本人ビュー）
 }
 
 /* ══ プロフィール本体 ══════════════════════════════════════════════ */

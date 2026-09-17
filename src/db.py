@@ -189,6 +189,12 @@ def _profile_view_from_v4(con, user_id: str):
     return build_profile_view(_seeker_from_v4_row(row))
 
 
+def get_view_overrides(user_id: str, db_path: str = "pox.db") -> dict:
+    """profiles.view_overrides を返す（無ければ {}）。スナップショット保存範囲用（指示書35 §4）。"""
+    with _connect(db_path) as con:
+        return _overrides_for(con, user_id)
+
+
 def _overrides_for(con, user_id: str) -> dict:
     """表示オーバーレイ（view_overrides）は profiles テーブルに残す（指示書11 の設計を維持）。
     v4 由来の base にも同じ overrides を重ねる。行が無ければ空。"""

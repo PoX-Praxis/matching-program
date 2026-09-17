@@ -28,12 +28,16 @@ _DDL = """CREATE TABLE IF NOT EXISTS user_snapshots (
     necessity_json    TEXT,
     src_input_hash    TEXT,
     content_hash      TEXT,
+    view_overrides_json TEXT,
     vulnerable_hidden INTEGER NOT NULL DEFAULT 0
 )"""
 
 # content_hash（指示書18 §2）: churn 判定は content_hash に統一。src_input_hash は
 # 必要像再生成の内部値として保持するのみ（判定には使わない）。
+# view_overrides_json（指示書35 §4）: 「本人より」も接続時に相手が見ているものなので保存範囲に
+# 含める。ただし churn 判定（content_hash）には含めない＝本文だけ残す（非対称は §4 で報告）。
 _ADDCOLS = [("schema_version", "TEXT"), ("content_hash", "TEXT"),
+            ("view_overrides_json", "TEXT"),
             ("vulnerable_hidden", "INTEGER NOT NULL DEFAULT 0")]
 
 
@@ -54,7 +58,8 @@ def _connect(db_path: str = "pox.db"):
 
 
 def save_snapshot(user_id, *, will_text, state, supporting, necessity,
-                  content_hash, src_input_hash=None, schema_version="", db_path="pox.db"):
+                  content_hash, src_input_hash=None, view_overrides=None,
+                  schema_version="", db_path="pox.db"):
     """
     再構造化1回につき1点を保存（不変）。**直前と content_hash が同一なら保存しない**（churn 防止）。
 
@@ -77,13 +82,15 @@ def save_snapshot(user_id, *, will_text, state, supporting, necessity,
         con.execute(
             "INSERT INTO user_snapshots "
             "(snapshot_id, user_id, created_at, schema_version, will_text, state_json, "
-            " supporting_json, necessity_json, src_input_hash, content_hash, vulnerable_hidden) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            " supporting_json, necessity_json, src_input_hash, content_hash, "
+            " view_overrides_json, vulnerable_hidden) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (sid, user_id, _now(), schema_version or "", will_text or "",
              json.dumps(state or {}, ensure_ascii=False),
              json.dumps(supporting or {}, ensure_ascii=False),
              json.dumps(necessity or {}, ensure_ascii=False),
-             src_input_hash or "", content_hash or "", 0),
+             src_input_hash or "", content_hash or "",
+             json.dumps(view_overrides or {}, ensure_ascii=False), 0),
         )
     return sid
 
@@ -103,7 +110,8 @@ def get_snapshots(user_id, db_path="pox.db"):
     with _connect(db_path) as con:
         rows = con.execute(
             "SELECT snapshot_id, created_at, schema_version, will_text, state_json, "
-            "supporting_json, necessity_json, src_input_hash, vulnerable_hidden, content_hash "
+            "supporting_json, necessity_json, src_input_hash, vulnerable_hidden, content_hash, "
+            "view_overrides_json "
             "FROM user_snapshots WHERE user_id=%s ORDER BY created_at ASC",
             (user_id,)
         ).fetchall()
@@ -118,6 +126,7 @@ def get_snapshots(user_id, db_path="pox.db"):
             "src_input_hash": r[7],
             "vulnerable_hidden": bool(r[8]),
             "content_hash": r[9],
+            "view_overrides": json.loads(r[10] or "{}"),
         })
     return out
 

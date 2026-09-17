@@ -498,9 +498,13 @@ async function confirmDraft(draftId, btn) {
   if (res.ok) {
     localStorage.setItem("pox_my_id", data.id);
     el.className = "ok";
+    // 内容に変更が無いと台帳・履歴に追加されない（指示書35 §3）。黙って何も起きないのを防ぐ。
+    const changeNote = data.unchanged
+      ? `<br><span style="font-size:12px;color:#a15c00">内容に変更がないため、履歴には追加されませんでした。</span>`
+      : "";
     el.innerHTML = `✅ 確定しました！ ID: <strong>${esc(data.id)}</strong>
       &nbsp; <a href="/mypage?id=${encodeURIComponent(data.id)}">マイページを開く →</a>
-      &nbsp; <a href="/connect">つながる →</a>
+      &nbsp; <a href="/connect">つながる →</a>${changeNote}
       <br><span style="font-size:12px;color:#666">照合用のベクトル化はこの後バックグラウンドで進みます（マイページで状態を確認できます）。</span>`;
   } else {
     el.className = "err";

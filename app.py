@@ -24,7 +24,8 @@ from canon import sha256_hex
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 get_seeker, list_candidate_pool, get_profile_edit_data,
                 save_view_overrides, update_seeker_core, list_public_seeker_index,
-                record_policy_consent, set_profile_visibility, get_profile_visibility)
+                record_policy_consent, set_profile_visibility, get_profile_visibility,
+                get_view_overrides)
 from profile_view import parse_registration_text, normalize_to_seeker
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
@@ -549,16 +550,16 @@ def _run_with_retry(fn, *, tries=3, base_delay=2.0):
 
 
 def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
-                  final_status=None, snapshot=False, publish_ledger=True):
+                  final_status=None, publish_ledger=True):
     """
-    非同期ジョブ（daemon スレッド）: 必要像生成（フォールバック時のみ）＋4ベクトル生成。
+    非同期ジョブ（daemon スレッド）: 4ベクトル生成（＝照合の準備。外部依存＝埋め込みモデル）。
     生成状態は generation_status（preparing→ready / error）で追跡する。
     - user-supplied 経路: necessity は受付時に検証・保存済み → ベクトル化のみ。
-    - fallback 経路: ここで ② サーバー生成（ANTHROPIC_API_KEY 必須）→ 保存 → ベクトル化。
     - final_status を渡すと、ベクトル化成功後に status を ready ではなくその値へ上書きする
       （編集再ベクトル化: 新ベクトル＋旧必要像＝needs_regeneration を維持。指示書08 §3-3）。
-    - snapshot=True（登録経路のみ）: ベクトル化成功後に user_snapshots へ1点保存（指示書12 §4-1）。
-      編集・retry では False＝スナップショットを作らない。
+
+    スナップショット（本文の記録）は**このジョブでは作らない**（指示書35）。確定の事実として
+    _ingest_v4_from_flat が同期・必須で保存済み。ベクトル化の失敗は本文の記録に影響しない。
     """
     from db_v4 import vectorize_profile_v4, GEN_ERROR
     store = _v4_store()
@@ -575,8 +576,6 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
                 store, profile_id, profile_input, necessity["necessity_text"]))
         if final_status is not None:  # 編集経路: ready を上書きして needs_regeneration を維持
             store.set_generation_status(profile_id, final_status, error=None)
-        if snapshot:                  # 登録経路のみ: 時点スナップショットを1点（churn は関数側で防止）
-            _save_snapshot_best_effort(profile_id, profile_input, necessity)
         # 下書き→確定の経路では台帳は confirm が同期で書き済み（生成元ピン留め等の付帯情報つき）。
         # その場合 publish_ledger=False で二重書きを避ける。旧 /v4/seekers 経路は従来どおり best-effort。
         if publish_ledger:
@@ -594,29 +593,39 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
 SNAPSHOT_SCHEMA_VERSION = "v4.3"   # スナップショットに記録するスキーマ版（指示書12改訂 §3-1）
 
 
-def _save_snapshot_best_effort(profile_id, profile_input, necessity):
-    """再構造化の時点スナップショットを保存（失敗しても登録/ベクトル化には影響させない）。"""
-    try:
-        from snapshots import save_snapshot
-        from subject_ledger import profile_content_hash
-        nec = necessity or {}
-        # churn 判定は content_hash に統一（指示書18 §2）。台帳 publish_profile_structured と
-        # 同一の profile_content_hash を同じ profile_input から算出 → 計算範囲が完全に一致する。
-        content_hash = profile_content_hash(profile_input)
-        save_snapshot(
-            profile_id,
-            will_text=profile_input.get("will_text", ""),
-            state={k: profile_input.get(k, "") for k in
-                   ("state_have", "state_can_type", "state_bound", "state_unsorted")},
-            supporting=profile_input.get("supporting_raw") or {},
-            necessity=nec,
-            content_hash=content_hash,
-            src_input_hash=nec.get("src_input_hash"),   # 保持のみ（判定には使わない）
-            schema_version=SNAPSHOT_SCHEMA_VERSION,
-            db_path=DB,
-        )
-    except Exception:  # noqa: BLE001
-        pass
+def _save_snapshot(profile_id, profile_input, necessity):
+    """再構造化の時点スナップショット（本文の記録）を**同期・必須**で保存する（指示書35 §2-2）。
+
+    これは「照合の準備」ではなく「本文の記録」であり、確定の事実の側に属する。台帳の書き込みと
+    同じ扱いにする＝**best-effort にしない**。DB 障害等で失敗したら例外を送出し、確定自体を
+    失敗させる（本文なきハッシュを作らないため）。churn（前回と content_hash 同一）は
+    save_snapshot が None を返すだけで例外ではない（呼び出し側は成功として扱う）。
+
+    保存範囲（指示書35 §4）: 意志・現状4スロット・supporting_raw・必要像・各ハッシュに加えて
+    view_overrides（「本人より」）も含める。ただし churn 判定（content_hash）の範囲は変えない
+    ＝「本人より」だけの変更は新スナップショットを作らない（非対称・§4 で報告）。
+    戻り値: 保存した snapshot_id（churn スキップなら None）。
+    """
+    from snapshots import save_snapshot
+    from subject_ledger import profile_content_hash
+    nec = necessity or {}
+    # churn 判定は content_hash に統一（指示書18 §2）。台帳 publish_profile_structured と
+    # 同一の profile_content_hash を同じ profile_input から算出 → 計算範囲が完全に一致する。
+    content_hash = profile_content_hash(profile_input)
+    view_overrides = get_view_overrides(profile_id, db_path=DB)
+    return save_snapshot(
+        profile_id,
+        will_text=profile_input.get("will_text", ""),
+        state={k: profile_input.get(k, "") for k in
+               ("state_have", "state_can_type", "state_bound", "state_unsorted")},
+        supporting=profile_input.get("supporting_raw") or {},
+        necessity=nec,
+        content_hash=content_hash,
+        src_input_hash=nec.get("src_input_hash"),   # 保持のみ（判定には使わない）
+        view_overrides=view_overrides,
+        schema_version=SNAPSHOT_SCHEMA_VERSION,
+        db_path=DB,
+    )
 
 
 def _publish_profile_structured_best_effort(profile_id, profile_input):
@@ -658,11 +667,11 @@ def _publish_necessity_best_effort(profile_id, profile_input, necessity):
 
 
 def _spawn_v4_job(profile_id, profile_input, necessity, *, is_fallback,
-                  final_status=None, snapshot=False, publish_ledger=True):
+                  final_status=None, publish_ledger=True):
     t = threading.Thread(
         target=_v4_async_job, args=(profile_id, profile_input, necessity),
         kwargs={"is_fallback": is_fallback, "final_status": final_status,
-                "snapshot": snapshot, "publish_ledger": publish_ledger}, daemon=True)
+                "publish_ledger": publish_ledger}, daemon=True)
     t.start()
 
 
@@ -695,10 +704,17 @@ def _ingest_v4_from_flat(body, *, profile_id=None, publish_ledger=True):
         hash_profile = {**profile_input, "supporting_redacted": supporting_redacted}
         necessity = build_user_necessity(hash_profile, body)
 
+    # 1) profiles_v4 に保存（同期）。
     receive_profile_v4(store, pid, profile_input, necessity,
                        generation_status=GEN_PREPARING)
-    # snapshot=True: 登録/再構造化のみ時点スナップショットを残す（編集・retry は残さない）。
-    _spawn_v4_job(pid, profile_input, necessity, is_fallback=is_fallback, snapshot=True,
+    # 2) 時点スナップショット（本文の記録）を**同期・必須**で保存する（指示書35）。
+    #    確定の事実であり、埋め込みモデル（外部依存）の稼働とは無関係。ベクトル化の前・かつ
+    #    追記専用の台帳に content_hash を刻む前に本文を確定させる（本文なきハッシュを作らない）。
+    #    失敗したら例外を送出＝確定自体を失敗させる（best-effort にしない）。churn（同一内容）は
+    #    None を返すだけで例外ではない（下書き→確定・登録経路のみ。編集/retry は snapshot=False）。
+    _save_snapshot(pid, profile_input, necessity)
+    # 3) ベクトル化は非同期（失敗してよい。1〜2 は既に残っている）。snapshot はもう作らない。
+    _spawn_v4_job(pid, profile_input, necessity, is_fallback=is_fallback,
                   publish_ledger=publish_ledger)
     return pid, necessity, is_fallback
 
@@ -1015,10 +1031,15 @@ def confirm_draft(draft_id):
             app.logger.warning(f"[policy-consent] 記録skip（確定は成功）: {e}")
 
     drafts.set_status(draft_id, "confirmed", db_path=DB)
+    # churn（指示書35 §3）: 内容が前回と同一なら台帳もスナップショットも記録されない（仕様どおり）。
+    # 「何も起きなかった」ように見えないよう、確定時に利用者へ伝える材料を返す。
+    unchanged = bool(prof.get("skipped"))
     return jsonify({
         "id": pid, "draft_id": draft_id, "confirmed": True,
         "attempt_n": d["attempt_n"],
         "route": "fallback" if is_fallback else "user-supplied",
+        "unchanged": unchanged,
+        "history_added": not unchanged,
         "status_url": f"/v4/seekers/{pid}/status",
     }), 202
 

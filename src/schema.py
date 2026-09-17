@@ -45,6 +45,7 @@ _SQLITE_DDL = [
         necessity_json   TEXT,
         src_input_hash   TEXT,
         content_hash     TEXT,
+        view_overrides_json TEXT,
         vulnerable_hidden INTEGER NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS policy_consents (
@@ -240,6 +241,7 @@ _PG_DDL = [
         necessity_json   TEXT,
         src_input_hash   TEXT,
         content_hash     TEXT,
+        view_overrides_json TEXT,
         vulnerable_hidden INTEGER NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS policy_consents (
@@ -487,7 +489,8 @@ def _migrate_columns(con) -> None:
 def _migrate_user_snapshots(con) -> None:
     """user_snapshots に後付け列を idempotent に追加（PR#19 で作成済みの既存テーブル向け）。"""
     adds = [("schema_version", "TEXT"), ("vulnerable_hidden", "INTEGER NOT NULL DEFAULT 0"),
-            ("content_hash", "TEXT")]  # content_hash は指示書18 §2（churn 判定の統一）で追加
+            ("content_hash", "TEXT"),          # 指示書18 §2（churn 判定の統一）で追加
+            ("view_overrides_json", "TEXT")]   # 指示書35 §4（本人よりも保存範囲に含める）で追加
     if is_postgres():
         for name, typ in adds:
             con.execute(f"ALTER TABLE user_snapshots ADD COLUMN IF NOT EXISTS {name} {typ}")

@@ -15,7 +15,8 @@ v4 の二軸（意志=will / 現状=state）+ supporting_raw に写像し、必�
   フェーズ        → 破棄（v4 に位相軸は無い）
   v3.1 に無い素材（意志要求/連言選言/チャネル重み, 動き方の型/制約）→ "未取得"
 
-冪等: 既に profile_vectors にある（同 model_tag）なら再取り込みしない。
+冪等: 既に profiles_v4 に行があれば再取り込みしない（指示書34 §2-1。ベクトルの有無では
+      判定しない＝埋め込み不達でも確定データを上書きしない）。
 非破壊: 元の seekers/profiles テーブルは読むだけ。書き込みは v4 テーブルのみ。
 """
 from embedding_config import MODEL_TAG
@@ -72,7 +73,13 @@ def migrate_seeker(store, user_id, seeker_v31, *, generator_fn=None,
     """
     v3.1 seeker を v4 へ写像して取り込む（migrated_from='v3.1' を記録）。
     既存の ingest_profile_v4 を再利用するため redact/②生成/ベクトル化は共通経路。
+
+    上書き防止（指示書34 §2-2）: 移行は「存在しないものを作る」処理であり「存在するものを
+    置き換える」処理ではない。既に profiles_v4 に行があれば**何もせず戻る**（別経路から
+    呼ばれても確定済みデータを旧 v3 で壊さない）。
     """
+    if store.get_profile(user_id) is not None:
+        return None
     profile_input = map_v31_to_v4(seeker_v31)
     return ingest_profile_v4(
         store, user_id, profile_input,
@@ -86,14 +93,19 @@ def ensure_migrated(store, user_id, seeker_loader, *, generator_fn=None,
     """
     遅延移行のエントリポイント（F-5）。
 
-    store に当該 (user_id, model_tag) の v4 ベクトルが既にあれば何もしない（冪等）。
-    無ければ seeker_loader(user_id) で v3.1 seeker を取得し、移行する。
-    seeker が見つからなければ移行しない（None を返す）。
+    移行済みか＝ **profiles_v4 に行があるか** で判定する（指示書34 §2-1）。行があれば
+    移行は済んでおり、何もしない（冪等）。無ければ seeker_loader(user_id) で v3.1 seeker を
+    取得し、移行する。seeker が見つからなければ移行しない（None を返す）。
+
+    ベクトルの有無（has_bundle）で判定してはならない: ベクトルは埋め込みモデル（外部依存）の
+    産物であり、移行が完了したかとは無関係。埋め込み不達で失敗し続けると「永久に未移行」と
+    誤判定し、確定済みプロフィールを旧 v3 の疎データで上書きし続ける（自己反復クロバー）。
+    ベクトルの復旧は generation_status と /v4/seekers/<id>/retry の担当であって移行の責務ではない。
 
     seeker_loader : user_id -> v3.1 seeker dict | None（例: db.get_seeker）。
     戻り値        : 移行した場合は ingest 結果 dict、既存/不在なら None。
     """
-    if store.has_bundle(user_id, model_tag):
+    if store.get_profile(user_id) is not None:
         return None
     seeker_v31 = seeker_loader(user_id)
     if not seeker_v31:

@@ -13,7 +13,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from migrate_v4 import map_v31_to_v4, migrate_seeker, ensure_migrated, MIGRATED_FROM
-from db_v4 import MemoryStore, match_v4
+from db_v4 import MemoryStore, match_v4, receive_profile_v4, GEN_ERROR
 from embedding_config import MODEL_TAG, FULL_DIM
 
 
@@ -168,6 +168,64 @@ def test_ensure_lazy_not_eager():
     ensure_migrated(store, "a", lambda uid: pool.get(uid))
     assert store.has_bundle("a", MODEL_TAG)
     assert not store.has_bundle("b", MODEL_TAG), "他ユーザーは前もって移行しない"
+
+
+# ── 指示書34: 確定済み profiles_v4 をベクトル無しでも再移行で壊さない ──────────────
+def _confirmed_v4_profile():
+    """drafts→confirm 相当の充実した profile_input（現状4スロット・表示項目を持つ）。"""
+    return {
+        "will_text": "確定した意志",
+        "state_have": "確定の持っているもの", "state_can_type": "確定の型",
+        "state_bound": "確定の縛り", "state_unsorted": "",
+        "supporting_raw": {"背景": "確定の背景", "意志_どこへ": "確定のどこへ",
+                           "意志_なぜ": "確定のなぜ", "経験": "確定の経験",
+                           "求めている": "確定の求めている", "系列素材": ["X → Y"]},
+    }
+
+
+def _stale_v31():
+    """旧 v3 seeker（疎）。再移行が走るとこれで上書きされてしまう内容。"""
+    return {"意志": "旧い意志", "能力": "旧い能力", "フェーズ": "mvp", "求めている": "未取得"}
+
+
+def test_ensure_does_not_clobber_confirmed_profile_without_vectors():
+    """本指示書の完了条件（§5-6）: profiles_v4 に確定行があり、ベクトルが無い（埋め込み不達）
+    状態で /v4/match 相当（ensure_migrated）を叩いても、profiles_v4 は一切変化しない。"""
+    store = MemoryStore()
+    receive_profile_v4(store, "u_k", _confirmed_v4_profile(), None,
+                       generation_status=GEN_ERROR)   # 確定済み・ただしベクトル化失敗
+    assert not store.has_bundle("u_k", MODEL_TAG)      # ベクトルは無い（前提）
+    before = dict(store.get_profile("u_k"))
+
+    calls = []
+    res = ensure_migrated(store, "u_k", lambda uid: (calls.append(uid), _stale_v31())[1])
+
+    assert res is None                                  # 再移行しない
+    assert calls == []                                  # v3 loader すら呼ばない
+    assert store.get_profile("u_k") == before           # profiles_v4 は不変（クロバーなし）
+    assert store.get_profile("u_k")["state_have"] == "確定の持っているもの"
+
+
+def test_migrate_seeker_refuses_to_overwrite_existing_row():
+    """§2-2: 既存 profiles_v4 行があれば migrate_seeker は何もしない（別経路からの防御）。"""
+    store = MemoryStore()
+    receive_profile_v4(store, "u_k", _confirmed_v4_profile(), None)
+    before = dict(store.get_profile("u_k"))
+    assert migrate_seeker(store, "u_k", _stale_v31()) is None
+    assert store.get_profile("u_k") == before           # 上書きされない
+
+
+def test_migrate_pool_does_not_break_migrated_users():
+    """§2-3: 一括再移行（migrate_pool 相当）でも、確定/移行済みユーザーは壊れない。"""
+    store = MemoryStore()
+    receive_profile_v4(store, "confirmed", _confirmed_v4_profile(), None,
+                       generation_status=GEN_ERROR)
+    before = dict(store.get_profile("confirmed"))
+    pool = {"confirmed": _stale_v31(), "fresh": _stale_v31()}
+    for uid in pool:                                     # /dev の migrate_pool ループ相当
+        ensure_migrated(store, uid, lambda u: pool.get(u))
+    assert store.get_profile("confirmed") == before      # 既存は不変
+    assert store.get_profile("fresh") is not None        # 新規のみ移行される
 
 
 if __name__ == "__main__":

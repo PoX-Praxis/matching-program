@@ -75,7 +75,13 @@ def _restore(orig):
 
 
 def _get(viewer):
-    return appmod.app.test_client().get(f"/api/timeline/u1?viewer={viewer}").get_json()
+    """指示書36: 閲覧者はセッションで判定（?viewer= は使わない）。viewer=None は未ログイン=第三者。"""
+    os.environ.pop("POX_DEBUG", None)
+    c = appmod.app.test_client()
+    if viewer:
+        with c.session_transaction() as s:
+            s["subject_id"] = viewer
+    return c.get("/api/timeline/u1").get_json()
 
 
 def test_owner_sees_everything():
@@ -109,8 +115,11 @@ def test_partner_sees_content_but_not_evidence_or_numbers():
 
 def test_thirdparty_necessity_only_and_hidden_time_is_masked():
     orig = _patch(_SNAP, _VES)
+    # 第三者向け necessity_text は公開閾値後のみ（指示書36 §2-3）。スナップショットの日付
+    # （2026-07-20/22）が閾値後になるよう過去に設定して、3層の内訳（本文マスク）を検証する。
+    os.environ["POX_NECESSITY_PUBLIC_SINCE"] = "2020-01-01T00:00:00+00:00"
     try:
-        d = _get("u3")   # u3 は無関係＝第三者
+        d = _get(None)   # 未ログイン＝第三者
         assert d["viewer_role"] == "third"
         s1 = next(i for i in d["items"] if i.get("snapshot_id") == "s1")
         assert s1["necessity_text"] == "翻訳できる開発者"   # 非伏せは necessity_text のみ
@@ -122,6 +131,7 @@ def test_thirdparty_necessity_only_and_hidden_time_is_masked():
         assert "SECRET" not in blob and "原文の秘密RAW" not in blob and "脆弱EV" not in blob
         assert "脆弱な時点の意志VULN" not in blob            # 伏せ時点の中身も漏れない
     finally:
+        os.environ.pop("POX_NECESSITY_PUBLIC_SINCE", None)
         _restore(orig)
 
 

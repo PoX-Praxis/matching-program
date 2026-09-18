@@ -1240,9 +1240,13 @@ def api_timeline(user_id):
       - 当事者の相手: will/state/necessity_text（evidence_span・数値なし。vulnerable_hidden でも中身表示）
       - 第三者    : necessity_text のみ。vulnerable_hidden の時点は中身を出さない（存在の事実は残す）
     接続の事実（成立・離脱）は全層に公開。**理由は一切含めない**（原則3）。
-    viewer は簡易（クエリ id）。認証が無いため厳密でない（§7-5 の限界）。
+
+    閲覧者の同一性は **セッション（subject_id）が唯一の根拠**（指示書36・25 §2-2）。
+    `?viewer=` は後方互換で受け取るが**認可には使わない**（セッションと一致しなければ第三者扱い）。
+    未ログインは 401 にせず**第三者**として応答する（第三者にも見せる情報があるため・§2-2）。
     """
-    viewer = request.args.get("viewer")
+    # ?viewer= の自己申告は使わない。本人/相手はセッションの subject_id だけで判定する。
+    viewer = current_subject_id()   # 未ログインは None＝第三者
     is_owner = bool(viewer) and viewer == user_id
 
     try:
@@ -1251,6 +1255,22 @@ def api_timeline(user_id):
         vessels = []
     is_partner = _timeline_is_partner(user_id, viewer, vessels)
     viewer_role = "owner" if is_owner else ("partner" if is_partner else "third")
+
+    # 第三者向け necessity_text の公開閾値（指示書11・§2-3）。/api/profile と同じ線を timeline にも
+    # 適用する（閾値より前に作られた時点の必要像は第三者に出さない）。本人・相手は対象外。
+    public_since = _necessity_public_since()
+
+    def _necessity_public_for_third(created_at):
+        from datetime import datetime, timezone
+        if not created_at:
+            return False
+        try:
+            dt = datetime.fromisoformat(str(created_at))
+        except ValueError:
+            return False
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt >= public_since
 
     items = []
     try:
@@ -1274,8 +1294,9 @@ def api_timeline(user_id):
             if viewer_role == "owner":           # 根拠・数値は本人のみ
                 item["evidence_span"] = nec.get("evidence_span", "")
                 item["numbers"] = {k: nec.get(k) for k in _NEC_NUM_KEYS}
-        else:                                # 第三者・非hidden: necessity_text のみ
-            item["necessity_text"] = nec.get("necessity_text", "")
+        else:                                # 第三者・非hidden: necessity_text のみ（閾値後だけ）
+            if _necessity_public_for_third(s.get("created_at")):
+                item["necessity_text"] = nec.get("necessity_text", "")
         items.append(item)
 
     # 接続の履歴事実（全層公開・理由なし）。既存の snapshots キー無し vessel でも壊れない。

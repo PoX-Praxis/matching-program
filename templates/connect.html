@@ -186,7 +186,8 @@ let dirNecState  = {};  // candidate_id → necessity_state（§1-3 3状態）
 function necLine(id, cls) {
   const st = dirNecState[id];
   if (st === "public" && dirNecessity[id]) {
-    return `<div class="${cls} clamp-2">必要としている相手: ${escHtml(dirNecessity[id])} <span style="color:#999">（AI推定）</span></div>`;
+    // §11-1: 一覧では「（AI推定）」を省く（AI推定であることは ProfileView の小ラベルで担保）。
+    return `<div class="${cls} clamp-2">必要としている相手: ${escHtml(dirNecessity[id])}</div>`;
   }
   if (st === "preparing") {
     return `<div class="${cls}" style="color:#9aa0a8">必要としている相手: 準備中です</div>`;

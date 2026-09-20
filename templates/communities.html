@@ -39,6 +39,8 @@
   <h1>コミュニティ</h1>
   <button class="btn btn-primary" onclick="openModal()">+ 新規作成</button>
 </div>
+<!-- 未ログイン時の注記（指示書37 §4）。ボタンは活性のまま・押下でログイン導線へ。 -->
+<p id="loginNote" style="display:none;font-size:13px;color:#888;margin:4px 0 0">コミュニティの作成にはログインが必要です。</p>
 
 <div id="list"><p style="color:#888">読み込み中です</p></div>
 <div id="notice"></div>
@@ -124,6 +126,8 @@ function escHtml(s) {
 }
 
 loadCommunities();
+// 未ログインなら作成ボタン直下に注記（ボタンは活性のまま・§4）。
+PoX.me().then(function(sid){ if (!sid) document.getElementById("loginNote").style.display = "block"; });
 </script>
 </body>
 </html>

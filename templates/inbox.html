@@ -1,11 +1,7 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>インボックス — PoX</title>
+{% extends "_base.html" %}
+{% block title %}インボックス — PoX{% endblock %}
+{% block head %}
 <style>
-  body { font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; max-width: 620px; margin: 40px auto; padding: 0 16px; color: #222; }
   h1 { font-size: 1.3rem; margin-bottom: 4px; }
   h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
@@ -17,9 +13,9 @@
   .subject-id { color: #999; font-size: 12px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
   #loading { color: #888; margin-top: 40px; }
 </style>
-</head>
-<body>
-{% include "_nav.html" %}
+{% endblock %}
+{% block content %}
+<main class="l-prose">
 <h1>インボックス</h1>
 <div id="loading">読み込み中です</div>
 <div id="main" style="display:none">
@@ -146,5 +142,5 @@ function escHtml(s) {
 
 init();
 </script>
-</body>
-</html>
+</main>
+{% endblock %}

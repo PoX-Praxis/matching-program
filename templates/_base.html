@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}PoX{% endblock %}</title>
+<style>
+  /* ── 共通レイアウト基盤（指示書37 段階1）──────────────────────────────────
+     幅はページ側で指定させず、ここ（レイアウト）で強制する。コンテナは2種のみ:
+       .l-prose = 本文（720px）／ .l-wide = 一覧・フォーム・カード（1120px）
+     どちらも左右に最低 --pad（16〜32px）を確保し、余白 0 の画面を無くす（§2-3）。 */
+  :root{
+    --wide: 1120px;
+    --prose: 720px;
+    --pad: clamp(16px, 4vw, 32px);
+    --lh: 1.9;
+  }
+  html, body{ max-width:100%; overflow-x:hidden; }
+  body{
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+    margin:0; color:#222; line-height:1.7;
+  }
+  img{ max-width:100%; height:auto; }
+  .l-prose{ width:min(100% - 2*var(--pad), var(--prose)); margin-inline:auto; padding:24px var(--pad) 64px; box-sizing:border-box; }
+  .l-wide { width:min(100% - 2*var(--pad), var(--wide));  margin-inline:auto; padding:24px var(--pad) 64px; box-sizing:border-box; }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+{% include "_nav.html" %}
+{% block content %}{% endblock %}
+</body>
+</html>

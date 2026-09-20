@@ -1,11 +1,7 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>コミュニティ — PoX</title>
+{% extends "_base.html" %}
+{% block title %}コミュニティ — PoX{% endblock %}
+{% block head %}
 <style>
-  body { font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; max-width: 620px; margin: 40px auto; padding: 0 16px; color: #222; }
   h1 { font-size: 1.3rem; margin-bottom: 4px; }
   .community-card {
     border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 12px 0;
@@ -32,9 +28,9 @@
   .modal-actions { margin-top:20px; display:flex; gap:8px; justify-content:flex-end; }
   #notice { font-size:13px; margin-top:6px; color:#c00; }
 </style>
-</head>
-<body>
-{% include "_nav.html" %}
+{% endblock %}
+{% block content %}
+<main class="l-wide">
 <div style="display:flex;justify-content:space-between;align-items:center">
   <h1>コミュニティ</h1>
   <button class="btn btn-primary" onclick="openModal()">+ 新規作成</button>
@@ -129,5 +125,5 @@ loadCommunities();
 // 未ログインなら作成ボタン直下に注記（ボタンは活性のまま・§4）。
 PoX.me().then(function(sid){ if (!sid) document.getElementById("loginNote").style.display = "block"; });
 </script>
-</body>
-</html>
+</main>
+{% endblock %}

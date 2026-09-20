@@ -129,6 +129,8 @@
       <button class="btn btn-connect" onclick="doConnect(this)">この人とつながる</button>
       <button class="btn btn-msg" onclick="sendMsg()">メッセージを送る</button>
     </div>
+    <!-- 未ログイン時の注記（指示書37 §4）。ボタンは活性のまま・押下でログイン導線へ。 -->
+    <p id="loginNote" style="display:none;font-size:13px;color:#888;margin:8px 0 0">つながる・メッセージにはログインが必要です。</p>
     <div id="notice"></div>
   </div>
 
@@ -171,6 +173,8 @@ async function init() {
   // 他人のプロフィール（未ログイン含む）は接続ブロックを表示。
   // 接続・メッセージの各ボタンは押下時に PoX.me() でログイン誘導する。
   document.getElementById("connectBlock").style.display = "block";
+  // 未ログインなら注記を出す（ボタンは活性のまま・§4）。
+  if (!sid) document.getElementById("loginNote").style.display = "block";
 }
 
 function renderProfileView(pv) {

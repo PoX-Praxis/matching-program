@@ -4,72 +4,15 @@
 <style>
   a.back { font-size: 13px; color: #555; text-decoration: none; }
   a.back:hover { text-decoration: underline; }
-  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
 
-  /* 表示名＋subject_id 併記（指示書30）*/
-  #nameHeader { margin: 0 0 8px; }
-  .display-name { font-size: 1.15rem; font-weight: 600; color: #222; margin-right: 8px; }
-  .subject-id { color: #999; font-size: 12px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
-
-  /* v4 blocks */
-  .headline-text { font-size: 1.05rem; line-height: 1.7; color: #333; margin: 20px 0 12px; }
-
-  .will-block { background: #f0f4ff; border-left: 4px solid #1a3a5c;
-                padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 12px 0 14px; }
-  .will-label { font-size: 11px; font-weight: bold; color: #1a3a5c; text-transform: uppercase;
-                letter-spacing: .05em; margin-bottom: 6px; }
-  .will-text  { font-size: 13px; line-height: 1.7; margin: 0; color: #222; }
-
-  .state-grid  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 12px 0 16px; }
-  .state-item  { background: #f7f9fc; border-radius: 6px; padding: 12px 14px; }
-  .state-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 5px; }
-  .state-text  { font-size: 13px; line-height: 1.6; margin: 0; color: #333; }
-
-  /* v3 backward compat */
-  .triangle-block { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 20px 0; }
-  .tri-item  { background: #f7f9fc; border-radius: 6px; padding: 14px 16px; }
-  .tri-label { font-size: 11px; font-weight: bold; color: #1a56bb; text-transform: uppercase;
-               letter-spacing: .04em; display: block; margin-bottom: 6px; }
-  .tri-text  { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
-  .phase-badge      { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-  .phase-tag        { background: #e8f0fe; color: #1a56bb; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
-  .phase-unconfirmed { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 6px; font-size: 11px; }
-
-  /* v4.3 再構成: 背景（他人ビューは大きく）+ 意志/現状/足りないもの/本人より */
-  .bg-text-lg { font-size: 1.05rem; line-height: 1.75; color: #333; margin: 18px 0 22px; }
-  .pblock { margin: 0 0 22px; }
-  .block-heading { font-size: 12px; font-weight: bold; color: #1a3a5c; letter-spacing: .04em;
-                   border-left: 4px solid #1a3a5c; padding-left: 8px; margin-bottom: 10px; }
-  .tier { margin: 0 0 10px; }
-  .tier-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 3px; }
-  .tier-text  { font-size: 13px; line-height: 1.7; margin: 0; color: #222; }
-  .slot { margin: 0 0 10px; }
-  .slot-label { font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 3px; }
-  .slot-text  { font-size: 13px; line-height: 1.65; margin: 0; color: #333; }
-  .freetext-ro { font-size: 13px; line-height: 1.7; color: #333; white-space: pre-wrap; margin: 0; }
-  .ai-note { font-size: 10px; font-weight: normal; color: #888; background: #f0f0f0;
-             border-radius: 3px; padding: 1px 6px; margin-left: 6px; letter-spacing: 0; }
+  /* 軌跡・つながる（ProfileView 本体はコンポーネント側。ここは接続CTA＝差3 と軌跡のみ） */
   .muted { color:#888; font-size:13px; }
   .tl-item { display:flex; gap:10px; padding:8px 4px; border-bottom:1px solid #eee; font-size:13px; }
   .tl-date { color:#888; font-size:12px; white-space:nowrap; min-width:88px; }
   .tl-conn .tl-body { color:#1a6a3a; }
   .tl-sub { margin:3px 0; font-size:12px; line-height:1.6; }
-  .tl-snap summary { cursor:pointer; color:#1a3a5c; }
 
-  /* shared accordion */
-  details.detail-block { margin: 16px 0; border: 1px solid #e0e0e0; border-radius: 6px; }
-  details.detail-block > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: #555; user-select: none; }
-  details.detail-block > summary:hover { background: #f7f7f7; border-radius: 6px; }
-  .detail-inner { padding: 12px 16px 16px; }
-  .keys-label, .traj-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; }
-  .key-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-  .key-tag  { background: #f0f4ff; border: 1px solid #c5d3f0; color: #1a3a8c; border-radius: 20px; padding: 3px 12px; font-size: 12px; }
-  .traj-item  { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; font-size: 13px; }
-  .traj-from  { background: #f5f5f5; border-radius: 4px; padding: 4px 10px; color: #444; flex: 1; }
-  .traj-arrow { color: #aaa; flex-shrink: 0; padding-top: 4px; }
-  .traj-to    { background: #eaf4ea; border-radius: 4px; padding: 4px 10px; color: #1a5c1a; flex: 1; }
-
-  /* connect */
+  /* connect（接続CTA＝差3） */
   .connect-block { margin: 28px 0 8px; }
   .want-row  { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .want-label { font-size: 12px; color: #555; }
@@ -83,36 +26,21 @@
   .ok  { color: #1a8a1a; font-weight: bold; }
   .err { color: #c00; }
   #loading { color: #888; margin-top: 40px; }
-
-  @media (max-width: 600px) {
-    .state-grid { grid-template-columns: 1fr; }
-    .triangle-block { grid-template-columns: 1fr; }
-  }
 </style>
+{% include "_profile_view.html" %}
 {% endblock %}
 {% block content %}
-<main class="l-prose">
+<main class="l-prose pv">
 <a href="/" class="back">← トップに戻る</a>
 <div id="loading">読み込み中です</div>
 <div id="main" style="display:none">
 
-  <!-- 表示名＋subject_id 併記（指示書30・相手特定の場面）-->
-  <div id="nameHeader" style="display:none">
-    <span id="displayName" class="display-name"></span>
-    <span id="subjectId" class="subject-id"></span>
-  </div>
+  <!-- ProfileView 本体（背景〜本人より）。PoXProfileView.render() が流し込む。 -->
+  <div id="pvRoot"></div>
 
-  <div id="profileBlock"></div>
-
-  <!-- accordion: keys + trajectory -->
-  <details class="detail-block" id="detailBlock" style="display:none">
-    <summary id="detailSummary">詳細・軌跡を見る</summary>
-    <div class="detail-inner" id="detailInner"></div>
-  </details>
-
-  <!-- connect actions -->
+  <!-- connect actions（接続CTA＝差3。owner ビューには無い） -->
   <div class="connect-block" id="connectBlock" style="display:none">
-    <h2>つながる</h2>
+    <h2 class="pv-h">つながる<span class="en">CONNECT</span></h2>
     <div class="want-row">
       <span class="want-label">照合の方向性：</span>
       <select class="want-select" id="wantMode">
@@ -130,11 +58,7 @@
     <div id="notice"></div>
   </div>
 
-  <div id="ownActions" style="display:none;margin-top:28px">
-    <a id="mypageLink" href="#" style="padding:8px 18px;background:#f0f0f0;border:1px solid #ccc;color:#333;border-radius:4px;text-decoration:none;font-size:13px">マイページへ</a>
-  </div>
-
-  <h2 style="font-size:1.05rem;border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:32px">軌跡</h2>
+  <h2 class="pv-h" style="margin-top:44px">軌跡<span class="en">TRAJECTORY</span></h2>
   <div id="timeline"><span class="muted">読み込み中です</span></div>
 
 </div>
@@ -145,8 +69,6 @@ const profileId = decodeURIComponent(pathParts[pathParts.length - 1]);
 
 async function init() {
   // 「自分のプロフィールならマイページへ」の判定はセッション基準（指示書26）。
-  // localStorage の残骸で判定すると、未ログインでも過去の自分の id と一致し、
-  // マイページ→本人限定API 401→/login と 2 秒空白で飛ばされてしまうため。
   const sid = await PoX.me();
   if (sid && sid === profileId) {
     location.replace(`/mypage?id=${encodeURIComponent(sid)}`);
@@ -163,140 +85,16 @@ async function init() {
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display = "block";
 
-  renderProfileView(pv);
+  // ProfileView 本体を共通コンポーネントで描画（公開ビュー）。
+  PoXProfileView.render(document.getElementById("pvRoot"), pv, { mode: "public" });
+  // 必要としている相手（必要像）。公開ビューは necessity_text のみ・根拠は出さない（差2）。
+  PoXProfileView.renderNecessity(document.getElementById("pvNecessity"), pv, "public");
+
   loadTimeline(profileId, sid);   // viewer はセッション本人（未ログインは null＝第三者ビュー）
 
-  // 他人のプロフィール（未ログイン含む）は接続ブロックを表示。
-  // 接続・メッセージの各ボタンは押下時に PoX.me() でログイン誘導する。
+  // 他人のプロフィール（未ログイン含む）は接続ブロックを表示（差3）。
   document.getElementById("connectBlock").style.display = "block";
-  // 未ログインなら注記を出す（ボタンは活性のまま・§4）。
   if (!sid) document.getElementById("loginNote").style.display = "block";
-}
-
-function renderProfileView(pv) {
-  // 表示名＋subject_id を併記（指示書30）。表示名未設定なら subject_id のみ。
-  const sid = pv.subject_id || "";
-  const dn = pv.display_name || sid;
-  if (sid) {
-    const header = document.getElementById("nameHeader");
-    document.getElementById("displayName").textContent = (dn && dn !== sid) ? dn : "";
-    document.getElementById("subjectId").textContent = sid;
-    header.style.display = "block";
-  }
-  const container = document.getElementById("profileBlock");
-  if (pv.schema_version === "v4") {
-    container.innerHTML = renderV4(pv);
-  } else {
-    let html = "";
-    if (pv.headline) html += `<p class="headline-text">${escHtml(pv.headline)}</p>`;
-    container.innerHTML = html + renderV3(pv);
-  }
-}
-
-/* ── v4.3 レイアウト（他人ビュー: 背景は大きく・本人より読み取り専用）── */
-function renderV4(pv) {
-  let h = "";
-
-  const bg = pv.background || pv.headline || "";
-  if (bg) h += `<p class="bg-text-lg">${escHtml(bg)}</p>`;
-
-  const willWhere = pv.will_where || pv.pursuing || "";
-  h += `<section class="pblock"><div class="block-heading">意志</div>`;
-  h += tierHtml("いま目指していること", willWhere);
-  if (pv.will_why)    h += tierHtml("その根にある捉え方", pv.will_why);
-  if (pv.will_origin) h += tierHtml("そう考えるに至った経験", pv.will_origin);
-  h += `</section>`;
-
-  const slots = [
-    ["持っているもの", pv.state_have],
-    ["繰り返し現れる固有の型", pv.state_can_type],
-    ["縛られているもの", pv.state_bound],
-  ];
-  if (slots.some(s => s[1]) || pv.state_unsorted) {
-    h += `<section class="pblock"><div class="block-heading">現状</div>`;
-    for (const [label, val] of slots) h += slotHtml(label, val || "—");
-    if (pv.state_unsorted) h += slotHtml("その他", pv.state_unsorted);
-    h += `</section>`;
-  }
-
-  const seekingText = (pv.seeking && pv.seeking !== "未取得") ? pv.seeking : "";
-  h += `<section class="pblock"><div class="block-heading">足りないもの</div>`;
-  h += `<div class="slot"><span class="slot-label">次の一歩</span>${trajInlineHtml(pv.trajectory)}</div>`;
-  h += slotHtml("求めている（本人の言葉）", seekingText || "—");
-  h += `</section>`;
-
-  // 必要としている相手（②生成の必要像・AIの仮説）。本人申告の「求めている」とは別物。
-  if (pv.necessity_text) {
-    h += `<section class="pblock">
-      <div class="block-heading">必要としている相手 <span class="ai-note">AIによる推定</span></div>
-      <p class="slot-text">${escHtml(pv.necessity_text)}</p></section>`;
-  }
-
-  // 本人より（自由記述）— 他人ビューは読み取り専用・空なら非表示
-  const free = (pv.free_text || "").trim();
-  if (free) {
-    h += `<section class="pblock"><div class="block-heading">本人より</div>
-      <p class="freetext-ro">${escHtml(free)}</p></section>`;
-  }
-  return h;
-}
-
-function tierHtml(label, val) {
-  return `<div class="tier"><span class="tier-label">${escHtml(label)}</span>
-    <p class="tier-text">${escHtml(val || "—")}</p></div>`;
-}
-function slotHtml(label, val) {
-  return `<div class="slot"><span class="slot-label">${escHtml(label)}</span>
-    <p class="slot-text">${escHtml(val)}</p></div>`;
-}
-function trajInlineHtml(trajectory) {
-  if (!trajectory || !trajectory.length) return `<p class="slot-text">—</p>`;
-  return trajectory.map(t => `<div class="traj-item">
-    <span class="traj-from">${escHtml(t.from)}</span>
-    <span class="traj-arrow">→</span>
-    <span class="traj-to">${escHtml(t.to)}</span>
-  </div>`).join("");
-}
-
-/* ── v3 後方互換（現状維持・detailBlock アコーディオンを使う）── */
-function renderV3(pv) {
-  let h = "";
-  const badge = pv.phase_badge || {};
-  if (badge.value) {
-    h += `<div class="phase-badge">
-      <span class="phase-tag">${escHtml(badge.value)}</span>
-      ${badge.unconfirmed ? '<span class="phase-unconfirmed">AI推定・未確定</span>' : ""}
-    </div>`;
-  }
-  h += `<div class="triangle-block">
-    <div class="tri-item"><span class="tri-label">意志</span><p class="tri-text">${escHtml(pv.pursuing || "—")}</p></div>
-    <div class="tri-item"><span class="tri-label">求めている</span><p class="tri-text">${escHtml(pv.needs || "—")}</p></div>
-    <div class="tri-item"><span class="tri-label">能力</span><p class="tri-text">${escHtml(pv.offering || "—")}</p></div>
-  </div>`;
-  const hasDetail = (pv.keys && pv.keys.length) || (pv.trajectory && pv.trajectory.length);
-  if (hasDetail) {
-    document.getElementById("detailBlock").style.display = "block";
-    document.getElementById("detailSummary").textContent = "注目ポイント・軌跡を見る";
-    document.getElementById("detailInner").innerHTML =
-      buildKeysHtml(pv.keys) + buildTrajHtml(pv.trajectory);
-  }
-  return h;
-}
-
-function buildKeysHtml(keys) {
-  if (!keys || !keys.length) return "";
-  return `<div><div class="keys-label">注目ポイント</div>
-    <div class="key-tags">${keys.map(k => `<span class="key-tag">${escHtml(k)}</span>`).join("")}</div></div>`;
-}
-
-function buildTrajHtml(trajectory) {
-  if (!trajectory || !trajectory.length) return "";
-  return `<div><div class="traj-label">現在の軌跡</div>
-    ${trajectory.map(t => `<div class="traj-item">
-      <span class="traj-from">${escHtml(t.from)}</span>
-      <span class="traj-arrow">→</span>
-      <span class="traj-to">${escHtml(t.to)}</span>
-    </div>`).join("")}</div>`;
 }
 
 async function doConnect(btn) {
@@ -357,11 +155,7 @@ async function sendMsg() {
   location.href = `/conversation?me=${encodeURIComponent(sid)}&with=${encodeURIComponent(profileId)}`;
 }
 
-function escHtml(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+const escHtml = PoXProfileView.esc;   // 共通エスケープを再利用
 
 /* 軌跡（第三者/当事者の相手ビュー）: 公開範囲はサーバーが閲覧者役割で絞る。
    接続は成立/終了の「事実」のみ・理由なし。evidence_span/数値は出ない。

@@ -8,21 +8,13 @@
   #loading { color: #888; margin: 40px 18px; }
 
   /* ══════════════════════════════════════════════════════════════
-     指示書14 案C — マイページ表示層。すべて .mypage 配下・mp- 接頭辞。
-     他ページのスタイルに影響を与えないためのスコープ。
+     マイページ固有セクション（ProfileView 本体はコンポーネント側）。
+     ここに残すのは owner だけの周辺 UI：照合準備状態・接続カード・軌跡レーン。
+     幅は .mypage が var(--prose)=720px を与える（公開ビューの .l-prose と一致）。
      ══════════════════════════════════════════════════════════════ */
   .mypage{
-    --ink:#14161a;
-    --ink2:#454b54;
-    --label:#6b7280;
-    --rule:#e6e8ec;
-    --navy:#1f3a5f;
-    --pivot:#9a6b2f;
-    --pivot-bg:#fbf5ec;
-    --need-bg:#f5f8fa;
-    --step-bg:#eef4ef;
-    --step-ink:#2f5d3f;
-
+    --ink:#14161a; --ink2:#454b54; --label:#6b7280; --rule:#e6e8ec;
+    --navy:#1f3a5f; --step-ink:#2f5d3f;
     max-width:var(--prose);
     margin-inline:auto;
     padding:16px var(--pad) 60px;
@@ -30,130 +22,16 @@
     font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
   }
 
-  /* ---------- ヘッダ ---------- */
-  .mypage .mp-title{font-size:22px;font-weight:700;letter-spacing:.01em;margin:20px 0 2px}
-  .mypage .mp-handle{font-size:11.5px;color:#8a9099;letter-spacing:.06em;margin:0 0 12px}
-  .dn-editor{margin:0 0 24px;padding:12px 14px;background:#fafafa;border:1px solid #eee;border-radius:6px}
-  .dn-label{display:block;font-size:12px;color:#667;margin-bottom:6px}
-  .dn-row{display:flex;gap:8px;flex-wrap:wrap}
-  .dn-row input{flex:1;min-width:0;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px}
-  .dn-row button{padding:6px 16px;background:#1a3a5c;color:#fff;border:none;border-radius:4px;font-size:13px;cursor:pointer}
-  .dn-row button:disabled{opacity:.5;cursor:default}
-  .dn-note{display:block;font-size:12px;color:#888;margin-top:6px;min-height:1em}
-
   .mypage .mp-err{
     background:#fbe9ea;color:#8c2f34;font-size:13px;line-height:1.7;
     padding:11px 13px;border-radius:4px;margin:0 0 20px;
   }
+  .mypage .mp-lanenote{font-size:11.5px;line-height:1.8;color:#9aa0a8;margin:10px 0 0}
 
-  /* ---------- provenance 注記（固定・一度だけ） ---------- */
-  .mypage .mp-prov{
-    display:flex;gap:10px;
-    font-size:12px;line-height:1.85;color:#5b616a;
-    background:#f6f7f9;border-radius:5px;padding:12px 14px;margin:0 0 26px;
-  }
-  .mypage .mp-prov .k{flex:none;font-weight:700;color:var(--navy);letter-spacing:.04em}
-
-  /* ---------- 背景（冒頭・小） ---------- */
-  .mypage .mp-cap{font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#9aa0a8;margin:0 0 6px}
-  .mypage .mp-lead{font-size:13.5px;line-height:1.95;color:var(--ink2);margin:0 0 8px}
-
-  /* ---------- 大見出し（意志／現状／足りないもの…） ---------- */
-  .mypage .mp-h{
-    display:flex;align-items:baseline;gap:9px;
-    font-size:16px;font-weight:700;letter-spacing:.06em;color:var(--navy);
-    margin:44px 0 2px;padding-top:20px;border-top:1px solid var(--rule);
-  }
-  .mypage .mp-h .en{font-size:9.5px;font-weight:600;letter-spacing:.18em;color:#a7adb5}
-  .mypage .mp-blkcap{font-size:12px;color:#8a9099;line-height:1.7;margin:0 0 20px}
-
-  /* ---------- 小見出し＝ラベル ---------- */
-  .mypage .mp-lb{
-    font-size:11.5px;font-weight:700;letter-spacing:.1em;color:var(--label);
-    margin:24px 0 6px;
-  }
-  .mypage .mp-item:first-of-type > .mp-lb{margin-top:0}
-  .mypage .mp-lb .by{font-weight:400;letter-spacing:0;color:#a7adb5;margin-left:6px}
-
-  /* ---------- 本文 ---------- */
-  .mypage .mp-body{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--ink)}
-
-  /* ---------- 持っているもの（箇条書き化） ---------- */
-  .mypage .mp-holds{list-style:none;margin:0;padding:0}
-  .mypage .mp-holds li{
-    font-size:15.5px;line-height:1.75;padding:9px 0 9px 20px;
-    position:relative;border-bottom:1px solid #f0f2f4;
-  }
-  .mypage .mp-holds li:last-child{border-bottom:0}
-  .mypage .mp-holds li::before{
-    content:"";position:absolute;left:2px;top:16px;
-    width:5px;height:5px;border-radius:50%;background:#b9c0c8;
-  }
-
-  /* ---------- 背骨（現状の項目を「同列の材料」として束ねる） ---------- */
-  .mypage .mp-spine{position:relative;padding-left:22px;margin-top:4px}
-  .mypage .mp-spine::before{
-    content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:#dfe3e8;
-  }
-  .mypage .mp-spine .mp-item{position:relative}
-  .mypage .mp-spine .mp-item::before{
-    content:"";position:absolute;left:-21px;margin-top:9px;
-    width:7px;height:7px;border-radius:50%;background:#c6ccd3;
-  }
-
-  /* ---------- 転回点（縛られているもの） ---------- */
-  .mypage .mp-pivot{
-    margin:26px 0 6px;padding:18px 18px 16px;
-    background:var(--pivot-bg);border-radius:6px;border-left:3px solid var(--pivot);
-  }
-  .mypage .mp-pivot .mp-lb{color:var(--pivot);margin:0 0 8px}
-  .mypage .mp-turn{
-    display:block;margin-top:12px;font-size:12px;font-weight:700;
-    letter-spacing:.06em;color:var(--pivot);
-  }
-  .mypage .mp-down{text-align:center;color:#c6ccd3;font-size:15px;line-height:1;margin:14px 0 0}
-
-  /* ---------- 次の一歩 ---------- */
-  .mypage .mp-step{margin:0 0 10px}
-  .mypage .mp-goal{
-    font-size:13px;line-height:1.7;color:var(--ink2);
-    padding-left:12px;border-left:2px solid #d9dde2;
-  }
-  .mypage .mp-need{
-    font-size:14.5px;line-height:1.8;color:var(--step-ink);
-    background:var(--step-bg);padding:10px 13px;margin-top:6px;border-radius:3px;
-  }
-
-  /* ---------- 本人より ---------- */
-  .mypage textarea{
-    width:100%;min-height:88px;box-sizing:border-box;
-    border:1px solid #d5d8dd;border-radius:5px;padding:12px;
-    font:inherit;font-size:14.5px;line-height:1.8;background:#fcfcfd;
-  }
-  .mypage .mp-tiny{font-size:11.5px;color:#8a9099;line-height:1.8;margin:8px 0 0}
-  .mypage .mp-btn{
-    display:inline-block;border:1px solid #cfd3d9;border-radius:4px;background:#fff;
-    font-size:12px;padding:7px 13px;margin-top:12px;color:var(--ink2);cursor:pointer;
-    text-decoration:none;
-  }
-  .mypage .mp-btn:focus-visible,
-  .mypage textarea:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
-
-  /* ---------- 必要像（面で分離） ---------- */
-  .mypage .mp-needblock{background:var(--need-bg);border-radius:6px;padding:20px 18px;margin-top:22px}
-  .mypage .mp-needblock .mp-h{margin:0 0 2px;padding-top:0;border-top:0}
-  .mypage .mp-needblock .mp-body{font-size:15px}
-  .mypage .mp-evi{
-    font-size:13.5px;line-height:1.95;color:var(--ink2);
-    border-left:2px solid #c8d2da;padding-left:12px;margin:0;
-  }
-
-  /* ---------- 接続（表をやめてカード） ---------- */
+  /* ---------- 接続（カード） ---------- */
   .mypage .mp-card{border:1px solid var(--rule);border-radius:6px;padding:14px;margin-bottom:10px}
   .mypage .mp-card .row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:3px 0}
-  .mypage .mp-card .row .k{
-    color:var(--label);font-size:11.5px;font-weight:700;letter-spacing:.06em;flex:none;
-  }
+  .mypage .mp-card .row .k{color:var(--label);font-size:11.5px;font-weight:700;letter-spacing:.06em;flex:none}
 
   /* ---------- 軌跡（2レーン） ---------- */
   .mypage .mp-lanes{
@@ -164,12 +42,6 @@
   .mypage .mp-lane{background:#fff;padding:14px 12px;min-height:96px}
   .mypage .mp-lane h4{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--label);margin:0 0 10px}
   .mypage .mp-lane p{font-size:12.5px;line-height:1.8;color:#9aa0a8;margin:0}
-  .mypage .mp-lanenote{font-size:11.5px;line-height:1.8;color:#9aa0a8;margin:10px 0 0}
-
-  /* ---------- 空状態 ---------- */
-  .mypage .mp-empty{font-size:13.5px;line-height:1.8;color:#8a9099;padding:18px 0}
-
-  /* ---------- 軌跡レーン内の点（指示書12 の内容をレーンに流す） ---------- */
   .mypage .mp-tl{margin:0 0 12px}
   .mypage .mp-tl:last-child{margin-bottom:0}
   .mypage .mp-tl .d{color:#9aa0a8;font-size:11px;display:block;margin-bottom:2px}
@@ -177,8 +49,9 @@
   .mypage .mp-tl .sub{font-size:12px;line-height:1.7;color:var(--ink2);margin:3px 0}
   .mypage .mp-tl .sub.ev{color:#8a9099}
   .mypage .mp-tl a{color:var(--step-ink);text-decoration:none}
+  .mypage .mp-empty{font-size:13.5px;line-height:1.8;color:#8a9099;padding:18px 0}
 
-  /* ---------- 照合の準備状態（指示書08。本改修の対象外・枠だけ .mypage に載せる） ---------- */
+  /* ---------- 照合の準備状態（指示書08・枠のみ） ---------- */
   .mypage .v4status{padding:10px 14px;border-radius:6px;font-size:13px;margin:0 0 20px}
   .mypage .v4status.ok   {background:#e7f5ec;color:#1a6a3a}
   .mypage .v4status.info {background:#eef2ff;color:#33417a}
@@ -186,7 +59,7 @@
   .mypage .v4status.err  {background:#f8d7da;color:#721c24}
   .mypage .v4status .restructure{margin-left:8px;font-weight:700;color:var(--navy);white-space:nowrap;text-decoration:none}
 
-  /* ---------- 接続状態バッジ（既存の意味を維持） ---------- */
+  /* ---------- 接続状態バッジ ---------- */
   .mypage .badge-ok     {background:#d4edda;color:#155724;border-radius:3px;padding:2px 8px;font-size:12px}
   .mypage .badge-wait   {background:#fff3cd;color:#856404;border-radius:3px;padding:2px 8px;font-size:12px}
   .mypage .badge-action {background:#f8d7da;color:#721c24;border-radius:3px;padding:2px 8px;font-size:12px}
@@ -194,61 +67,30 @@
   .mypage .ok  { color:#1a8a1a; font-weight:bold; }
   .mypage .err { color:#c00; }
   .mypage .muted { color:#8a9099; font-size:12.5px; }
-
-  /* ---------- v3 後方互換（旧スキーマのプロフィールのみ） ---------- */
-  .mypage .triangle-block { display:grid; grid-template-columns:1fr; gap:12px; margin:16px 0; }
-  .mypage .tri-item  { background:#f7f9fc; border-radius:6px; padding:14px 16px; }
-  .mypage .tri-label { font-size:11px; font-weight:bold; color:#1a56bb; display:block; margin-bottom:6px; }
-  .mypage .tri-text  { font-size:13px; line-height:1.65; margin:0; color:#333; }
-  .mypage .phase-badge { display:inline-flex; align-items:center; gap:6px; margin-bottom:16px; }
-  .mypage .phase-tag   { background:#e8f0fe; color:#1a56bb; border-radius:3px; padding:2px 8px; font-size:12px; }
-  .mypage .phase-unconfirmed { background:#fff3cd; color:#856404; border-radius:3px; padding:2px 6px; font-size:11px; }
 </style>
+{% include "_profile_view.html" %}
 {% endblock %}
 {% block content %}
 <a href="/" class="back">← トップに戻る</a>
 <div id="loading">読み込み中です</div>
 
-<main id="main" class="mypage" style="display:none">
+<main id="main" class="mypage pv" style="display:none">
 
-  <h1 id="mpTitle" class="mp-title"></h1>
-  <p id="mpHandle" class="mp-handle"></p>
-
-  <!-- 表示名の設定（本人のみ・指示書30）。一意性なし・30字上限・空で subject_id に戻る。 -->
-  <div id="dnEditor" class="dn-editor">
-    <label for="dnInput" class="dn-label">表示名（任意・30字まで）</label>
-    <div class="dn-row">
-      <input id="dnInput" type="text" maxlength="30" placeholder="未設定（IDが表示されます）">
-      <button id="dnSave" onclick="saveDisplayName(this)">保存</button>
-    </div>
-    <span id="dnNote" class="dn-note"></span>
-  </div>
-
-  <!-- 照合の準備状態（所有者のみ・指示書08。本改修では位置だけ整える） -->
+  <!-- 照合の準備状態（所有者のみ・指示書08） -->
   <div id="v4Status" class="v4status" style="display:none"></div>
 
-  <!-- provenance 注記（固定・一度だけ・§3-5） -->
-  <div class="mp-prov">
-    <span class="k">読み方</span>
-    <span>以下は、あなたが話した内容をAIが構造化したものです。「本人より」と「求めている」はあなた自身の言葉です。</span>
-  </div>
+  <!-- ProfileView 本体（表示名編集・背景〜必要としている相手〜本人より・編集リンク）。
+       PoXProfileView.render() が owner モードで流し込む。 -->
+  <div id="pvRoot"></div>
 
-  <!-- 背景 → 意志 → 現状 → 転回点 → 足りないもの → 本人より（renderV4 が流し込む） -->
-  <div id="profileBlock"></div>
-
-  <!-- あなたの必要像（本人のみ） -->
-  <div id="ownNecessity" style="display:none"></div>
-
-  <a id="editLink" class="mp-btn" href="#">プロフィールを編集する</a>
-
-  <!-- 接続（§3-8 カード化） -->
-  <h2 class="mp-h">接続<span class="en">CONNECTIONS</span></h2>
+  <!-- 接続（owner のみのセクション。公開ビューは代わりに接続CTA＝差3） -->
+  <h2 class="pv-h">接続<span class="en">CONNECTIONS</span></h2>
   <div id="notice"></div>
   <div id="connCards"></div>
 
-  <!-- 軌跡（§3-9 2レーン） -->
-  <h2 class="mp-h">軌跡<span class="en">TRAJECTORY</span></h2>
-  <p class="mp-blkcap">自分の変化と、接続の記録。</p>
+  <!-- 軌跡（2レーン） -->
+  <h2 class="pv-h">軌跡<span class="en">TRAJECTORY</span></h2>
+  <p class="pv-blkcap">自分の変化と、接続の記録。</p>
   <div id="timeline"><span class="muted">読み込み中です</span></div>
   <p class="mp-lanenote">並び順は時間順であり、因果ではありません。</p>
 
@@ -265,7 +107,8 @@ function handleAuth(res) {
   return PoX.handle(res);
 }
 
-/* 表示名の保存（本人のみ・指示書30）。redact/30字上限はサーバー側で最終確定。 */
+/* 表示名の保存（本人のみ・指示書30）。redact/30字上限はサーバー側で最終確定。
+   入力欄・注記・タイトルは共通コンポーネントが出力した要素（dnInput/dnNote/pvTitle）。 */
 async function saveDisplayName(btn) {
   const sid = await PoX.me();                       // 同一性はセッション
   if (!sid) { PoX.loginRedirect(); return; }
@@ -282,7 +125,7 @@ async function saveDisplayName(btn) {
     // サーバーが確定した表示名（未設定なら subject_id）を反映。
     const shown = data.is_set ? data.display_name : "";
     document.getElementById("dnInput").value = shown;
-    document.getElementById("mpTitle").textContent = shown || (data.subject_id || sid);
+    document.getElementById("pvTitle").textContent = shown || (data.subject_id || sid);
     note.textContent = data.is_set ? "保存しました" : "未設定にしました（IDが表示されます）";
   } catch (e) {
     note.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
@@ -298,7 +141,6 @@ async function init() {
     if (!sid) { PoX.loginRedirect(); return; }
     if (myId !== sid) {
       myId = sid;
-      // URL を自分の id に正規化（ブックマークや共有リンクのズレを吸収）。履歴は汚さない。
       try { history.replaceState(null, "", `/mypage?id=${encodeURIComponent(sid)}`); } catch (_) {}
     }
 
@@ -312,7 +154,7 @@ async function init() {
     }
     const pv = await profileRes.json();
 
-    // 接続（vessels）は本人限定の付随情報。失敗しても本体表示は止めない（読み込み中ハングの防止）。
+    // 接続（vessels）は本人限定の付随情報。失敗しても本体表示は止めない。
     let vessels = [];
     try {
       const ledgerRes = await fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`);
@@ -323,129 +165,25 @@ async function init() {
     document.getElementById("loading").style.display = "none";
     document.getElementById("main").style.display    = "block";
 
-    // 表示名（指示書30）。未設定なら subject_id を表示。タイトルは表示名、ハンドルは subject_id 併記。
-    const shownId = pv.subject_id || myId;
-    const dn  = (pv.display_name && pv.display_name !== shownId) ? pv.display_name : "";
-    document.getElementById("mpTitle").textContent  = dn || shownId;
-    document.getElementById("mpHandle").textContent = `${shownId} ・ マイページ`;
-    document.getElementById("dnInput").value = dn;
+    // ProfileView 本体を共通コンポーネントで描画（本人ビュー）。
+    // 表示名・「本人より」の編集UI、編集リンクを含む（差1）。
+    PoXProfileView.render(document.getElementById("pvRoot"), pv, { mode: "owner" });
     document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
 
-    renderProfileView(pv);
     try { renderConnections(vessels, myId); } catch (_) {}
     loadV4Status(myId);        // 照合の準備状態（所有者のみ）
-    loadOwnerNecessity(myId);  // 自分の必要像（本人のみ・数値は出さない）
+    loadOwnerNecessity(myId);  // 自分の必要像（本文=公開・根拠は本人のみ＝差2）
     loadTimeline(myId, myId);  // 軌跡（本人ビュー）
   } catch (e) {
-    // 予期せぬ失敗でも「読み込み中」で止めない。原因を出して再読込を促す。
     document.getElementById("loading").innerHTML =
       `<span style="color:#c00">読み込みに失敗しました（${escHtml(String(e && e.message || e))}）。`
       + `<a href="#" onclick="location.reload();return false">再読み込み</a></span>`;
   }
 }
 
-/* ══ プロフィール本体 ══════════════════════════════════════════════ */
-function renderProfileView(pv) {
-  const container = document.getElementById("profileBlock");
-  if (pv.schema_version === "v4") {
-    container.innerHTML = renderV4(pv);
-  } else {
-    container.innerHTML = renderV3(pv);
-  }
-}
-
-/* ── v4.3 レイアウト（案C）: 背景 → 意志 → 現状 → 転回点 → 足りないもの → 本人より ── */
-function renderV4(pv) {
-  let h = "";
-
-  // 背景（冒頭・小）。無ければ headline にフォールバック
-  const bg = pv.background || pv.headline || "";
-  h += `<p class="mp-cap">背景</p><p class="mp-lead">${escHtml(bg || "—")}</p>`;
-
-  // ── 意志 ──（本人ビューは空欄を「—」で見せてよい：§3-10）
-  h += `<h2 class="mp-h">意志<span class="en">WILL</span></h2>`;
-  h += `<p class="mp-blkcap">どこへ向かい、なぜそう考えるに至ったか。</p>`;
-  h += mpItem("いま目指していること", pv.will_where || pv.pursuing);
-  h += mpItem("その根にある捉え方", pv.will_why);
-  h += mpItem("そう考えるに至った経験", pv.will_origin);
-
-  // ── 現状（背骨）── 縛られているものは転回点へ抜くので含めない
-  h += `<h2 class="mp-h">現状<span class="en">STATE</span></h2>`;
-  h += `<p class="mp-blkcap">いま手にしているもの。</p>`;
-  h += `<div class="mp-spine">`;
-  h += `<div class="mp-item"><div class="mp-lb">持っているもの</div>${holdsHtml(pv.state_have)}</div>`;
-  h += mpItem("繰り返し現れる固有の型", pv.state_can_type);
-  h += mpItem("その他", pv.state_unsorted);
-  h += `</div>`;
-
-  // ── 転回点（縛られているもの）── constraint が空なら丸ごと出さない（§3-6）
-  const constraint = (pv.state_bound || "").trim();
-  if (constraint) {
-    h += `<div class="mp-pivot">
-      <div class="mp-lb">縛られているもの</div>
-      <p class="mp-body">${escHtml(constraint)}</p>
-      <span class="mp-turn">── だから、他者が必要 ──</span>
-    </div>
-    <div class="mp-down">▼</div>`;
-  }
-
-  // ── 足りないもの ──
-  h += `<h2 class="mp-h">足りないもの<span class="en">GAP</span></h2>`;
-  h += `<p class="mp-blkcap">次に踏む一歩と、そのために必要な相手。</p>`;
-  h += `<div class="mp-item"><div class="mp-lb">次の一歩</div>${stepsHtml(pv.trajectory)}</div>`;
-  const seekingText = (pv.seeking && pv.seeking !== "未取得") ? pv.seeking : "";
-  h += `<div class="mp-item"><div class="mp-lb">求めている<span class="by">本人の言葉</span></div>
-    <p class="mp-body">${escHtml(seekingText || "—")}</p></div>`;
-
-  // ── 本人より（自由記述・編集可）──
-  h += freeTextEditor(pv.free_text || "");
-  return h;
-}
-
-function mpItem(label, val) {
-  return `<div class="mp-item"><div class="mp-lb">${escHtml(label)}</div>
-    <p class="mp-body">${escHtml(val || "—")}</p></div>`;
-}
-
-/* §3-3 「持っているもの」を表示時に分割して箇条書きに。保存内容（state_json）は不変。
-   全角「／」半角「/」の両方で分割し、前後空白と末尾の句点を落とし、空要素は捨てる。
-   区切りが無ければ1要素のリストになる。 */
-function splitHolds(s) {
-  return String(s || "")
-    .split(/[／/]/)
-    .map(x => x.trim().replace(/。+$/, "").trim())
-    .filter(x => x.length);
-}
-function holdsHtml(s) {
-  const items = splitHolds(s);
-  if (!items.length) return `<p class="mp-body">—</p>`;
-  return `<ul class="mp-holds">${items.map(i => `<li>${escHtml(i)}</li>`).join("")}</ul>`;
-}
-
-/* 次の一歩: trajectory の {from,to} を 目標/必要 の対に。to が空なら必要行を出さない（§6-6）。 */
-function stepsHtml(trajectory) {
-  if (!trajectory || !trajectory.length) return `<p class="mp-body">—</p>`;
-  return trajectory.map(t => {
-    const goal = escHtml(t.from || "");
-    const need = (t.to || "").trim();
-    return `<div class="mp-step">
-      <div class="mp-goal">目標：${goal}</div>
-      ${need ? `<div class="mp-need">${escHtml(need)}</div>` : ""}
-    </div>`;
-  }).join("");
-}
-
-function freeTextEditor(val) {
-  return `<h2 class="mp-h">本人より<span class="en">本人の言葉</span></h2>
-    <p class="mp-blkcap">AIは生成にも編集にも関与しません。</p>
-    <textarea id="freeText" placeholder="自己紹介や補足を自由に書けます">${escHtml(val)}</textarea>
-    <p class="mp-tiny">ここに書いた内容は、そのまま公開プロフィールに表示されます。</p>
-    <button class="mp-btn" onclick="saveFreeText()">「本人より」を保存</button>
-    <span id="freeMsg" style="font-size:12px;margin-left:8px"></span>`;
-}
-
 /* 自由記述の保存。既存 overrides を取得してマージ（headline/keys/trajectory を消さない）。
-   view_overrides は表示専用のため、必要像・ベクトルの再生成は走らない。 */
+   view_overrides は表示専用のため、必要像・ベクトルの再生成は走らない。
+   textarea#freeText・#freeMsg は共通コンポーネントが出力した要素。 */
 async function saveFreeText() {
   const msg = document.getElementById("freeMsg");
   msg.className = ""; msg.textContent = "保存中…";
@@ -466,29 +204,10 @@ async function saveFreeText() {
   }
 }
 
-/* ── v3 後方互換レイアウト（旧スキーマのプロフィールのみ） ── */
-function renderV3(pv) {
-  let h = "";
-  if (pv.headline) h += `<p class="mp-lead">${escHtml(pv.headline)}</p>`;
-  const badge = pv.phase_badge || {};
-  if (badge.value) {
-    h += `<div class="phase-badge">
-      <span class="phase-tag">${escHtml(badge.value)}</span>
-      ${badge.unconfirmed ? '<span class="phase-unconfirmed">AI推定・未確定</span>' : ""}
-    </div>`;
-  }
-  h += `<div class="triangle-block">
-    <div class="tri-item"><span class="tri-label">意志</span><p class="tri-text">${escHtml(pv.pursuing || "—")}</p></div>
-    <div class="tri-item"><span class="tri-label">求めている</span><p class="tri-text">${escHtml(pv.needs || "—")}</p></div>
-    <div class="tri-item"><span class="tri-label">能力</span><p class="tri-text">${escHtml(pv.offering || "—")}</p></div>
-  </div>`;
-  h += freeTextEditor(pv.free_text || "");
-  return h;
-}
-
-/* ══ 必要像（本人のみ・数値は出さない：指示書11 §4-4） ══════════════ */
+/* ══ 必要像（本人のみ・数値は出さない：指示書11 §4-4） ══════════════
+   本文=公開・根拠(evidence_span)=本人のみ。描画は共通コンポーネントに委譲（差2）。 */
 async function loadOwnerNecessity(id) {
-  const el = document.getElementById("ownNecessity");
+  const el = document.getElementById("pvNecessity");
   if (!el) return;
   let nec;
   try {
@@ -497,20 +216,10 @@ async function loadOwnerNecessity(id) {
     if (!r.ok) { el.style.display = "none"; return; }
     nec = await r.json();
   } catch (e) { el.style.display = "none"; return; }
-  if (!nec || !nec.necessity_text) { el.style.display = "none"; return; }
-  const ev = (nec.evidence_span || "").trim();
-  el.innerHTML = `<div class="mp-needblock">
-    <h2 class="mp-h">あなたの必要像<span class="en">本文は公開</span></h2>
-    <p class="mp-blkcap">AIがあなたの言葉から推定した、あなたに必要な相手の像。
-      <b>この本文はプロフィールに公開されます</b>。根拠と数値はあなたにだけ表示されます（指示書11・36）。</p>
-    <p class="mp-body">${escHtml(nec.necessity_text)}</p>
-    ${ev ? `<div class="mp-lb">この推定の根拠（あなたの言葉から）<span class="en">あなただけに表示</span></div>
-      <p class="mp-evi">${escHtml(ev)}</p>` : ""}
-  </div>`;
-  el.style.display = "block";
+  PoXProfileView.renderNecessity(el, nec, "owner");
 }
 
-/* ══ 照合の準備状態（指示書08 §3-4。本改修の対象外・枠のみ .mypage に載せる） ══ */
+/* ══ 照合の準備状態（指示書08 §3-4。本改修の対象外・枠のみ） ══ */
 async function loadV4Status(id) {
   const el = document.getElementById("v4Status");
   if (!el) return;
@@ -522,10 +231,7 @@ async function loadV4Status(id) {
   } catch (e) { el.style.display = "none"; return; }
 
   const s = st.generation_status;
-
-  // ready は正常。状態表示は出さない（指示書27 §2-1）。
   if (s === "ready") { el.style.display = "none"; return; }
-
   if (s === "preparing") {
     el.className = "v4status info";
     el.textContent = "準備中です。少し待ってから再読み込みしてください。";
@@ -533,15 +239,12 @@ async function loadV4Status(id) {
     return;
   }
   if (s === "error") {
-    // 失敗時は再試行（§2-2: 押し先は /v4/seekers/<id>/retry。retry が材料を見て自動判定）。
     el.className = "v4status err";
     el.innerHTML = "準備に失敗しました。もう一度お試しください。"
       + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">再試行</button>';
     el.style.display = "block";
     return;
   }
-  // needs_regeneration は廃止（指示書28 §6-2）。編集で必要像を作り直したいときは
-  // ①をやり直して下書き→確定する。ここでは特別扱いしない。
   el.style.display = "none";   // 未知の値は出さない
 }
 
@@ -566,7 +269,7 @@ async function retryGeneration(id, btn) {
   }
 }
 
-/* ══ 接続（§3-8 カード化。空状態は「つながる」への導線） ══════════════ */
+/* ══ 接続（カード化。空状態は「つながる」への導線） ══════════════ */
 function renderConnections(vessels, myId) {
   const mine = vessels;   // サーバー側（/api/my/vessels）で当事者分に絞り込み済み
   const el = document.getElementById("connCards");
@@ -590,7 +293,7 @@ function renderConnections(vessels, myId) {
     } else if (!iApproved && theyApproved) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
-      action = `<button class="mp-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
+      action = `<button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
     }
@@ -641,10 +344,8 @@ async function doApprove(otherId, btn) {
   renderConnections(await ledgerRes.json(), myId);
 }
 
-/* ══ 軌跡（§3-9 2レーン）══════════════════════════════════════════
-   「自分の変化」と「接続」を並走させる。中身の描画は指示書12 の timeline に従い、
-   接続は成立/終了の「事実」のみ（理由は無い）。数値はUIに出さない（指示書11 §4-4 継承）。
-   注記「並び順は時間順であり、因果ではありません」は静的HTMLに固定。 */
+/* ══ 軌跡（2レーン）══════════════════════════════════════════════
+   「自分の変化」と「接続」を並走させる。接続は成立/終了の事実のみ・数値はUIに出さない。 */
 function tlDate(at) { return at ? new Date(at).toLocaleDateString("ja-JP") : ""; }
 function tlConnLabel(ev) {
   return ev === "established" ? "接続成立" : (ev === "ended" ? "接続終了" : escHtml(ev || ""));
@@ -671,7 +372,6 @@ async function loadTimeline(userId, viewer) {
         <a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${tlConnLabel(it.event)}</div>`);
       continue;
     }
-    // snapshot（自分の変化レーン）
     if (it.hidden) {
       changeLane.push(`<div class="mp-tl"><span class="d">${escHtml(d)}</span>
         <span class="muted">この時点の内容は非公開です</span></div>`);
@@ -709,11 +409,7 @@ async function toggleHidden(sid, hidden, cb) {
   } catch (e) { cb.checked = !hidden; alert("変更に失敗しました"); }
 }
 
-function escHtml(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+const escHtml = PoXProfileView.esc;   // 共通エスケープを再利用
 
 init();
 </script>

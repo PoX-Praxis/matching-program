@@ -1,0 +1,294 @@
+<!-- ══════════════════════════════════════════════════════════════════════
+     _profile_view.html — 本人ビュー／公開ビュー共通の ProfileView コンポーネント
+     （指示書37 段階2）。
+     mypage.html（mode:"owner"）と profile.html（mode:"public"）の両方が include し、
+     幅・見出し・本文の構造を完全に同一にする。両者の差は次の3点のみ：
+       1. 編集UIの有無（表示名の保存・「本人より」の入力・プロフィールを編集する）
+       2. 非公開項目（evidence_span・数値は本人のみ）
+       3. 接続CTAの有無（← これはコンポーネント外。各ページが持つ）
+     §3-1 の回帰（公開ビューで「読み方」注記と「背景」見出しが消えていた件）は、
+     両ビューが同一構造を描くこのコンポーネントで解消する。
+     スタイルは .pv 配下・pv- 接頭辞にスコープし、幅は付けない（幅は各ページの
+     .mypage / .l-prose = var(--prose) が決める → 両ビュー 720px で一致）。
+     ══════════════════════════════════════════════════════════════════════ -->
+<style>
+  /* ---------- 配色トークン（コンポーネント内で完結） ---------- */
+  .pv{
+    --ink:#14161a; --ink2:#454b54; --label:#6b7280; --rule:#e6e8ec;
+    --navy:#1f3a5f; --pivot:#9a6b2f; --pivot-bg:#fbf5ec;
+    --need-bg:#f5f8fa; --step-bg:#eef4ef; --step-ink:#2f5d3f;
+    color:var(--ink);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  }
+
+  /* ---------- ヘッダ（表示名＋ID） ---------- */
+  .pv .pv-title{font-size:22px;font-weight:700;letter-spacing:.01em;margin:20px 0 2px}
+  .pv .pv-handle{font-size:11.5px;color:#8a9099;letter-spacing:.06em;margin:0 0 12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* ---------- 表示名エディタ（owner のみ・編集UI＝差1） ---------- */
+  .pv .pv-dn{margin:0 0 24px;padding:12px 14px;background:#fafafa;border:1px solid #eee;border-radius:6px}
+  .pv .pv-dn-label{display:block;font-size:12px;color:#667;margin-bottom:6px}
+  .pv .pv-dn-row{display:flex;gap:8px;flex-wrap:wrap}
+  .pv .pv-dn-row input{flex:1;min-width:0;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px}
+  .pv .pv-dn-row button{padding:6px 16px;background:#1a3a5c;color:#fff;border:none;border-radius:4px;font-size:13px;cursor:pointer}
+  .pv .pv-dn-row button:disabled{opacity:.5;cursor:default}
+  .pv .pv-dn-note{display:block;font-size:12px;color:#888;margin-top:6px;min-height:1em}
+
+  /* ---------- 読み方 注記（固定・一度だけ・§3-5／§3-1で公開ビューにも復活） ---------- */
+  .pv .pv-prov{
+    display:flex;gap:10px;font-size:12px;line-height:1.85;color:#5b616a;
+    background:#f6f7f9;border-radius:5px;padding:12px 14px;margin:0 0 26px;
+  }
+  .pv .pv-prov .k{flex:none;font-weight:700;color:var(--navy);letter-spacing:.04em}
+
+  /* ---------- 背景（冒頭・小／§3-1で公開ビューにも見出しを復活） ---------- */
+  .pv .pv-cap{font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#9aa0a8;margin:0 0 6px}
+  .pv .pv-lead{font-size:13.5px;line-height:1.95;color:var(--ink2);margin:0 0 8px}
+
+  /* ---------- 大見出し（意志／現状／足りないもの…） ---------- */
+  .pv .pv-h{
+    display:flex;align-items:baseline;gap:9px;
+    font-size:16px;font-weight:700;letter-spacing:.06em;color:var(--navy);
+    margin:44px 0 2px;padding-top:20px;border-top:1px solid var(--rule);
+  }
+  .pv .pv-h .en{font-size:9.5px;font-weight:600;letter-spacing:.18em;color:#a7adb5}
+  .pv .pv-blkcap{font-size:12px;color:#8a9099;line-height:1.7;margin:0 0 20px}
+
+  /* ---------- 小見出し＝ラベル ---------- */
+  .pv .pv-lb{font-size:11.5px;font-weight:700;letter-spacing:.1em;color:var(--label);margin:24px 0 6px}
+  .pv .pv-item:first-of-type > .pv-lb{margin-top:0}
+  .pv .pv-lb .by{font-weight:400;letter-spacing:0;color:#a7adb5;margin-left:6px}
+
+  /* ---------- 本文 ---------- */
+  .pv .pv-body{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--ink)}
+  .pv .pv-freetext{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--ink);white-space:pre-wrap}
+
+  /* ---------- 持っているもの（箇条書き化） ---------- */
+  .pv .pv-holds{list-style:none;margin:0;padding:0}
+  .pv .pv-holds li{font-size:15.5px;line-height:1.75;padding:9px 0 9px 20px;position:relative;border-bottom:1px solid #f0f2f4}
+  .pv .pv-holds li:last-child{border-bottom:0}
+  .pv .pv-holds li::before{content:"";position:absolute;left:2px;top:16px;width:5px;height:5px;border-radius:50%;background:#b9c0c8}
+
+  /* ---------- 背骨（現状の項目を「同列の材料」として束ねる） ---------- */
+  .pv .pv-spine{position:relative;padding-left:22px;margin-top:4px}
+  .pv .pv-spine::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:#dfe3e8}
+  .pv .pv-spine .pv-item{position:relative}
+  .pv .pv-spine .pv-item::before{content:"";position:absolute;left:-21px;margin-top:9px;width:7px;height:7px;border-radius:50%;background:#c6ccd3}
+
+  /* ---------- 転回点（縛られているもの） ---------- */
+  .pv .pv-pivot{margin:26px 0 6px;padding:18px 18px 16px;background:var(--pivot-bg);border-radius:6px;border-left:3px solid var(--pivot)}
+  .pv .pv-pivot .pv-lb{color:var(--pivot);margin:0 0 8px}
+  .pv .pv-turn{display:block;margin-top:12px;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--pivot)}
+  .pv .pv-down{text-align:center;color:#c6ccd3;font-size:15px;line-height:1;margin:14px 0 0}
+
+  /* ---------- 次の一歩 ---------- */
+  .pv .pv-step{margin:0 0 10px}
+  .pv .pv-goal{font-size:13px;line-height:1.7;color:var(--ink2);padding-left:12px;border-left:2px solid #d9dde2}
+  .pv .pv-need{font-size:14.5px;line-height:1.8;color:var(--step-ink);background:var(--step-bg);padding:10px 13px;margin-top:6px;border-radius:3px}
+
+  /* ---------- 本人より（owner: textarea／public: 読み取り専用） ---------- */
+  .pv textarea{width:100%;min-height:88px;box-sizing:border-box;border:1px solid #d5d8dd;border-radius:5px;padding:12px;font:inherit;font-size:14.5px;line-height:1.8;background:#fcfcfd}
+  .pv .pv-tiny{font-size:11.5px;color:#8a9099;line-height:1.8;margin:8px 0 0}
+  .pv .pv-btn{display:inline-block;border:1px solid #cfd3d9;border-radius:4px;background:#fff;font-size:12px;padding:7px 13px;margin-top:12px;color:var(--ink2);cursor:pointer;text-decoration:none}
+  .pv .pv-btn:focus-visible,.pv textarea:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+
+  /* ---------- 必要としている相手（必要像。本文=公開／根拠=本人のみ＝差2） ---------- */
+  .pv .pv-needblock{background:var(--need-bg);border-radius:6px;padding:20px 18px;margin-top:22px}
+  .pv .pv-needblock .pv-h{margin:0 0 2px;padding-top:0;border-top:0}
+  .pv .pv-needblock .pv-body{font-size:15px}
+  .pv .pv-evi{font-size:13.5px;line-height:1.95;color:var(--ink2);border-left:2px solid #c8d2da;padding-left:12px;margin:0}
+
+  /* ---------- v3 後方互換（旧スキーマのプロフィールのみ） ---------- */
+  .pv .pv-triangle{display:grid;grid-template-columns:1fr;gap:12px;margin:16px 0}
+  .pv .pv-tri{background:#f7f9fc;border-radius:6px;padding:14px 16px}
+  .pv .pv-tri-label{font-size:11px;font-weight:bold;color:#1a56bb;display:block;margin-bottom:6px}
+  .pv .pv-tri-text{font-size:13px;line-height:1.65;margin:0;color:#333}
+  .pv .pv-phase{display:inline-flex;align-items:center;gap:6px;margin-bottom:16px}
+  .pv .pv-phase-tag{background:#e8f0fe;color:#1a56bb;border-radius:3px;padding:2px 8px;font-size:12px}
+  .pv .pv-phase-unconf{background:#fff3cd;color:#856404;border-radius:3px;padding:2px 6px;font-size:11px}
+</style>
+<script>
+/* ══ PoXProfileView — ProfileView 共通描画（指示書37 段階2）═══════════════
+   render(root, pv, {mode})           本体（背景〜本人より）を root に流し込む
+   renderNecessity(el, nec, mode)     必要としている相手（#pvNecessity へ）
+   mode: "owner" | "public"。差は 編集UI・非公開項目 のみ（構造は同一）。 */
+window.PoXProfileView = (function(){
+
+  function esc(s){
+    return String(s ?? "")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function header(pv){
+    var sid = pv.subject_id || "";
+    var dn  = (pv.display_name && pv.display_name !== sid) ? pv.display_name : "";
+    // カスタム表示名があるときだけ ID をハンドルに併記（無ければ ID をタイトルに）
+    return '<h1 id="pvTitle" class="pv-title">' + esc(dn || sid) + '</h1>'
+         + '<p class="pv-handle">' + esc(dn ? sid : "") + '</p>';
+  }
+
+  function dnEditor(pv){
+    var sid = pv.subject_id || "";
+    var dn  = (pv.display_name && pv.display_name !== sid) ? pv.display_name : "";
+    return '<div class="pv-dn">'
+      + '<label for="dnInput" class="pv-dn-label">表示名（任意・30字まで）</label>'
+      + '<div class="pv-dn-row">'
+      +   '<input id="dnInput" type="text" maxlength="30" placeholder="未設定（IDが表示されます）" value="' + esc(dn) + '">'
+      +   '<button id="dnSave" onclick="saveDisplayName(this)">保存</button>'
+      + '</div><span id="dnNote" class="pv-dn-note"></span></div>';
+  }
+
+  function prov(){
+    // 読み方（両ビュー共通・§3-5／§3-1）。人称を含めず両ビューで同一文にする。
+    return '<div class="pv-prov"><span class="k">読み方</span>'
+      + '<span>以下は、話した内容をAIが構造化したものです。「本人より」と「求めている」は本人の言葉です。</span></div>';
+  }
+
+  function item(label, val){
+    return '<div class="pv-item"><div class="pv-lb">' + esc(label) + '</div>'
+      + '<p class="pv-body">' + esc(val || "—") + '</p></div>';
+  }
+
+  /* §3-3「持っているもの」を表示時に分割して箇条書きに（保存内容は不変）。 */
+  function splitHolds(s){
+    return String(s || "").split(/[／/]/)
+      .map(function(x){ return x.trim().replace(/。+$/, "").trim(); })
+      .filter(function(x){ return x.length; });
+  }
+  function holds(s){
+    var items = splitHolds(s);
+    if (!items.length) return '<p class="pv-body">—</p>';
+    return '<ul class="pv-holds">' + items.map(function(i){ return '<li>' + esc(i) + '</li>'; }).join("") + '</ul>';
+  }
+
+  /* 次の一歩: trajectory {from,to} を 目標/必要 の対に。to が空なら必要行を出さない。 */
+  function steps(trajectory){
+    if (!trajectory || !trajectory.length) return '<p class="pv-body">—</p>';
+    return trajectory.map(function(t){
+      var goal = esc(t.from || "");
+      var need = (t.to || "").trim();
+      return '<div class="pv-step"><div class="pv-goal">目標：' + goal + '</div>'
+        + (need ? '<div class="pv-need">' + esc(need) + '</div>' : '') + '</div>';
+    }).join("");
+  }
+
+  function freeBlock(pv, mode){
+    var head = '<h2 class="pv-h">本人より<span class="en">本人の言葉</span></h2>'
+             + '<p class="pv-blkcap">AIは生成にも編集にも関与しません。</p>';
+    if (mode === "owner") {
+      // 編集UI（差1）。空でも編集できるよう常に表示。
+      return head
+        + '<textarea id="freeText" placeholder="自己紹介や補足を自由に書けます">' + esc(pv.free_text || "") + '</textarea>'
+        + '<p class="pv-tiny">ここに書いた内容は、そのまま公開プロフィールに表示されます。</p>'
+        + '<button class="pv-btn" onclick="saveFreeText()">「本人より」を保存</button>'
+        + '<span id="freeMsg" style="font-size:12px;margin-left:8px"></span>';
+    }
+    // public: 読み取り専用・空なら丸ごと出さない（編集UI差の帰結）。
+    var free = (pv.free_text || "").trim();
+    if (!free) return "";
+    return head + '<p class="pv-freetext">' + esc(free) + '</p>';
+  }
+
+  function bodyV4(pv, mode){
+    var h = "";
+
+    // 背景（冒頭・小）。無ければ headline にフォールバック
+    var bg = pv.background || pv.headline || "";
+    h += '<p class="pv-cap">背景</p><p class="pv-lead">' + esc(bg || "—") + '</p>';
+
+    // 意志
+    h += '<h2 class="pv-h">意志<span class="en">WILL</span></h2>';
+    h += '<p class="pv-blkcap">どこへ向かい、なぜそう考えるに至ったか。</p>';
+    h += item("いま目指していること", pv.will_where || pv.pursuing);
+    h += item("その根にある捉え方", pv.will_why);
+    h += item("そう考えるに至った経験", pv.will_origin);
+
+    // 現状（背骨）。縛られているものは転回点へ抜くので含めない
+    h += '<h2 class="pv-h">現状<span class="en">STATE</span></h2>';
+    h += '<p class="pv-blkcap">いま手にしているもの。</p>';
+    h += '<div class="pv-spine">';
+    h += '<div class="pv-item"><div class="pv-lb">持っているもの</div>' + holds(pv.state_have) + '</div>';
+    h += item("繰り返し現れる固有の型", pv.state_can_type);
+    h += item("その他", pv.state_unsorted);
+    h += '</div>';
+
+    // 転回点（縛られているもの）。空なら丸ごと出さない
+    var constraint = (pv.state_bound || "").trim();
+    if (constraint) {
+      h += '<div class="pv-pivot"><div class="pv-lb">縛られているもの</div>'
+        + '<p class="pv-body">' + esc(constraint) + '</p>'
+        + '<span class="pv-turn">── だから、他者が必要 ──</span></div><div class="pv-down">▼</div>';
+    }
+
+    // 足りないもの
+    h += '<h2 class="pv-h">足りないもの<span class="en">GAP</span></h2>';
+    h += '<p class="pv-blkcap">次に踏む一歩と、そのために必要な相手。</p>';
+    h += '<div class="pv-item"><div class="pv-lb">次の一歩</div>' + steps(pv.trajectory) + '</div>';
+    var seeking = (pv.seeking && pv.seeking !== "未取得") ? pv.seeking : "";
+    h += '<div class="pv-item"><div class="pv-lb">求めている<span class="by">本人の言葉</span></div>'
+      + '<p class="pv-body">' + esc(seeking || "—") + '</p></div>';
+
+    // 必要としている相手（必要像）スロット。owner/public とも同位置に置き、
+    // 中身は renderNecessity() が入れる（本文=公開／根拠=本人のみ）。
+    h += '<div id="pvNecessity"></div>';
+
+    // 本人より
+    h += freeBlock(pv, mode);
+    return h;
+  }
+
+  /* v3 後方互換（旧スキーマ）。構造は owner/public 同一・本人よりのみ差分。 */
+  function bodyV3(pv, mode){
+    var h = "";
+    if (pv.headline) h += '<p class="pv-lead">' + esc(pv.headline) + '</p>';
+    var badge = pv.phase_badge || {};
+    if (badge.value) {
+      h += '<div class="pv-phase"><span class="pv-phase-tag">' + esc(badge.value) + '</span>'
+        + (badge.unconfirmed ? '<span class="pv-phase-unconf">AI推定・未確定</span>' : '') + '</div>';
+    }
+    h += '<div class="pv-triangle">'
+      + '<div class="pv-tri"><span class="pv-tri-label">意志</span><p class="pv-tri-text">' + esc(pv.pursuing || "—") + '</p></div>'
+      + '<div class="pv-tri"><span class="pv-tri-label">求めている</span><p class="pv-tri-text">' + esc(pv.needs || "—") + '</p></div>'
+      + '<div class="pv-tri"><span class="pv-tri-label">能力</span><p class="pv-tri-text">' + esc(pv.offering || "—") + '</p></div>'
+      + '</div>';
+    h += '<div id="pvNecessity"></div>';
+    h += freeBlock(pv, mode);
+    return h;
+  }
+
+  function render(root, pv, opts){
+    opts = opts || {};
+    var mode = opts.mode === "owner" ? "owner" : "public";
+    root.classList.add("pv");
+    var h = header(pv) + (mode === "owner" ? dnEditor(pv) : "") + prov();
+    h += (pv.schema_version === "v4") ? bodyV4(pv, mode) : bodyV3(pv, mode);
+    if (mode === "owner") {
+      h += '<a id="editLink" class="pv-btn" href="#">プロフィールを編集する</a>';
+    }
+    root.innerHTML = h;
+  }
+
+  /* 必要としている相手（必要像）。necessity_text=公開・両ビュー同一。
+     evidence_span（根拠）は owner のみ＝非公開項目（差2）。 */
+  function renderNecessity(el, nec, mode){
+    if (!el) return;
+    var text = (nec && nec.necessity_text) ? nec.necessity_text : "";
+    if (!text) { el.style.display = "none"; el.innerHTML = ""; return; }
+    var owner = mode === "owner";
+    var ev = owner ? String((nec && nec.evidence_span) || "").trim() : "";
+    el.innerHTML = '<div class="pv-needblock">'
+      + '<h2 class="pv-h">必要としている相手<span class="en">必要像・AI推定</span></h2>'
+      + '<p class="pv-blkcap">AIが本人の言葉から推定した、必要としている相手の像。'
+      +   '<b>本文はプロフィールに公開されます。</b>'
+      +   (owner ? '根拠と数値はあなたにだけ表示されます。' : '') + '</p>'
+      + '<p class="pv-body">' + esc(text) + '</p>'
+      + (ev ? '<div class="pv-lb">この推定の根拠（本人の言葉から）<span class="en">あなただけに表示</span></div>'
+            + '<p class="pv-evi">' + esc(ev) + '</p>' : '')
+      + '</div>';
+    el.style.display = "block";
+  }
+
+  return { render: render, renderNecessity: renderNecessity, esc: esc };
+})();
+</script>

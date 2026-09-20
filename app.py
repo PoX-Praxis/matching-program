@@ -339,11 +339,23 @@ def get_seekers():
     公開条件を満たす necessity があれば necessity_excerpt（冒頭）も添える（指示書11 §4-5）。"""
     rows = list_public_seeker_index(db_path=DB)
     if is_postgres():
+        # 指示書37 §1-3: 一覧の必要像を3状態で出し分けるため、表示専用のメタ
+        # necessity_state を添える（display のみ・照合/認可/台帳のロジックは不変）。
+        #   public   … 公開閾値を満たす必要像あり → 本文を2行クランプ表示
+        #   preparing… generation_status が preparing / error → 「準備中です」
+        #   hidden   … 公開対象外（閾値未満・再構築前など） → 行を出さない（現状どおり）
+        store = _v4_store()
         for r in rows:
             pub = get_public_necessity(r.get("id"))   # 数値なし・日時閾値ゲート済み
             if pub:
                 t = pub["necessity_text"]
-                r["necessity_excerpt"] = t[:60] + ("…" if len(t) > 60 else "")
+                # 2行クランプ表示のため少し長めに送る（必要像本文は公開情報）。丸めは CSS 側。
+                r["necessity_excerpt"] = t[:140] + ("…" if len(t) > 140 else "")
+                r["necessity_state"] = "public"
+            else:
+                st = store.get_profile_status(r.get("id")) or {}
+                gs = st.get("generation_status")
+                r["necessity_state"] = "preparing" if gs in ("preparing", "error") else "hidden"
     return jsonify(rows)
 
 

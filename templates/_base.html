@@ -14,7 +14,14 @@
     --prose: 720px;
     --pad: clamp(16px, 4vw, 32px);
     --lh: 1.9;
+    --radius: 6px;      /* 角丸（§6 部品トークン） */
+    --ctrl-h: 40px;     /* ボタン・入力欄の高さ（§6） */
+    --ring: #1f3a5f;    /* フォーカスリング1色（§6） */
   }
+  /* フォーカスリングは全画面で1色に統一（§6・段階7）。 */
+  :focus-visible{ outline:2px solid var(--ring); outline-offset:2px; }
+  /* 一覧・カードの説明文を2行で丸める（§6・§1-3。1行「…」打ち切りの解消）。 */
+  .clamp-2{ display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   html, body{ max-width:100%; overflow-x:hidden; }
   body{
     font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;

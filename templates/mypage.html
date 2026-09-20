@@ -505,10 +505,11 @@ async function loadOwnerNecessity(id) {
   if (!nec || !nec.necessity_text) { el.style.display = "none"; return; }
   const ev = (nec.evidence_span || "").trim();
   el.innerHTML = `<div class="mp-needblock">
-    <h2 class="mp-h">あなたの必要像<span class="en">自分だけに表示</span></h2>
-    <p class="mp-blkcap">AIがあなたの言葉から推定した、あなたに必要な相手の像。</p>
+    <h2 class="mp-h">あなたの必要像<span class="en">本文は公開</span></h2>
+    <p class="mp-blkcap">AIがあなたの言葉から推定した、あなたに必要な相手の像。
+      <b>この本文はプロフィールに公開されます</b>。根拠と数値はあなたにだけ表示されます（指示書11・36）。</p>
     <p class="mp-body">${escHtml(nec.necessity_text)}</p>
-    ${ev ? `<div class="mp-lb">この推定の根拠（あなたの言葉から）</div>
+    ${ev ? `<div class="mp-lb">この推定の根拠（あなたの言葉から）<span class="en">あなただけに表示</span></div>
       <p class="mp-evi">${escHtml(ev)}</p>` : ""}
   </div>`;
   el.style.display = "block";

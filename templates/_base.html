@@ -23,6 +23,16 @@
   img{ max-width:100%; height:auto; }
   .l-prose{ width:min(100% - 2*var(--pad), var(--prose)); margin-inline:auto; padding:24px var(--pad) 64px; box-sizing:border-box; }
   .l-wide { width:min(100% - 2*var(--pad), var(--wide));  margin-inline:auto; padding:24px var(--pad) 64px; box-sizing:border-box; }
+
+  /* ── 見出し規格（指示書37 段階6・§5）──────────────────────────────────
+     全画面で1系統に統一。素の h1/h2/h3 のみを対象にし（`.card h3` 等の
+     スコープ付き見出しは各ページの意図を尊重して触れない）、下線は廃止。
+     和名＋英字小ラベル(.en) をマイページ由来の共通規格とする。 */
+  .l-prose h1, .l-wide h1{ font-size:28px; font-weight:700; line-height:1.4; letter-spacing:.01em; margin:0 0 8px; }
+  .l-prose h2, .l-wide h2{ font-size:20px; font-weight:700; line-height:1.5; letter-spacing:.02em; margin:32px 0 12px; padding:0; border:0; }
+  .l-prose h3, .l-wide h3{ font-size:15px; font-weight:700; line-height:1.6; margin:20px 0 8px; }
+  /* 英字小ラベル（見出しに併記する小キャップス）。全画面共通。 */
+  .en{ font-size:12px; font-weight:600; letter-spacing:.08em; color:#9aa0a8; margin-left:8px; }
 </style>
 {% block head %}{% endblock %}
 </head>

@@ -2,8 +2,9 @@
 {% block title %}言語化する — PoX{% endblock %}
 {% block head %}
 <style>
-  h1 { font-size: 1.3rem; margin-bottom: 4px; }
-  h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 36px; }
+  /* h1/h2 は共通規格（_base.html §5）に委譲。STEP はステップ側の小見出しで担保。 */
+  .step-kicker { font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #9aa0a8; margin: 32px 0 2px; }
+  h2 + p, .step-kicker + h2 { margin-top: 0; }
   p  { line-height: 1.7; font-size: 14px; }
   .why-box {
     background: #f0f4ff; border-left: 4px solid #1a3a5c;
@@ -63,7 +64,8 @@
 
 <div id="existingNotice"></div>
 
-<h2>STEP 1 ── AI に自分を構造化してもらう</h2>
+<p class="step-kicker">STEP 1</p>
+<h2>AI に自分を構造化してもらう<span class="en">STRUCTURE</span></h2>
 
 <div class="choice">
   <span class="choice-label">◉ AIと対話して作る</span>
@@ -329,7 +331,8 @@ PoX は「意志（どこへ進みたいか）」と「現状（いま何を持�
   </div>
 </details>
 
-<h2>STEP 2 ── 生成された JSON を貼り付けて登録</h2>
+<p class="step-kicker">STEP 2</p>
+<h2>生成された JSON を貼り付けて登録<span class="en">REGISTER</span></h2>
 
 <p>AI が最後に出力した JSON を、<code>{</code> から <code>}</code> までそのまま貼り付けてください。
 <code>```</code> や前置きが付いていても自動で取り除きます。</p>

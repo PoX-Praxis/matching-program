@@ -283,7 +283,9 @@ window.PoXProfileView = (function(){
       +   '<b>本文はプロフィールに公開されます。</b>'
       +   (owner ? '根拠と数値はあなたにだけ表示されます。' : '') + '</p>'
       + '<p class="pv-body">' + esc(text) + '</p>'
-      + (ev ? '<div class="pv-lb">この推定の根拠（本人の言葉から）<span class="en">あなただけに表示</span></div>'
+      // §1-1: 「自分だけに表示」バッジは実態（本文=公開）と食い違うため削除。
+      // 本文=公開／根拠と数値=非公開 は上のキャプションで明示する。
+      + (ev ? '<div class="pv-lb">この推定の根拠として引用した、あなた自身の発言</div>'
             + '<p class="pv-evi">' + esc(ev) + '</p>' : '')
       + '</div>';
     el.style.display = "block";

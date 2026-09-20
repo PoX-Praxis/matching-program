@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PoXとは — PoX</title>
+{% extends "_base.html" %}
+{% block title %}PoXとは — PoX{% endblock %}
+{% block head %}
 <style>
   /* ══════════════════════════════════════════════════════════════
      指示書15 —「PoXとは」全面差し替え。大見出し／小見出し／本文の3階層
@@ -21,9 +18,9 @@
     --accent:#1f3a5f;
     --accent-bg:#f5f8fa;
 
-    max-width:600px;
-    margin:0 auto;
-    padding:8px 20px 72px;
+    max-width:var(--prose);
+    margin-inline:auto;
+    padding:8px var(--pad) 72px;
     color:var(--ink);
     font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
     line-height:1.9;
@@ -100,9 +97,8 @@
   .about .ab-final{margin-top:52px;padding-top:30px;border-top:1px solid var(--rule)}
   .about .ab-final .ab-plain{color:#6b7280;font-size:14px;margin-top:20px}
 </style>
-</head>
-<body>
-{% include "_nav.html" %}
+{% endblock %}
+{% block content %}
 
 <main class="about">
 
@@ -229,5 +225,4 @@
   </section>
 
 </main>
-</body>
-</html>
+{% endblock %}

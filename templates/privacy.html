@@ -1,11 +1,7 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>プライバシーポリシー — PoX</title>
+{% extends "_base.html" %}
+{% block title %}プライバシーポリシー — PoX{% endblock %}
+{% block head %}
 <style>
-  body { font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; max-width: 620px; margin: 40px auto; padding: 0 16px; color: #222; }
   h1 { font-size: 1.6rem; margin-bottom: 8px; }
   h2 { font-size: 1.1rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 36px; }
   h3 { font-size: 1rem; margin-top: 20px; margin-bottom: 4px; }
@@ -22,9 +18,9 @@
   th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; vertical-align: top; }
   th { background: #f4f7fa; }
 </style>
-</head>
-<body>
-{% include "_nav.html" %}
+{% endblock %}
+{% block content %}
+<main class="l-prose">
 
 <h1>プライバシーポリシー</h1>
 <p class="meta">最終更新：2026年9月／運営：Praxis（Kaoru）</p>
@@ -149,5 +145,5 @@
 <h2>11. お問い合わせ</h2>
 <p>本ポリシーやデータの扱いについてのご質問は、praxis.pox@gmail.com までお問い合わせください。</p>
 
-</body>
-</html>
+</main>
+{% endblock %}

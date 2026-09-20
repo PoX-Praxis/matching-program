@@ -1,11 +1,7 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>言語化する — PoX</title>
+{% extends "_base.html" %}
+{% block title %}言語化する — PoX{% endblock %}
+{% block head %}
 <style>
-  body { font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; max-width: 620px; margin: 40px auto; padding: 0 16px; color: #222; }
   h1 { font-size: 1.3rem; margin-bottom: 4px; }
   h2 { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 36px; }
   p  { line-height: 1.7; font-size: 14px; }
@@ -50,9 +46,9 @@
   .copy-note { font-size:12px; color:#1a8a1a; height:1.2em; margin-top:4px; }
   #existingNotice { font-size:13px; color:#856404; background:#fff3cd; padding:8px 12px; border-radius:4px; margin-top:10px; display:none; }
 </style>
-</head>
-<body>
-{% include "_nav.html" %}
+{% endblock %}
+{% block content %}
+<main class="l-prose">
 
 <h1>言語化する</h1>
 
@@ -513,5 +509,5 @@ async function confirmDraft(draftId, btn) {
   }
 }
 </script>
-</body>
-</html>
+</main>
+{% endblock %}

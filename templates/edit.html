@@ -1,11 +1,7 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>プロフィール編集 — PoX</title>
+{% extends "_base.html" %}
+{% block title %}プロフィール編集 — PoX{% endblock %}
+{% block head %}
 <style>
-  body { font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; max-width: 620px; margin: 40px auto; padding: 0 16px; color: #222; }
   a.back { font-size: 13px; color: #555; text-decoration: none; }
   h1 { font-size: 1.3rem; margin: 12px 0 4px; }
   .sub { font-size: 13px; color: #555; margin: 2px 0 16px; }
@@ -57,9 +53,9 @@
 
   @media (max-width: 600px) { .slot-grid { grid-template-columns: 1fr; } }
 </style>
-</head>
-<body>
-{% include "_nav.html" %}
+{% endblock %}
+{% block content %}
+<main class="l-prose">
 <a href="/" class="back">← トップに戻る</a>
 <h1>プロフィール編集</h1>
 <div id="loading">読み込み中です</div>
@@ -298,5 +294,5 @@ function escHtml(s) {
 
 init();
 </script>
-</body>
-</html>
+</main>
+{% endblock %}

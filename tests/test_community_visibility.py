@@ -48,6 +48,27 @@ def _post_message(cid, sid, body):
     return _cli(sid).post(f"/api/community/{cid}/message", json={"from_id": sid, "body": body})
 
 
+def _propose(cid, sid, body="やること"):
+    return _cli(sid).post(f"/api/community/{cid}/intent/propose",
+                          json={"proposer": sid, "body": body}).get_json()["intent_id"]
+
+
+def _agree(iid, sid):
+    return _cli(sid).post(f"/api/intent/{iid}/agree", json={"subject": sid})
+
+
+def _cancel(iid, sid):
+    return _cli(sid).post(f"/api/intent/{iid}/cancel", json={"by": sid})
+
+
+def _intent_ids_community(client, cid):
+    return [it["intent_id"] for it in client.get(f"/api/community/{cid}").get_json().get("intents", [])]
+
+
+def _intent_ids_list(client, cid):
+    return [it["intent_id"] for it in client.get(f"/api/community/{cid}/intents").get_json().get("intents", [])]
+
+
 # ── §5-4（完了条件）: 第三者に pending が返らない ─────────────────────────────
 def test_pending_not_returned_to_third_party():
     cid = _setup()
@@ -136,3 +157,64 @@ def test_messages_returned_to_member():
     data = _cli("u_alice").get(f"/api/community/{cid}").get_json()
     bodies = [m.get("body") for m in data.get("messages", [])]
     assert "hello members" in bodies
+
+
+# ── 指示書39（§3-1）: 合意前の提起は第三者に見せない ─────────────────────────
+def test_proposed_hidden_from_third_party_all_three_routes():
+    cid = _setup()
+    iid = _propose(cid, "u_alice")
+    anon = _cli()   # 未ログイン＝第三者
+    # 経路1: /api/community/<id>（intents）
+    assert iid not in _intent_ids_community(anon, cid)
+    # 経路2: /api/community/<id>/intents
+    assert iid not in _intent_ids_list(anon, cid)
+    # 経路3: /api/intent/<id> → 存在ごと隠す（404）
+    assert anon.get(f"/api/intent/{iid}").status_code == 404
+    # 無関係のログインユーザーにも見えない
+    assert _cli("u_stranger").get(f"/api/intent/{iid}").status_code == 404
+
+
+def test_member_sees_proposed_and_can_agree():
+    cid = _setup()
+    iid = _propose(cid, "u_alice")
+    alice = _cli("u_alice")                       # founder＝メンバー
+    assert iid in _intent_ids_community(alice, cid)
+    assert iid in _intent_ids_list(alice, cid)
+    assert alice.get(f"/api/intent/{iid}").status_code == 200
+    # 合意できる（見えているから合意判断ができる）
+    r = _agree(iid, "u_alice")
+    assert r.status_code == 200 and r.get_json().get("agreed") is True
+    # 合意後は第三者にも公開
+    anon = _cli()
+    assert anon.get(f"/api/intent/{iid}").get_json()["status"] == "agreed"
+    assert iid in _intent_ids_community(anon, cid)
+
+
+# ── §3-1: 合意前 cancel は痕跡を残さない（第三者にもメンバーにも出さない）──────
+def test_cancel_before_agree_leaves_no_trace():
+    cid = _setup()
+    iid = _propose(cid, "u_alice")
+    assert _cancel(iid, "u_alice").status_code == 200   # 合意前キャンセル
+    # 第三者
+    anon = _cli()
+    assert iid not in _intent_ids_community(anon, cid)
+    assert iid not in _intent_ids_list(anon, cid)
+    assert anon.get(f"/api/intent/{iid}").status_code == 404
+    # メンバー（痕跡を残さない → メンバーからも消える）
+    alice = _cli("u_alice")
+    assert iid not in _intent_ids_community(alice, cid)
+    assert iid not in _intent_ids_list(alice, cid)
+    assert alice.get(f"/api/intent/{iid}").status_code == 404
+
+
+# ── §3-1: 合意後 cancel は公開のまま（成立した事実の後の終了）────────────────
+def test_cancel_after_agree_stays_public():
+    cid = _setup()
+    iid = _propose(cid, "u_alice")
+    assert _agree(iid, "u_alice").get_json().get("agreed") is True
+    assert _cancel(iid, "u_alice").status_code == 200   # 合意後キャンセル
+    anon = _cli()
+    r = anon.get(f"/api/intent/{iid}")
+    assert r.status_code == 200 and r.get_json()["status"] == "cancelled"
+    assert iid in _intent_ids_community(anon, cid)
+    assert iid in _intent_ids_list(anon, cid)

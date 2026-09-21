@@ -1805,7 +1805,9 @@ def api_get_community(community_id):
     else:
         pending_rows = []                                                            # 第三者には出さない
 
-    messages_rows = get_community_messages(community_id, db_path=DB)                  # ※チャットのロール制限は後続コミット（§2-3）
+    # チャット（messages）はメンバー間のやりとりで、宣言でも実績でもない → メンバーのみ（§2-3）。
+    # 第三者・申請者・無関係ログインには返さない。
+    messages_rows = get_community_messages(community_id, db_path=DB) if is_mem else []
 
     names = _resolve_names(list(member_ids)
                            + [p.get("member_id") for p in pending_rows]
@@ -1829,9 +1831,6 @@ def api_get_community(community_id):
         # 宣言・実績（完成条件そのもの）は公開。
         "declaration":  declaration,
         "intents":      intents,
-        # チャット（後続コミットでメンバー限定に絞る）。
-        "messages": [{**m, "from_name": names.get(m.get("from_id"), m.get("from_id"))}
-                     for m in messages_rows],
         "viewer_role": ("member" if is_mem
                         else "applicant" if pending_rows
                         else "authenticated" if viewer is not None
@@ -1842,6 +1841,10 @@ def api_get_community(community_id):
         out["pending"] = [{"member_id":   p.get("member_id"),
                            "display_name": names.get(p.get("member_id"), p.get("member_id")),
                            "joined_at":    p.get("joined_at")} for p in pending_rows]
+    # messages はメンバーのみ（§2-3）。キーごと出し分ける。
+    if is_mem:
+        out["messages"] = [{**m, "from_name": names.get(m.get("from_id"), m.get("from_id"))}
+                           for m in messages_rows]
     return jsonify(out)
 
 

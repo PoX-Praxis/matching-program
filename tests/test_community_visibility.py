@@ -44,6 +44,10 @@ def _apply(cid, sid):
     _cli(sid).post(f"/api/community/{cid}/join", json={"member_id": sid})
 
 
+def _post_message(cid, sid, body):
+    return _cli(sid).post(f"/api/community/{cid}/message", json={"from_id": sid, "body": body})
+
+
 # ── §5-4（完了条件）: 第三者に pending が返らない ─────────────────────────────
 def test_pending_not_returned_to_third_party():
     cid = _setup()
@@ -110,3 +114,25 @@ def test_rejected_request_leaves_no_public_trace():
     assert "u_bob" not in [m["member_id"] for m in d_member["members"]]   # active ではない
     # 第三者にも当然出ない
     assert "pending" not in _cli().get(f"/api/community/{cid}").get_json()
+
+
+# ── §2-3 / §5-4（完了条件）: messages（チャット）はメンバーのみ ─────────────
+def test_messages_not_returned_to_third_party_or_applicant():
+    cid = _setup()
+    _post_message(cid, "u_alice", "founder note")     # founder はメンバー
+    _apply(cid, "u_bob")
+    # 第三者（未ログイン）: messages キーごと返さない
+    assert "messages" not in _cli().get(f"/api/community/{cid}").get_json()
+    # 申請者本人（未成立）にもチャットは返さない
+    d_applicant = _cli("u_bob").get(f"/api/community/{cid}").get_json()
+    assert "messages" not in d_applicant
+    # 無関係ログインにも返さない
+    assert "messages" not in _cli("u_stranger").get(f"/api/community/{cid}").get_json()
+
+
+def test_messages_returned_to_member():
+    cid = _setup()
+    _post_message(cid, "u_alice", "hello members")
+    data = _cli("u_alice").get(f"/api/community/{cid}").get_json()
+    bodies = [m.get("body") for m in data.get("messages", [])]
+    assert "hello members" in bodies

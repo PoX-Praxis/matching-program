@@ -1,0 +1,138 @@
+"""指示書38: 未成立の関係（承認前の参加申請）を公開面から外す。
+
+GET /api/community/<id> のロール別 allowlist を検証する。
+判定はセッションの subject_id（指示書36）。クエリ引数の自己申告は使わない。
+"""
+import os, sys, tempfile
+ROOT = os.path.join(os.path.dirname(__file__), "..")
+sys.path.insert(0, os.path.join(ROOT, "src"))
+sys.path.insert(0, ROOT)
+
+import app as appmod
+
+
+def _client():
+    """新しい一時 DB を張り、appmod.DB を差し替える（以降のクライアントは同じ DB を共有）。"""
+    os.environ.pop("POX_DEBUG", None)
+    appmod.DB = os.path.join(tempfile.mkdtemp(), "t.db")
+    appmod.app.config["TESTING"] = True
+    return appmod.app.test_client()
+
+
+def _login(c, sid):
+    with c.session_transaction() as sess:
+        sess["subject_id"] = sid
+
+
+def _cli(sid=None):
+    """現在の appmod.DB を使う追加クライアント（sid を渡すとログイン）。"""
+    c = appmod.app.test_client()
+    if sid:
+        _login(c, sid)
+    return c
+
+
+def _setup(founder="u_alice"):
+    c = _client()
+    _login(c, founder)
+    cid = c.post("/api/communities", json={"name": "n", "founder_id": founder}).get_json()["id"]
+    return cid
+
+
+def _apply(cid, sid):
+    """sid が参加申請（pending）を出す。"""
+    _cli(sid).post(f"/api/community/{cid}/join", json={"member_id": sid})
+
+
+def _post_message(cid, sid, body):
+    return _cli(sid).post(f"/api/community/{cid}/message", json={"from_id": sid, "body": body})
+
+
+# ── §5-4（完了条件）: 第三者に pending が返らない ─────────────────────────────
+def test_pending_not_returned_to_third_party():
+    cid = _setup()
+    _apply(cid, "u_bob")
+    data = _cli().get(f"/api/community/{cid}").get_json()   # 未ログイン＝第三者
+    assert "pending" not in data
+    assert data["viewer_role"] == "guest"
+    # 成立した関係（メンバー）と宣言は公開のまま
+    assert "members" in data and "declaration" in data and "intents" in data
+
+
+def test_authenticated_nonmember_gets_no_pending():
+    cid = _setup()
+    _apply(cid, "u_bob")
+    # 無関係のログインユーザー（メンバーでも申請者でもない）には pending を出さない
+    data = _cli("u_stranger").get(f"/api/community/{cid}").get_json()
+    assert "pending" not in data
+    assert data["viewer_role"] == "authenticated"
+
+
+# ── §2-1: 申請者本人は自分の申請だけ ────────────────────────────────────────
+def test_applicant_sees_only_own_pending():
+    cid = _setup()
+    _apply(cid, "u_bob")
+    _apply(cid, "u_carol")
+    data = _cli("u_carol").get(f"/api/community/{cid}").get_json()
+    ids = sorted(p["member_id"] for p in data.get("pending", []))
+    assert ids == ["u_carol"]                 # 他人（u_bob）の申請は見えない
+    assert data["viewer_role"] == "applicant"
+
+
+# ── §5-5: メンバーには pending 全件が返り、承認できる ───────────────────────
+def test_member_sees_all_pending_and_can_approve():
+    cid = _setup()
+    _apply(cid, "u_bob")
+    _apply(cid, "u_carol")
+    # founder はメンバー → pending 全件
+    data = _cli("u_alice").get(f"/api/community/{cid}").get_json()
+    ids = sorted(p["member_id"] for p in data.get("pending", []))
+    assert ids == ["u_bob", "u_carol"]
+    assert data["viewer_role"] == "member"
+    # 承認できる（見えているから承認判断ができる）
+    r = _cli("u_alice").post(f"/api/community/{cid}/approve",
+                             json={"member_id": "u_bob", "approver_id": "u_alice"})
+    assert r.status_code == 200
+    # 承認後: u_bob は members に入り、pending から消える
+    data2 = _cli("u_alice").get(f"/api/community/{cid}").get_json()
+    assert "u_bob" in [m["member_id"] for m in data2["members"]]
+    assert "u_bob" not in [p["member_id"] for p in data2.get("pending", [])]
+
+
+# ── §5-6: 却下・取り下げ後は公開面から痕跡が消える ──────────────────────────
+def test_rejected_request_leaves_no_public_trace():
+    cid = _setup()
+    _apply(cid, "u_bob")
+    # 却下・取り下げを模す: 通常 DB の行は残してよい（§2-2）が status を pending 以外にする。
+    from community import _connect
+    with _connect(appmod.DB) as con:
+        con.execute("UPDATE community_members SET status='rejected' "
+                    "WHERE community_id=%s AND member_id=%s", (cid, "u_bob"))
+    # メンバー（alice）から見ても pending に残らない（判断済みを残さない）
+    d_member = _cli("u_alice").get(f"/api/community/{cid}").get_json()
+    assert "u_bob" not in [p["member_id"] for p in d_member.get("pending", [])]
+    assert "u_bob" not in [m["member_id"] for m in d_member["members"]]   # active ではない
+    # 第三者にも当然出ない
+    assert "pending" not in _cli().get(f"/api/community/{cid}").get_json()
+
+
+# ── §2-3 / §5-4（完了条件）: messages（チャット）はメンバーのみ ─────────────
+def test_messages_not_returned_to_third_party_or_applicant():
+    cid = _setup()
+    _post_message(cid, "u_alice", "founder note")     # founder はメンバー
+    _apply(cid, "u_bob")
+    # 第三者（未ログイン）: messages キーごと返さない
+    assert "messages" not in _cli().get(f"/api/community/{cid}").get_json()
+    # 申請者本人（未成立）にもチャットは返さない
+    d_applicant = _cli("u_bob").get(f"/api/community/{cid}").get_json()
+    assert "messages" not in d_applicant
+    # 無関係ログインにも返さない
+    assert "messages" not in _cli("u_stranger").get(f"/api/community/{cid}").get_json()
+
+
+def test_messages_returned_to_member():
+    cid = _setup()
+    _post_message(cid, "u_alice", "hello members")
+    data = _cli("u_alice").get(f"/api/community/{cid}").get_json()
+    bodies = [m.get("body") for m in data.get("messages", [])]
+    assert "hello members" in bodies

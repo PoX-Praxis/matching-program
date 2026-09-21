@@ -1772,30 +1772,80 @@ def api_get_communities():
 
 @app.get("/api/community/<community_id>")
 def api_get_community(community_id):
+    """コミュニティ詳細。公開面は API そのもの（指示書38 §1-3）なので、閲覧者の
+    ロールごとに「返す項目を明示的に列挙」する allowlist にする（§2-5）。
+
+    - 未成立の関係（pending＝承認前の参加申請）は、id を隠すのではなく関係ごと出し分ける（§1-1）:
+        第三者/無関係ログイン … 返さない
+        申請者本人           … 自分の申請だけ（状態を知るため）
+        メンバー             … 全件（承認のために必要）
+      却下・取り下げ（status!='pending'）は get_pending_requests に出ないため公開面から自然に消える（§2-2）。
+    - members（承認後＝成立した関係）・宣言・実績は公開のまま（§2-4）。
+    判定はセッションの subject_id（指示書36。クエリ引数の自己申告は使わない）。
+    """
     c = get_community(community_id, db_path=DB)
     if c is None:
         return jsonify({"error": "コミュニティが見つかりません"}), 404
-    members  = get_members(community_id, db_path=DB)
-    pending  = get_pending_requests(community_id, db_path=DB)
-    messages = get_community_messages(community_id, db_path=DB)
-    # 表示名を解決（指示書30）。メンバー一覧・チャットは表示名のみ、承認待ちは併記。
-    names = _resolve_names([m.get("member_id") for m in members]
-                           + [m.get("member_id") for m in pending]
-                           + [m.get("from_id") for m in messages]
-                           + [c.get("founder")])
-    for m in members:
-        m["display_name"] = names.get(m.get("member_id"), m.get("member_id"))
-    for m in pending:
-        m["display_name"] = names.get(m.get("member_id"), m.get("member_id"))
-    for m in messages:
-        m["from_name"] = names.get(m.get("from_id"), m.get("from_id"))
-    # 宣言と実績（指示書23 §3-1）。第三者（未ログイン）にも見える。数値は出さない。
+
+    viewer  = current_subject_id()                     # 未ログインは None＝第三者
+    members = get_members(community_id, db_path=DB)     # status='active' のみ＝成立した関係
+    member_ids = {m.get("member_id") for m in members}
+    is_mem = viewer is not None and viewer in member_ids
+
     from intent_ledger import list_intent_details, latest_policy_declaration
     declaration = latest_policy_declaration(community_id, db_path=DB)
-    intents = list_intent_details(community_id, db_path=DB)
-    return jsonify({**c, "members": members, "pending": pending, "messages": messages,
-                    "founder_name": names.get(c.get("founder"), c.get("founder")),
-                    "declaration": declaration, "intents": intents})
+    intents = list_intent_details(community_id, db_path=DB)   # §3-1: intent.proposed は現状維持で公開（報告のみ・本指示書では変更しない）
+
+    # pending（未成立の関係）を role で出し分ける（§2-1）。
+    if is_mem:
+        pending_rows = get_pending_requests(community_id, db_path=DB)                 # 承認のため全件
+    elif viewer is not None:
+        pending_rows = [p for p in get_pending_requests(community_id, db_path=DB)
+                        if p.get("member_id") == viewer]                             # 本人の申請だけ
+    else:
+        pending_rows = []                                                            # 第三者には出さない
+
+    # チャット（messages）はメンバー間のやりとりで、宣言でも実績でもない → メンバーのみ（§2-3）。
+    # 第三者・申請者・無関係ログインには返さない。
+    messages_rows = get_community_messages(community_id, db_path=DB) if is_mem else []
+
+    names = _resolve_names(list(member_ids)
+                           + [p.get("member_id") for p in pending_rows]
+                           + [m.get("from_id") for m in messages_rows]
+                           + [c.get("founder")])
+
+    # ── allowlist：返す項目を明示的に列挙（除外方式にしない・§2-5）──
+    out = {
+        "id":           c.get("id"),
+        "name":         c.get("name"),
+        "description":  c.get("description"),
+        "created_at":   c.get("created_at"),
+        # 成立した関係（承認後メンバー）は公開（§2-4）。表示名を主に、id を併記（指示書30）。
+        "founder":      c.get("founder"),
+        "founder_name": names.get(c.get("founder"), c.get("founder")),
+        "members": [{"member_id":   m.get("member_id"),
+                     "display_name": names.get(m.get("member_id"), m.get("member_id")),
+                     "status":       m.get("status"),
+                     "joined_at":    m.get("joined_at")} for m in members],
+        "member_count": len(members),
+        # 宣言・実績（完成条件そのもの）は公開。
+        "declaration":  declaration,
+        "intents":      intents,
+        "viewer_role": ("member" if is_mem
+                        else "applicant" if pending_rows
+                        else "authenticated" if viewer is not None
+                        else "guest"),
+    }
+    # pending は role が許すときだけキーを立てる（第三者・無関係ログインにはキーごと出さない）。
+    if is_mem or pending_rows:
+        out["pending"] = [{"member_id":   p.get("member_id"),
+                           "display_name": names.get(p.get("member_id"), p.get("member_id")),
+                           "joined_at":    p.get("joined_at")} for p in pending_rows]
+    # messages はメンバーのみ（§2-3）。キーごと出し分ける。
+    if is_mem:
+        out["messages"] = [{**m, "from_name": names.get(m.get("from_id"), m.get("from_id"))}
+                           for m in messages_rows]
+    return jsonify(out)
 
 
 @app.post("/api/community/<community_id>/join")

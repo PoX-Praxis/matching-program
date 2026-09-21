@@ -1770,6 +1770,42 @@ def api_get_communities():
     return jsonify(get_all_communities(db_path=DB))
 
 
+def _intent_public(intent):
+    """指示書39（§3-1 の判断）: 合意前の提起は第三者に見せない。
+      proposed（合意前）        … 非公開（メンバーのみ）
+      agreed / completed        … 公開
+      cancelled（合意後の取消）  … 公開（成立した事実の後の終了）
+      cancelled（合意前の取消）  … 非公開（痕跡を残さない）
+    判定は台帳から算出済みの status / agreed だけを使い、台帳イベントには触れない。"""
+    st = (intent or {}).get("status")
+    if st in ("agreed", "completed"):
+        return True
+    if st == "cancelled":
+        return intent.get("agreed") is True     # 合意後に取り消されたものだけ公開
+    return False                                # proposed（合意前）
+
+
+def _is_ctx_member(ctx, viewer):
+    """viewer が ctx（コミュニティ）の成立メンバーか（founder 含む）。判定はセッション基準。"""
+    if not viewer or not ctx:
+        return False
+    return is_member(ctx, viewer, db_path=DB) or is_founder(ctx, viewer, db_path=DB)
+
+
+def _intent_visible(intent, is_member_viewer):
+    """指示書39（§3-1）: 閲覧者ロール別の可視性。
+      合意前の cancelled … 痕跡を残さない（メンバーにも第三者にも出さない。台帳だけが保持）
+      proposed（合意前）  … メンバーのみ
+      公開分（agreed/completed/合意後cancelled）… 誰でも
+    ※台帳イベントには触れない（読み出し面の出し分けのみ）。"""
+    st = (intent or {}).get("status")
+    if st == "cancelled" and intent.get("agreed") is not True:
+        return False                        # 合意前キャンセルは痕跡を残さない
+    if is_member_viewer:
+        return True                         # メンバーは proposed 含めて見える
+    return _intent_public(intent)           # 第三者は公開分のみ
+
+
 @app.get("/api/community/<community_id>")
 def api_get_community(community_id):
     """コミュニティ詳細。公開面は API そのもの（指示書38 §1-3）なので、閲覧者の
@@ -1793,8 +1829,10 @@ def api_get_community(community_id):
     is_mem = viewer is not None and viewer in member_ids
 
     from intent_ledger import list_intent_details, latest_policy_declaration
-    declaration = latest_policy_declaration(community_id, db_path=DB)
-    intents = list_intent_details(community_id, db_path=DB)   # §3-1: intent.proposed は現状維持で公開（報告のみ・本指示書では変更しない）
+    declaration = latest_policy_declaration(community_id, db_path=DB)   # agreed/completed の policy のみ＝公開安全
+    intents = list_intent_details(community_id, db_path=DB)
+    # 指示書39（§3-1）: 合意前の提起はメンバーのみ、合意前キャンセルは痕跡を残さない。
+    intents = [it for it in intents if _intent_visible(it, is_mem)]
 
     # pending（未成立の関係）を role で出し分ける（§2-1）。
     if is_mem:
@@ -2058,13 +2096,21 @@ def api_intent_get(intent_id):
     r = get_intent(intent_id, db_path=DB)
     if not r:
         return jsonify({"error": "not_found"}), 404
+    # 指示書39（§3-1）: 合意前の提起はメンバー以外に、合意前キャンセルは誰にも存在を見せない
+    # （not_found を返す＝痕跡を残さない）。判定はセッション基準。
+    if not _intent_visible(r, _is_ctx_member(r.get("ctx"), current_subject_id())):
+        return jsonify({"error": "not_found"}), 404
     return jsonify(r), 200
 
 
 @app.get("/api/community/<community_id>/intents")
 def api_community_intents(community_id):
     from intent_ledger import list_intents
-    return jsonify({"ctx": community_id, "intents": list_intents(community_id, db_path=DB)}), 200
+    intents = list_intents(community_id, db_path=DB)
+    is_mem = _is_ctx_member(community_id, current_subject_id())
+    # 指示書39（§3-1）: 合意前の提起はメンバーのみ、合意前キャンセルは痕跡を残さない。
+    intents = [it for it in intents if _intent_visible(it, is_mem)]
+    return jsonify({"ctx": community_id, "intents": intents}), 200
 
 
 @app.post("/api/community/<community_id>/leave")

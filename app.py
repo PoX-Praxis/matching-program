@@ -1913,23 +1913,19 @@ def api_approve_member(community_id):
     return jsonify(result), 200
 
 
+# 指示書41 §4-4/§8-1: 旧 intent.* の新規書き込みは停止（凍結）。読み取り系は残す。
+# 提議・合意・取消・完了・参加は、新しいトーク（/api/community/<id>/talks・投票）へ移行した。
+_FROZEN_OLD_INTENT = ({
+    "error": "gone",
+    "detail": "この経路は凍結されました（指示書41）。提議・合意・参加・達成は "
+              "/api/community/<id>/talks とその投票（/api/talks/<id>/vote）で行ってください。",
+}, 410)
+
+
 @app.post("/api/community/<community_id>/intent/propose")
-@login_required
 def api_intent_propose(community_id):
-    """意志形成を提起（§5-3）。提起者は ctx の active メンバーであること。AI 非依存。
-    台帳に intent.proposed を書くため、本人セッション限定にゲート（指示書23 §4）。"""
-    body = request.get_json(force=True, silent=True) or {}
-    proposer = require_self((body.get("proposer") or "").strip() or None) or ""
-    if not proposer:
-        return jsonify({"error": "proposer が必要です"}), 400
-    from member_ledger import active_members_from_events
-    if proposer not in active_members_from_events(community_id, db_path=DB):
-        return jsonify({"error": "提起はコミュニティのメンバーのみ"}), 403
-    from intent_ledger import propose_intent
-    return jsonify(propose_intent(
-        community_id, proposer, body=body.get("body") or "",
-        declaration=body.get("declaration") or "",
-        ruleset_version=body.get("ruleset_version") or "r1", db_path=DB)), 200
+    """（凍結）旧: intent.proposed を書く提議。→ 提議トーク（kind=proposal）へ（§4-4/§8-1）。"""
+    return jsonify(_FROZEN_OLD_INTENT[0]), _FROZEN_OLD_INTENT[1]
 
 
 def _community_declaration_from_payload(payload):
@@ -1981,29 +1977,9 @@ def _community_declaration_from_payload(payload):
 
 
 @app.post("/api/community/<community_id>/declare")
-@login_required
 def api_community_declare(community_id):
-    """コミュニティ版①の出力JSON（全体用/目的別）を受理し、意志形成として提起する（§2-3・§4）。
-    提起者は ctx の active メンバーであること。合意（/api/intent/<id>/agree）で台帳へ確定する。"""
-    body = request.get_json(force=True, silent=True) or {}
-    proposer = require_self((body.get("proposer") or "").strip() or None) or ""
-    if not proposer:
-        return jsonify({"error": "proposer が必要です"}), 400
-    from member_ledger import active_members_from_events
-    if proposer not in active_members_from_events(community_id, db_path=DB):
-        return jsonify({"error": "提起はコミュニティのメンバーのみ"}), 403
-    payload = body.get("payload")
-    decl = _community_declaration_from_payload(payload)
-    if decl is None:
-        return jsonify({"error": "コミュニティ①の JSON ではありません（subject_kind=community / kind=intent_necessity）"}), 400
-    if not (decl.get("necessity") or {}).get("necessity_text"):
-        return jsonify({"error": "necessity_text が必要です（①をやり直してください）"}), 400
-    from intent_ledger import propose_intent
-    kind_label = "目的別募集" if decl["kind"] == "intent_necessity" else "コミュニティ全体方針"
-    r = propose_intent(community_id, proposer, body=body.get("body") or kind_label,
-                       declaration=decl, ruleset_version=body.get("ruleset_version") or "r1",
-                       db_path=DB)
-    return jsonify({**r, "declaration_kind": decl["kind"]}), 200
+    """（凍結）旧: ①JSON を提議（intent.proposed）。→ 提議トークへ（§4-4/§8-1）。"""
+    return jsonify(_FROZEN_OLD_INTENT[0]), _FROZEN_OLD_INTENT[1]
 
 
 @app.get("/api/community/<community_id>/completed-episodes")
@@ -2020,69 +1996,27 @@ def api_community_completed_episodes(community_id):
 
 
 @app.post("/api/intent/<intent_id>/agree")
-@login_required
 def api_intent_agree(intent_id):
-    """合意（intent.agreed を台帳へ）。本人セッション限定にゲート（指示書23 §4）。
-    偽の承認が台帳に永久に残るのを防ぐ（追記専用で訂正できないため）。"""
-    body = request.get_json(force=True, silent=True) or {}
-    subject = require_self((body.get("subject") or "").strip() or None) or ""
-    if not subject:
-        return jsonify({"error": "subject が必要です"}), 400
-    from intent_ledger import agree_intent
-    r = agree_intent(intent_id, subject, db_path=DB)
-    if r.get("error"):
-        return jsonify(r), 404
-    return jsonify(r), 200
+    """（凍結）旧: intent.agreed。→ 目的の合意は提議トークの投票（purpose.agreed）へ（§4-4）。"""
+    return jsonify(_FROZEN_OLD_INTENT[0]), _FROZEN_OLD_INTENT[1]
 
 
 @app.post("/api/intent/<intent_id>/complete")
-@login_required
 def api_intent_complete(intent_id):
-    """完了（intent.completed を台帳へ）。本人セッション限定にゲート（指示書23 §4）。"""
-    body = request.get_json(force=True, silent=True) or {}
-    by = require_self((body.get("by") or "").strip() or None) or ""
-    if not by:
-        return jsonify({"error": "by が必要です"}), 400
-    from intent_ledger import complete_intent
-    r = complete_intent(intent_id, by, result=body.get("result") or "", db_path=DB)
-    if r.get("error") == "not_found":
-        return jsonify(r), 404
-    if r.get("error"):
-        return jsonify(r), 409       # not_agreed / cancelled
-    return jsonify(r), 200
+    """（凍結）旧: intent.completed。→ 達成は project_complete トークの投票へ（§4-4/§8-1）。"""
+    return jsonify(_FROZEN_OLD_INTENT[0]), _FROZEN_OLD_INTENT[1]
 
 
 @app.post("/api/intent/<intent_id>/cancel")
-@login_required
 def api_intent_cancel(intent_id):
-    """取消（intent.cancelled を台帳へ）。本人セッション限定にゲート（指示書23 §4）。"""
-    body = request.get_json(force=True, silent=True) or {}
-    by = require_self((body.get("by") or "").strip() or None) or ""
-    if not by:
-        return jsonify({"error": "by が必要です"}), 400
-    from intent_ledger import cancel_intent
-    r = cancel_intent(intent_id, by, reason=body.get("reason") or "", db_path=DB)
-    if r.get("error") == "not_found":
-        return jsonify(r), 404
-    return jsonify(r), 200
+    """（凍結）旧: intent.cancelled。取り消しは存在しない（§3-3・§4-4）。"""
+    return jsonify(_FROZEN_OLD_INTENT[0]), _FROZEN_OLD_INTENT[1]
 
 
 @app.post("/api/intent/<intent_id>/participant/join")
-@login_required
 def api_intent_participant_join(intent_id):
-    """目的別参加（intent.participant.joined を台帳へ）。参加する本人セッション限定にゲート
-    （指示書23 §4）。introduced_by は本人の参加イベント内にしか書けない（§1-6）。"""
-    body = request.get_json(force=True, silent=True) or {}
-    participant = require_self((body.get("participant") or "").strip() or None) or ""
-    if not participant:
-        return jsonify({"error": "participant が必要です"}), 400
-    from intent_ledger import join_participant
-    r = join_participant(intent_id, participant,
-                         introduced_by=body.get("introduced_by"),
-                         approved_by=body.get("approved_by"), db_path=DB)
-    if r.get("error"):
-        return jsonify(r), 404
-    return jsonify(r), 200
+    """（凍結）旧: intent.participant.joined。→ 参加は project_join トークの投票へ（§4-4）。"""
+    return jsonify(_FROZEN_OLD_INTENT[0]), _FROZEN_OLD_INTENT[1]
 
 
 @app.get("/api/intent/<intent_id>")

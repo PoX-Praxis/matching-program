@@ -38,6 +38,9 @@ def create_community(founder: str, name: str, description: str, db_path: str = "
             "INSERT INTO community_members (community_id, member_id, status, joined_at) VALUES (%s, %s, 'active', %s)",
             (cid, founder, created_at),
         )
+    # 台帳: コミュニティの生成（指示書41 §4-1）。この event_hash が初期 ruleset_version（§4-5）。
+    from subject_ledger import publish_subject_created
+    publish_subject_created(cid, kind="community", actor=founder, db_path=db_path)
     # 台帳: 創設者を最初のメンバーとして member.joined（指示書17 §5-3）。
     from member_ledger import publish_member_joined
     publish_member_joined(cid, founder, introduced_by=None, approved_by=[founder],
@@ -138,6 +141,33 @@ def leave_community(community_id: str, member_id: str, db_path: str = "pox.db") 
     publish_member_left(community_id, member_id, members_before=before,
                         members_after=after, db_path=db_path)
     return {"community_id": community_id, "member_id": member_id, "status": "left"}
+
+
+def _admit_agreed_member(community_id: str, member_id: str, *, approvals, basis_seq,
+                         ruleset_version, anchor_range, discussion_hash,
+                         introduced_by=None, db_path: str = "pox.db") -> dict:
+    """加入トークの合意で新メンバーを迎える（指示書41 §4）。通常DBを active にし、
+    member.joined を §4-2 の共通項目つきで台帳へ。台帳だけから合意の成立を再計算できる。"""
+    with _connect(db_path) as con:
+        before = [r[0] for r in con.execute(
+            "SELECT member_id FROM community_members WHERE community_id=%s AND status='active'",
+            (community_id,)).fetchall()]
+        row = con.execute(
+            "SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
+            (community_id, member_id)).fetchone()
+        if row:
+            con.execute("UPDATE community_members SET status='active' "
+                        "WHERE community_id=%s AND member_id=%s", (community_id, member_id))
+        else:
+            con.execute("INSERT INTO community_members (community_id, member_id, status, joined_at) "
+                        "VALUES (%s,%s,'active',%s)", (community_id, member_id, _now()))
+    after = sorted(set(before) | {member_id})
+    from member_ledger import publish_member_joined
+    publish_member_joined(community_id, member_id, introduced_by=introduced_by,
+                          approved_by=list(approvals), members_before=before, members_after=after,
+                          approvals=approvals, basis_seq=basis_seq, ruleset_version=ruleset_version,
+                          anchor_range=anchor_range, discussion_hash=discussion_hash, db_path=db_path)
+    return {"community_id": community_id, "member_id": member_id, "status": "active"}
 
 
 def get_members(community_id: str, db_path: str = "pox.db") -> list:

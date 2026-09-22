@@ -84,7 +84,8 @@ def test_full_flow_create_propose_agree_complete_ledger_writes():
     _login(c, "u_alice")
     # 1) コミュニティ作成 → member.joined（創設者・members_before 空）
     cid = c.post("/api/communities", json={"name": "翻訳基盤の会", "founder_id": "u_alice"}).get_json()["id"]
-    assert _types(db) == ["member.joined"]
+    # 指示書41 §4-1: コミュニティ生成は subject.created(kind=community) ＋ 創設者の member.joined。
+    assert _types(db) == ["subject.created", "member.joined"]
 
     # 2) 宣言（全体方針）を含む提起 → intent.proposed（body に id を送らずセッションで解決）
     decl = {"kind": "policy", "will_text": "現場を実装に翻訳する", "state_have": "知識と現場"}
@@ -92,12 +93,12 @@ def test_full_flow_create_propose_agree_complete_ledger_writes():
                 json={"body": "全体方針を定める", "declaration": decl})
     assert pr.status_code == 200
     iid = pr.get_json()["intent_id"]
-    assert _types(db) == ["member.joined", "intent.proposed"]
+    assert _types(db) == ["subject.created", "member.joined", "intent.proposed"]
 
     # 3) 合意 → intent.agreed ＋（宣言確定）profile.structured
     ag = c.post(f"/api/intent/{iid}/agree", json={})
     assert ag.status_code == 200 and ag.get_json()["agreed"] is True
-    assert _types(db) == ["member.joined", "intent.proposed", "intent.agreed", "profile.structured"]
+    assert _types(db) == ["subject.created", "member.joined", "intent.proposed", "intent.agreed", "profile.structured"]
 
     # 4) 完了 → intent.completed
     cp = c.post(f"/api/intent/{iid}/complete", json={"result": "v1 を公開した"})

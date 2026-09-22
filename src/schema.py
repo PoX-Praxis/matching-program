@@ -205,6 +205,35 @@ _SQLITE_DDL = [
         name       TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )""",
+    # トーク（指示書41 §3）。本文は通常DB、台帳へはハッシュのみ。
+    """CREATE TABLE IF NOT EXISTS talks (
+        talk_id         TEXT PRIMARY KEY,
+        ctx             TEXT NOT NULL,
+        kind            TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'open',
+        created_by      TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        basis_seq       INTEGER NOT NULL,
+        ruleset_version TEXT,
+        parent_talk_id  TEXT,
+        target_json     TEXT,
+        result_json     TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS talk_posts (
+        post_id    TEXT PRIMARY KEY,
+        talk_id    TEXT NOT NULL,
+        author     TEXT NOT NULL,
+        body       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS talk_votes (
+        talk_id    TEXT NOT NULL,
+        voter      TEXT NOT NULL,
+        stance     TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (talk_id, voter)
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -401,6 +430,35 @@ _PG_DDL = [
         subject_id TEXT PRIMARY KEY,
         name       TEXT NOT NULL,
         updated_at TEXT NOT NULL
+    )""",
+    # トーク（指示書41 §3）。SQLite 版と同一スキーマ。
+    """CREATE TABLE IF NOT EXISTS talks (
+        talk_id         TEXT PRIMARY KEY,
+        ctx             TEXT NOT NULL,
+        kind            TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'open',
+        created_by      TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        basis_seq       INTEGER NOT NULL,
+        ruleset_version TEXT,
+        parent_talk_id  TEXT,
+        target_json     TEXT,
+        result_json     TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS talk_posts (
+        post_id    TEXT PRIMARY KEY,
+        talk_id    TEXT NOT NULL,
+        author     TEXT NOT NULL,
+        body       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS talk_votes (
+        talk_id    TEXT NOT NULL,
+        voter      TEXT NOT NULL,
+        stance     TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (talk_id, voter)
     )""",
 ]
 

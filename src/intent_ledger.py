@@ -173,11 +173,17 @@ def completed_episodes_for_prompt(ctx, *, db_path="pox.db"):
     0件 → []／1〜3件 → 全件／4件以上 → 直近の完了3件（完了 seq の新しい順）。
     提起者が①に貼れるよう body/result（本文はDB）を添えて返す。
     """
-    proposed = {e["payload"]["intent_id"]: e
-                for e in le.get_events(type_="intent.proposed", db_path=db_path)
-                if e["payload"].get("ctx") == ctx}
+    # intent→ctx は旧経路の intent.proposed だけでなく、新経路（指示書41）の intent.launched も見る。
+    # これにより新しい流れで作られた達成（intent.completed）も下流に正しく surface する（§4-6/§11-8）。
+    ctx_of = {}
+    for e in le.get_events(type_="intent.proposed", db_path=db_path):
+        if e["payload"].get("ctx") == ctx:
+            ctx_of[e["payload"]["intent_id"]] = e
+    for e in le.get_events(type_="intent.launched", db_path=db_path):
+        if e["payload"].get("ctx") == ctx:
+            ctx_of[e["payload"]["intent_id"]] = e
     completed = [e for e in le.get_events(type_="intent.completed", db_path=db_path)
-                 if e["payload"]["intent_id"] in proposed]
+                 if e["payload"]["intent_id"] in ctx_of]
     completed.sort(key=lambda e: e["seq"], reverse=True)   # 完了の新しい順
     total = len(completed)
     chosen = completed if total <= 3 else completed[:3]

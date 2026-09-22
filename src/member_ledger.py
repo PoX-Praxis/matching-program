@@ -21,13 +21,34 @@ def members_hash(member_ids) -> str:
 
 def publish_member_joined(ctx: str, subject_id: str, *, introduced_by=None,
                           approved_by=None, members_before, members_after,
-                          actor: str = None, db_path: str = "pox.db") -> dict:
-    return le.append_event(actor or subject_id, "member.joined", {
+                          actor: str = None,
+                          approvals=None, basis_seq=None, ruleset_version=None,
+                          anchor_range=None, discussion_hash=None,
+                          db_path: str = "pox.db") -> dict:
+    """成立した加入を member.joined として台帳へ。
+
+    指示書41 §4-1/§4-2 拡張: 合意駆動の加入では共通項目（approvals / basis_seq /
+    ruleset_version / anchor_range / discussion_hash）を刻み、台帳だけから合意の成立を
+    再計算できるようにする。共通項目を渡さない呼び出し（ジェネシス＝創設者の初回加入や
+    旧経路）は従来どおりの payload のままにする（byte 互換を保つ）。
+    """
+    payload = {
         "ctx": ctx, "subject_id": subject_id,
         "introduced_by": introduced_by, "approved_by": list(approved_by or []),
         "members_before_hash": members_hash(members_before),
         "members_after_hash": members_hash(members_after),
-    }, db_path=db_path)
+    }
+    if approvals is not None:
+        payload["approvals"] = sorted(set(approvals))
+    if basis_seq is not None:
+        payload["basis_seq"] = basis_seq
+    if ruleset_version is not None:
+        payload["ruleset_version"] = ruleset_version
+    if anchor_range is not None:
+        payload["anchor_range"] = anchor_range
+    if discussion_hash is not None:
+        payload["discussion_hash"] = discussion_hash
+    return le.append_event(actor or subject_id, "member.joined", payload, db_path=db_path)
 
 
 def publish_member_left(ctx: str, subject_id: str, *, members_before, members_after,

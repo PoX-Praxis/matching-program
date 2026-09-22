@@ -140,6 +140,29 @@ def judge_project_decision(intent_id, basis_seq, approvals, dissents, *,
                               dissents=dissents, anchors_crossed=crossed, **kw)
 
 
+def intent_ctx(intent_id, *, db_path="pox.db"):
+    """プロジェクト(intent)が属するコミュニティ(ctx)。intent.launched から解決。"""
+    for e in le.get_events(type_="intent.launched", db_path=db_path):
+        if e["payload"].get("intent_id") == intent_id:
+            return e["payload"].get("ctx")
+    return None
+
+
+def verify_community_consent(consent_ref, *, community_id, intent_id, db_path="pox.db"):
+    """コミュニティのプロジェクト参加合意（§6）を検証する。
+
+    consent_ref は、その community_id が自分の提議トークで「この intent に参加する」ことに
+    合意した purpose.agreed の event_hash であること（ctx==community_id かつ
+    target_intent_id==intent_id）。合致すればその event、しなければ None。
+    """
+    for e in le.get_events(type_="purpose.agreed", db_path=db_path):
+        if (e["event_hash"] == consent_ref
+                and e["payload"].get("ctx") == community_id
+                and e["payload"].get("target_intent_id") == intent_id):
+            return e
+    return None
+
+
 def _common_items(approvals, basis_seq, ruleset_version, anchor_range_, discussion_hash_):
     """§4-2 の共通項目。判定の入力をすべて刻み、台帳だけから再計算できるようにする。"""
     return {

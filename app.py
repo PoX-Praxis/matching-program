@@ -2113,6 +2113,146 @@ def api_community_intents(community_id):
     return jsonify({"ctx": community_id, "intents": intents}), 200
 
 
+# ══ トーク（指示書41 §3）══════════════════════════════════════════════════
+def _is_participant(intent_id, sid):
+    if not sid or not intent_id:
+        return False
+    import governance as gov
+    return sid in gov.participants_at(intent_id, 10**18, db_path=DB)
+
+
+def _talk_public_view(talk):
+    """公開ビュー（allowlist）。投票の内訳は集計を作らない方針だが、当事者の判断のため
+    賛成・反対したアカウントは公開トークなので開示してよい（沈黙者は出さない）。"""
+    import talks
+    v = talks.get_votes(talk["talk_id"], db_path=DB)
+    return {**talk,
+            "posts": talks.get_posts(talk["talk_id"], db_path=DB),
+            "approvals": sorted(v["approvals"]), "dissents": sorted(v["dissents"])}
+
+
+@app.post("/api/community/<community_id>/talks")
+@login_required
+def api_create_talk(community_id):
+    """トークを立ち上げる（§3）。基準点と規則の版は作成時点で固定される（§5-5）。"""
+    import talks
+    body = request.get_json(force=True, silent=True) or {}
+    sid = current_subject_id()
+    kind = (body.get("kind") or "").strip()
+    title = (body.get("title") or "").strip()
+    target = body.get("target") or {}
+    if kind not in talks.KINDS:
+        return jsonify({"error": "未知の kind"}), 400
+    if not title:
+        return jsonify({"error": "title が必要です"}), 400
+    # 認可: コミュニティ系（chat/proposal/admission/project）はメンバー。
+    if kind in (talks.CHAT, talks.PROPOSAL, talks.ADMISSION, talks.PROJECT):
+        if not _is_ctx_member(community_id, sid):
+            return jsonify({"error": "コミュニティのメンバーのみ"}), 403
+    elif kind == talks.PROJECT_JOIN:
+        # 参加は本人（自分の参加）か既存参加者が起票できる。
+        if not (sid == target.get("participant") or _is_participant(target.get("intent_id"), sid)):
+            return jsonify({"error": "本人または参加者のみ"}), 403
+    elif kind == talks.PROJECT_COMPLETE:
+        if not _is_participant(target.get("intent_id"), sid):
+            return jsonify({"error": "プロジェクトの参加者のみ"}), 403
+    talk = talks.create_talk(community_id, kind, title, sid, target=target, db_path=DB)
+    return jsonify(talk), 201
+
+
+@app.post("/api/community/<community_id>/projects/launch")
+@login_required
+def api_launch_project(community_id):
+    """合意された目的からプロジェクトを立ち上げる（§2-4）。intent.launched を台帳へ。"""
+    import talks
+    body = request.get_json(force=True, silent=True) or {}
+    sid = current_subject_id()
+    if not _is_ctx_member(community_id, sid):
+        return jsonify({"error": "コミュニティのメンバーのみ"}), 403
+    purpose_ref = (body.get("purpose_ref") or "").strip()
+    title = (body.get("title") or "").strip()
+    if not purpose_ref or not title:
+        return jsonify({"error": "purpose_ref と title が必要です"}), 400
+    return jsonify(talks.launch_project(community_id, sid, title, purpose_ref, db_path=DB)), 201
+
+
+@app.get("/api/talks/<talk_id>")
+def api_get_talk(talk_id):
+    """トーク詳細。チャットはメンバーのみ、それ以外は公開（§3）。"""
+    import talks
+    talk = talks.get_talk(talk_id, db_path=DB)
+    if talk is None:
+        return jsonify({"error": "not_found"}), 404
+    if talk["kind"] == talks.CHAT and not _is_ctx_member(talk["ctx"], current_subject_id()):
+        return jsonify({"error": "not_found"}), 404      # チャットは第三者に存在ごと見せない
+    return jsonify(_talk_public_view(talk)), 200
+
+
+@app.get("/api/community/<community_id>/talks")
+def api_list_talks(community_id):
+    """トーク一覧。チャット以外は公開・名前付き（§3）。チャットはメンバーのみ。"""
+    import talks
+    is_mem = _is_ctx_member(community_id, current_subject_id())
+    rows = [t for t in talks.list_talks(community_id, db_path=DB)
+            if t["kind"] != talks.CHAT or is_mem]
+    return jsonify({"ctx": community_id, "talks": rows}), 200
+
+
+@app.post("/api/talks/<talk_id>/posts")
+@login_required
+def api_talk_post(talk_id):
+    """トークへの投稿（経緯）。チャットはメンバー、公開トークは当事者が書ける。"""
+    import talks
+    talk = talks.get_talk(talk_id, db_path=DB)
+    if talk is None:
+        return jsonify({"error": "not_found"}), 404
+    sid = current_subject_id()
+    body = request.get_json(force=True, silent=True) or {}
+    text = (body.get("body") or "").strip()
+    if not text:
+        return jsonify({"error": "body が必要です"}), 400
+    if not _can_participate_talk(talk, sid):
+        return jsonify({"error": "このトークに投稿する権限がありません"}), 403
+    return jsonify(talks.add_post(talk_id, sid, text, db_path=DB)), 201
+
+
+@app.post("/api/talks/<talk_id>/vote")
+@login_required
+def api_talk_vote(talk_id):
+    """賛成・反対を明示する（沈黙は棄権・§5-1）。投票のたびに合意判定→成立なら台帳へ。"""
+    import talks
+    talk = talks.get_talk(talk_id, db_path=DB)
+    if talk is None:
+        return jsonify({"error": "not_found"}), 404
+    if talk["kind"] not in talks.DECISION_KINDS:
+        return jsonify({"error": "このトークは投票を受け付けません"}), 400
+    sid = current_subject_id()
+    if not _can_participate_talk(talk, sid):
+        return jsonify({"error": "このトークで投票する権限がありません"}), 403
+    stance = (request.get_json(force=True, silent=True) or {}).get("stance")
+    if stance not in ("approve", "dissent"):
+        return jsonify({"error": "stance は approve か dissent"}), 400
+    talks.set_vote(talk_id, sid, stance, db_path=DB)
+    commit = talks.try_commit(talk_id, db_path=DB)
+    return jsonify({"vote": {"voter": sid, "stance": stance}, "commit": commit,
+                    "status": talks.get_talk(talk_id, db_path=DB)["status"]}), 200
+
+
+def _can_participate_talk(talk, sid):
+    """トークの起票・投稿・投票ができる当事者か。"""
+    import talks
+    if not sid:
+        return False
+    kind = talk["kind"]
+    if kind in (talks.CHAT, talks.PROPOSAL, talks.ADMISSION, talks.PROJECT):
+        return _is_ctx_member(talk["ctx"], sid)
+    if kind == talks.PROJECT_JOIN:
+        return sid == talk["target"].get("participant") or _is_participant(talk["target"].get("intent_id"), sid)
+    if kind == talks.PROJECT_COMPLETE:
+        return _is_participant(talk["target"].get("intent_id"), sid)
+    return False
+
+
 @app.post("/api/community/<community_id>/leave")
 @login_required
 def api_leave_community(community_id):

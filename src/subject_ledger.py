@@ -18,6 +18,21 @@ _STATE_KEYS = ("state_have", "state_can_type", "state_bound", "state_unsorted")
 _DECLARE_SM_KEYS = ("背景", "一行紹介", "意志_どこへ", "意志_なぜ", "経験", "要約文")
 
 
+def publish_subject_created(subject_id: str, *, kind: str, actor: str = None,
+                            db_path: str = "pox.db") -> dict:
+    """主体（コミュニティ／個人）の生成を台帳へ（指示書41 §4-1）。
+
+    コミュニティでは、この event_hash が初期の ruleset_version になる（§4-5）。
+    冪等: 同 subject_id の subject.created が既にあれば書かず既存を返す（遡及書換えをしない）。
+    """
+    for e in le.get_events(type_="subject.created", db_path=db_path):
+        if e["payload"].get("subject_id") == subject_id:
+            return {"skipped": True, "event_hash": e["event_hash"], "seq": e["seq"]}
+    r = le.append_event(actor or subject_id, "subject.created",
+                        {"subject_id": subject_id, "kind": kind}, db_path=db_path)
+    return {"skipped": False, "event_hash": r["event_hash"], "seq": r["seq"]}
+
+
 def profile_content_hash(profile_input: dict) -> str:
     """**表示される宣言のすべて**の内容ハッシュ（指示書18 §2）。本文は台帳に載せない（§4-2）。
 

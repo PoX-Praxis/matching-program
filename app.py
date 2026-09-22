@@ -1811,12 +1811,12 @@ def api_get_community(community_id):
     """コミュニティ詳細。公開面は API そのもの（指示書38 §1-3）なので、閲覧者の
     ロールごとに「返す項目を明示的に列挙」する allowlist にする（§2-5）。
 
-    - 未成立の関係（pending＝承認前の参加申請）は、id を隠すのではなく関係ごと出し分ける（§1-1）:
-        第三者/無関係ログイン … 返さない
-        申請者本人           … 自分の申請だけ（状態を知るため）
-        メンバー             … 全件（承認のために必要）
-      却下・取り下げ（status!='pending'）は get_pending_requests に出ないため公開面から自然に消える（§2-2）。
-    - members（承認後＝成立した関係）・宣言・実績は公開のまま（§2-4）。
+    公開/非公開（指示書41 §3・§8-2 で更新）:
+      - members（承認後＝成立した関係）・宣言・実績 … 公開
+      - pending（参加申請） … 公開（加入は公開・名前付きの加入トークとして扱う・§8-2 差し戻し）
+      - messages（チャット） … メンバーのみ（§2-3・§8-2 で維持）
+      - intents（旧 intent.*） … 旧版の可視性ルールを維持（合意前提起はメンバーのみ・§8-2）。
+        新しいトーク（proposal/project 等）は /api/community/<id>/talks で公開・名前付き（§3）。
     判定はセッションの subject_id（指示書36。クエリ引数の自己申告は使わない）。
     """
     c = get_community(community_id, db_path=DB)
@@ -1834,16 +1834,11 @@ def api_get_community(community_id):
     # 指示書39（§3-1）: 合意前の提起はメンバーのみ、合意前キャンセルは痕跡を残さない。
     intents = [it for it in intents if _intent_visible(it, is_mem)]
 
-    # pending（未成立の関係）を role で出し分ける（§2-1）。
-    if is_mem:
-        pending_rows = get_pending_requests(community_id, db_path=DB)                 # 承認のため全件
-    elif viewer is not None:
-        pending_rows = [p for p in get_pending_requests(community_id, db_path=DB)
-                        if p.get("member_id") == viewer]                             # 本人の申請だけ
-    else:
-        pending_rows = []                                                            # 第三者には出さない
+    # pending（参加申請）は公開（指示書41 §8-2 差し戻し: 加入は公開・名前付き）。
+    # 却下・取り下げ（status!='pending'）は get_pending_requests に出ないため公開面に残らない。
+    pending_rows = get_pending_requests(community_id, db_path=DB)
 
-    # チャット（messages）はメンバー間のやりとりで、宣言でも実績でもない → メンバーのみ（§2-3）。
+    # チャット（messages）はメンバー間のやりとりで、宣言でも実績でもない → メンバーのみ（§2-3・§8-2 維持）。
     # 第三者・申請者・無関係ログインには返さない。
     messages_rows = get_community_messages(community_id, db_path=DB) if is_mem else []
 
@@ -1869,17 +1864,17 @@ def api_get_community(community_id):
         # 宣言・実績（完成条件そのもの）は公開。
         "declaration":  declaration,
         "intents":      intents,
+        # pending（参加申請）は公開（§8-2）。
+        "pending": [{"member_id":   p.get("member_id"),
+                     "display_name": names.get(p.get("member_id"), p.get("member_id")),
+                     "joined_at":    p.get("joined_at")} for p in pending_rows],
         "viewer_role": ("member" if is_mem
-                        else "applicant" if pending_rows
+                        else "applicant" if (viewer is not None and viewer in
+                                             {p.get("member_id") for p in pending_rows})
                         else "authenticated" if viewer is not None
                         else "guest"),
     }
-    # pending は role が許すときだけキーを立てる（第三者・無関係ログインにはキーごと出さない）。
-    if is_mem or pending_rows:
-        out["pending"] = [{"member_id":   p.get("member_id"),
-                           "display_name": names.get(p.get("member_id"), p.get("member_id")),
-                           "joined_at":    p.get("joined_at")} for p in pending_rows]
-    # messages はメンバーのみ（§2-3）。キーごと出し分ける。
+    # messages はメンバーのみ（§2-3・§8-2 維持）。キーごと出し分ける。
     if is_mem:
         out["messages"] = [{**m, "from_name": names.get(m.get("from_id"), m.get("from_id"))}
                            for m in messages_rows]

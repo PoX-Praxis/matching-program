@@ -69,34 +69,31 @@ def _intent_ids_list(client, cid):
     return [it["intent_id"] for it in client.get(f"/api/community/{cid}/intents").get_json().get("intents", [])]
 
 
-# ── §5-4（完了条件）: 第三者に pending が返らない ─────────────────────────────
-def test_pending_not_returned_to_third_party():
+# ── 指示書41 §8-2 差し戻し: 参加申請（pending）は公開（加入は公開・名前付き）────
+def test_pending_public_to_third_party():
     cid = _setup()
     _apply(cid, "u_bob")
     data = _cli().get(f"/api/community/{cid}").get_json()   # 未ログイン＝第三者
-    assert "pending" not in data
+    assert "u_bob" in [p["member_id"] for p in data.get("pending", [])]
     assert data["viewer_role"] == "guest"
-    # 成立した関係（メンバー）と宣言は公開のまま
     assert "members" in data and "declaration" in data and "intents" in data
 
 
-def test_authenticated_nonmember_gets_no_pending():
+def test_authenticated_nonmember_sees_pending():
     cid = _setup()
     _apply(cid, "u_bob")
-    # 無関係のログインユーザー（メンバーでも申請者でもない）には pending を出さない
     data = _cli("u_stranger").get(f"/api/community/{cid}").get_json()
-    assert "pending" not in data
+    assert "u_bob" in [p["member_id"] for p in data.get("pending", [])]
     assert data["viewer_role"] == "authenticated"
 
 
-# ── §2-1: 申請者本人は自分の申請だけ ────────────────────────────────────────
-def test_applicant_sees_only_own_pending():
+def test_applicant_sees_all_pending_public():
     cid = _setup()
     _apply(cid, "u_bob")
     _apply(cid, "u_carol")
     data = _cli("u_carol").get(f"/api/community/{cid}").get_json()
     ids = sorted(p["member_id"] for p in data.get("pending", []))
-    assert ids == ["u_carol"]                 # 他人（u_bob）の申請は見えない
+    assert ids == ["u_bob", "u_carol"]         # 公開なので全件見える
     assert data["viewer_role"] == "applicant"
 
 
@@ -133,8 +130,8 @@ def test_rejected_request_leaves_no_public_trace():
     d_member = _cli("u_alice").get(f"/api/community/{cid}").get_json()
     assert "u_bob" not in [p["member_id"] for p in d_member.get("pending", [])]
     assert "u_bob" not in [m["member_id"] for m in d_member["members"]]   # active ではない
-    # 第三者にも当然出ない
-    assert "pending" not in _cli().get(f"/api/community/{cid}").get_json()
+    # 第三者の公開 pending にも出ない（status!='pending' は get_pending_requests に出ない）
+    assert "u_bob" not in [p["member_id"] for p in _cli().get(f"/api/community/{cid}").get_json().get("pending", [])]
 
 
 # ── §2-3 / §5-4（完了条件）: messages（チャット）はメンバーのみ ─────────────

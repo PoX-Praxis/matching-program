@@ -252,6 +252,31 @@ def try_commit(talk_id, *, db_path="pox.db"):
             "immediate": res.get("immediate", False), "event_hash": ev_hash}
 
 
+def open_community_join(intent_id, community_id, consent_ref, *, opener, db_path="pox.db"):
+    """コミュニティとしてプロジェクトに参加する（§6）。
+
+    新しい仕組みは作らない: 参加するコミュニティが自分の提議トークで合意した purpose.agreed
+    （target_intent_id=intent_id）の event_hash を consent_ref として渡す。ここでは
+    project_join トークを開き、そのコミュニティの賛成を consent_ref に基づいて自動計上する
+    （コミュニティは投票アカウントではないため、内部合意＝consent_ref が賛成の根拠）。
+    プロジェクト側の既存参加者は通常どおり投票し、成立で participant.joined（kind=community）。
+    """
+    pa = gov.verify_community_consent(consent_ref, community_id=community_id,
+                                      intent_id=intent_id, db_path=db_path)
+    if pa is None:
+        raise ValueError("consent_ref が無効（該当コミュニティの参加合意が見つからない）")
+    ctx = gov.intent_ctx(intent_id, db_path=db_path)
+    talk = create_talk(ctx, PROJECT_JOIN,
+                       f"{community_id} の参加", opener,
+                       target={"intent_id": intent_id, "participant": community_id,
+                               "participant_kind": "community", "consent_ref": consent_ref},
+                       db_path=db_path)
+    # コミュニティ側の賛成を自動計上（内部合意による）。
+    set_vote(talk["talk_id"], community_id, "approve", db_path=db_path)
+    try_commit(talk["talk_id"], db_path=db_path)     # 単独参加者なら即時成立し得る
+    return {"talk": get_talk(talk["talk_id"], db_path=db_path)}
+
+
 def launch_project(ctx, launcher, title, purpose_ref, *, db_path="pox.db"):
     """合意された目的（purpose.agreed）からプロジェクトを立ち上げる（§2-4）。
 

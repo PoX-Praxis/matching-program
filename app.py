@@ -2171,6 +2171,26 @@ def api_launch_project(community_id):
     return jsonify(talks.launch_project(community_id, sid, title, purpose_ref, db_path=DB)), 201
 
 
+@app.post("/api/projects/<intent_id>/join-as-community")
+@login_required
+def api_join_as_community(intent_id):
+    """コミュニティとしてプロジェクトに参加する（§6）。起票者はそのコミュニティのメンバー。"""
+    import talks
+    body = request.get_json(force=True, silent=True) or {}
+    sid = current_subject_id()
+    community_id = (body.get("community_id") or "").strip()
+    consent_ref = (body.get("consent_ref") or "").strip()
+    if not community_id or not consent_ref:
+        return jsonify({"error": "community_id と consent_ref が必要です"}), 400
+    if not _is_ctx_member(community_id, sid):
+        return jsonify({"error": "参加するコミュニティのメンバーのみ起票できます"}), 403
+    try:
+        r = talks.open_community_join(intent_id, community_id, consent_ref, opener=sid, db_path=DB)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(r), 201
+
+
 @app.get("/api/talks/<talk_id>")
 def api_get_talk(talk_id):
     """トーク詳細。チャットはメンバーのみ、それ以外は公開（§3）。"""

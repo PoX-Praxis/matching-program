@@ -48,17 +48,21 @@ def _post_message(cid, sid, body):
     return _cli(sid).post(f"/api/community/{cid}/message", json={"from_id": sid, "body": body})
 
 
+# 旧 intent.* の書き込み API は凍結（指示書41 §8-1）。旧版の可視性ルール（指示書39）は
+# 旧データに対して維持されるため、ここでは intent_ledger の関数で旧イベントを直接作って検証する。
 def _propose(cid, sid, body="やること"):
-    return _cli(sid).post(f"/api/community/{cid}/intent/propose",
-                          json={"proposer": sid, "body": body}).get_json()["intent_id"]
+    from intent_ledger import propose_intent
+    return propose_intent(cid, sid, body=body, db_path=appmod.DB)["intent_id"]
 
 
 def _agree(iid, sid):
-    return _cli(sid).post(f"/api/intent/{iid}/agree", json={"subject": sid})
+    from intent_ledger import agree_intent
+    return agree_intent(iid, sid, db_path=appmod.DB)
 
 
 def _cancel(iid, sid):
-    return _cli(sid).post(f"/api/intent/{iid}/cancel", json={"by": sid})
+    from intent_ledger import cancel_intent
+    return cancel_intent(iid, sid, db_path=appmod.DB)
 
 
 def _intent_ids_community(client, cid):
@@ -180,7 +184,7 @@ def test_member_sees_proposed_and_can_agree():
     assert alice.get(f"/api/intent/{iid}").status_code == 200
     # 合意できる（見えているから合意判断ができる）
     r = _agree(iid, "u_alice")
-    assert r.status_code == 200 and r.get_json().get("agreed") is True
+    assert r.get("agreed") is True
     # 合意後は第三者にも公開
     anon = _cli()
     assert anon.get(f"/api/intent/{iid}").get_json()["status"] == "agreed"
@@ -191,7 +195,7 @@ def test_member_sees_proposed_and_can_agree():
 def test_cancel_before_agree_leaves_no_trace():
     cid = _setup()
     iid = _propose(cid, "u_alice")
-    assert _cancel(iid, "u_alice").status_code == 200   # 合意前キャンセル
+    _cancel(iid, "u_alice")   # 合意前キャンセル
     # 第三者
     anon = _cli()
     assert iid not in _intent_ids_community(anon, cid)
@@ -208,8 +212,8 @@ def test_cancel_before_agree_leaves_no_trace():
 def test_cancel_after_agree_stays_public():
     cid = _setup()
     iid = _propose(cid, "u_alice")
-    assert _agree(iid, "u_alice").get_json().get("agreed") is True
-    assert _cancel(iid, "u_alice").status_code == 200   # 合意後キャンセル
+    assert _agree(iid, "u_alice").get("agreed") is True
+    _cancel(iid, "u_alice")   # 合意後キャンセル
     anon = _cli()
     r = anon.get(f"/api/intent/{iid}")
     assert r.status_code == 200 and r.get_json()["status"] == "cancelled"

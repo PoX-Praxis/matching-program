@@ -55,7 +55,9 @@ def test_write_endpoints_require_login():
     c, cid = _make_community()
     # 未ログインの別クライアントでは書き込み系はすべて 401
     a = appmod.app.test_client()
-    assert a.post(f"/api/community/{cid}/intent/propose", json={"body": "x"}).status_code == 401
+    # 旧 propose は凍結（410）。現行の書き込み系（トーク作成・加入・接続承認）は未ログイン 401。
+    assert a.post(f"/api/community/{cid}/talks",
+                  json={"kind": "proposal", "title": "x", "target": {}}).status_code == 401
     assert a.post(f"/api/community/{cid}/join", json={"member_id": "u_bob"}).status_code == 401
     assert a.post("/approve", json={"from_id": "u_alice", "to_id": "u_bob"}).status_code == 401
 
@@ -70,64 +72,67 @@ def test_api_me_200_and_401():
 
 def test_write_endpoints_403_on_impersonation():
     c, cid = _make_community()
-    # セッション u_alice が他人になりすまして提起 → 403
-    r = c.post(f"/api/community/{cid}/intent/propose", json={"proposer": "u_hacker", "body": "x"})
+    # セッション u_alice が他人になりすまして加入申請 → 403（require_self）
+    r = c.post(f"/api/community/{cid}/join", json={"member_id": "u_hacker"})
     assert r.status_code == 403
     # 他人として接続承認 → 403
     assert c.post("/approve", json={"from_id": "u_hacker", "to_id": "u_bob"}).status_code == 403
 
 
-# ── 通し（§6-8）────────────────────────────────────────────────────────────
-def test_full_flow_create_propose_agree_complete_ledger_writes():
+# ── 旧 intent フローの通し（指示書41 §8-1 で API は凍結。台帳関数は旧データ読取のため残る）──
+# 提起・合意・完了の「新規書き込み」API は 410。ここでは intent_ledger の関数を直接呼び、
+# 旧版の台帳メカニクス（読み取り・鎖の健全性・読取 API 表示）が保たれることを確認する。
+def test_old_flow_via_ledger_functions_still_reads():
+    from intent_ledger import propose_intent, agree_intent, complete_intent
     c = _client()
     db = appmod.DB
     _login(c, "u_alice")
-    # 1) コミュニティ作成 → member.joined（創設者・members_before 空）
     cid = c.post("/api/communities", json={"name": "翻訳基盤の会", "founder_id": "u_alice"}).get_json()["id"]
-    # 指示書41 §4-1: コミュニティ生成は subject.created(kind=community) ＋ 創設者の member.joined。
     assert _types(db) == ["subject.created", "member.joined"]
 
-    # 2) 宣言（全体方針）を含む提起 → intent.proposed（body に id を送らずセッションで解決）
     decl = {"kind": "policy", "will_text": "現場を実装に翻訳する", "state_have": "知識と現場"}
-    pr = c.post(f"/api/community/{cid}/intent/propose",
-                json={"body": "全体方針を定める", "declaration": decl})
-    assert pr.status_code == 200
-    iid = pr.get_json()["intent_id"]
+    iid = propose_intent(cid, "u_alice", body="全体方針を定める", declaration=decl, db_path=db)["intent_id"]
     assert _types(db) == ["subject.created", "member.joined", "intent.proposed"]
 
-    # 3) 合意 → intent.agreed ＋（宣言確定）profile.structured
-    ag = c.post(f"/api/intent/{iid}/agree", json={})
-    assert ag.status_code == 200 and ag.get_json()["agreed"] is True
+    ag = agree_intent(iid, "u_alice", db_path=db)
+    assert ag["agreed"] is True
     assert _types(db) == ["subject.created", "member.joined", "intent.proposed", "intent.agreed", "profile.structured"]
 
-    # 4) 完了 → intent.completed
-    cp = c.post(f"/api/intent/{iid}/complete", json={"result": "v1 を公開した"})
-    assert cp.status_code == 200 and cp.get_json()["status"] == "completed"
+    cp = complete_intent(iid, "u_alice", result="v1 を公開した", db_path=db)
+    assert cp["status"] == "completed"
     assert _types(db)[-1] == "intent.completed"
-
-    # §5-4 一意性: 同じ intent を再度 complete しても completed は増えない（二重押下の受け皿）
-    c.post(f"/api/intent/{iid}/complete", json={"result": "再送"})
+    complete_intent(iid, "u_alice", result="再送", db_path=db)      # 冪等
     assert _types(db).count("intent.completed") == 1
-
-    # 台帳の鎖は健全
     assert le.verify_chain(db_path=db)["ok"] is True
 
-    # 第三者（未ログイン）に宣言と実績が見える
-    c2 = appmod.app.test_client()
-    view = c2.get(f"/api/community/{cid}").get_json()
+    # 読取 API（凍結対象外）で第三者に宣言と実績が見える
+    view = appmod.app.test_client().get(f"/api/community/{cid}").get_json()
     assert view["declaration"]["will_text"] == "現場を実装に翻訳する"
     done = [i for i in view["intents"] if i["status"] == "completed"]
     assert len(done) == 1 and done[0]["result"] == "v1 を公開した"
-    assert done[0]["body"] == "全体方針を定める"
+
+
+def test_old_intent_write_endpoints_are_frozen():
+    """§4-4/§8-1: 旧 intent.* の新規書き込み API は 410（提議・合意・完了・取消・参加・declare）。"""
+    c, cid = _make_community("凍結の会")
+    for resp in (
+        c.post(f"/api/community/{cid}/intent/propose", json={"body": "x", "declaration": {}}),
+        c.post(f"/api/community/{cid}/declare", json={"payload": {}}),
+        c.post("/api/intent/int_x/agree", json={}),
+        c.post("/api/intent/int_x/complete", json={"result": "r"}),
+        c.post("/api/intent/int_x/cancel", json={}),
+        c.post("/api/intent/int_x/participant/join", json={"participant": "u_bob"}),
+    ):
+        assert resp.status_code == 410, resp.get_data(as_text=True)
 
 
 def test_recruit_flow_publishes_intent_necessity():
+    from intent_ledger import propose_intent, agree_intent
     c, cid = _make_community("募集の会")
     db = appmod.DB
     decl = {"kind": "recruit", "will_text": "翻訳基盤を作る", "necessity_text": "現場と実装を繋げる人"}
-    iid = c.post(f"/api/community/{cid}/intent/propose",
-                 json={"body": "人を募る", "declaration": decl}).get_json()["intent_id"]
-    c.post(f"/api/intent/{iid}/agree", json={})
+    iid = propose_intent(cid, "u_alice", body="人を募る", declaration=decl, db_path=db)["intent_id"]
+    agree_intent(iid, "u_alice", db_path=db)
     pub = [e for e in le.get_events(type_="necessity.published", db_path=db)
            if e["payload"]["owner_ref"] == iid]
     assert len(pub) == 1 and pub[0]["payload"]["owner_kind"] == "intent"

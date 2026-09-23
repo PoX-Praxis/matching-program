@@ -2070,11 +2070,19 @@ def _talk_public_view(talk):
 
     def who(sid):
         return {"subject_id": sid, "display_name": names.get(sid, sid)}
+    # プロジェクト（実行トーク）は現参加者を表示名つきで返す（P-1 の参加UI用）。
+    participants = []
+    if talk["kind"] == talks.PROJECT and (talk.get("target") or {}).get("intent_id"):
+        import governance as gov
+        pids = sorted(gov.participants_at(talk["target"]["intent_id"], 10**18, db_path=DB))
+        pnames = _resolve_names(pids)
+        participants = [{"subject_id": p, "display_name": pnames.get(p, p)} for p in pids]
     return {**talk,
             "display_status": talks.display_status(talk, db_path=DB),
             "closed": talks.is_closed(talk, db_path=DB),
             "origin": talks.origin_of(talk, db_path=DB),            # プロジェクトの出自（親の提議）
             "child_project": talks.child_project_of(talk, db_path=DB),  # 合意済み提議の子
+            "participants": participants,
             "created_by_name": names.get(talk["created_by"], talk["created_by"]),
             "posts": [{"post_id": p["post_id"], "author": p["author"],
                        "author_name": names.get(p["author"], p["author"]),

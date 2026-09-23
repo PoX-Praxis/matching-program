@@ -24,6 +24,7 @@
   .sec-title { font-size:12px; letter-spacing:.08em; color:#8a9099; margin:22px 0 6px; border-top:1px solid #eee; padding-top:12px; }
   .origin-line { font-size:12px; color:#555; margin-top:4px; }
   details.fold > summary { cursor:pointer; font-size:12px; letter-spacing:.06em; color:#5b616a; padding:8px 0; }
+  /* F-2: 折りたたみマーカーは <summary> 既定の三角のみに統一（本文に ▼ を書かない）。 */
   .public-note { font-size:12px; line-height:1.7; color:#6b7280; background:#f6f7f9; border-radius:5px; padding:10px 12px; margin:8px 0; }
   /* 設計されたダイアログ（window.prompt を使わない・§2-2/§6）*/
   .modal-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100; align-items:center; justify-content:center; }
@@ -61,7 +62,7 @@
   <h2 class="pv-h" style="display:block">トーク<span class="en" style="margin-left:8px">TALKS</span></h2>
   <p class="muted">提議・プロジェクトのトークは公開・名前付きです。加入の審議とチャットはメンバーのみ。</p>
   <div id="createBar" style="display:none;margin:8px 0">
-    <button class="btn sm" onclick="openCreate('proposal')">提議トークを提起する</button>
+    <button class="btn sm" onclick="openCreate('proposal')">提議トークを立ち上げる</button>
     <button class="btn sm ghost" onclick="openCreate('chat')">チャットをはじめる</button>
   </div>
   <div id="talkSections"></div>
@@ -71,24 +72,23 @@
 
 <!-- 作成ダイアログ（提議／チャット）-->
 <div class="modal-ov" id="createModal"><div class="modal">
-  <h3 id="cmTitle">提議を提起する</h3>
+  <h3 id="cmTitle">提議トークを立ち上げる</h3>
   <p class="public-note" id="cmNote"></p>
   <label>タイトル</label>
   <input id="cmTitleInput" type="text" placeholder="何について合意を目指すか">
   <div id="cmConcWrap"><label>結論（合意したい内容・任意）</label>
     <textarea id="cmConclusion" placeholder="合意に至ったら、この結論が記録されます"></textarea></div>
   <div class="modal-actions"><button class="btn ghost" onclick="closeModal('createModal')">キャンセル</button>
-    <button class="btn" onclick="submitCreate(this)">提起する</button></div>
+    <button class="btn" onclick="submitCreate(this)">立ち上げる</button></div>
   <div id="cmErr" class="err" style="font-size:13px;margin-top:8px"></div>
 </div></div>
 
-<!-- プロジェクト立ち上げダイアログ（window.prompt を使わない・§2-2）-->
+<!-- プロジェクト立ち上げダイアログ（window.prompt を使わない・§2-2／S-1: 名称は変更不可）-->
 <div class="modal-ov" id="launchModal"><div class="modal">
   <h3>プロジェクトを立ち上げる</h3>
+  <p class="meta">プロジェクト名は提議の内容から決まり、変更できません（S-1）。</p>
   <label>プロジェクト名</label>
-  <input id="lmName" type="text">
-  <label>説明（任意）</label>
-  <textarea id="lmDesc"></textarea>
+  <input id="lmName" type="text" readonly style="background:#f6f7f9">
   <div class="modal-actions"><button class="btn ghost" onclick="closeModal('launchModal')">キャンセル</button>
     <button class="btn" onclick="submitLaunch(this)">立ち上げる</button></div>
   <div id="lmErr" class="err" style="font-size:13px;margin-top:8px"></div>
@@ -161,7 +161,7 @@ function renderJoin(){
       ? `<div class="card"><b>参加申請</b>（加入は既存メンバーの合意で成立します）
          ${pending.map(p => `<div class="row-between" style="margin-top:6px">
             <span><a href="/profile/${encodeURIComponent(p.member_id)}">${esc(p.display_name || p.member_id)}</a></span>
-            <button class="btn sm" onclick="openAdmission('${esc(p.member_id)}')">加入トークを起こす</button></div>`).join("")}</div>`
+            <button class="btn sm" onclick="openAdmission('${esc(p.member_id)}')">加入トークを立ち上げる</button></div>`).join("")}</div>`
       : "";
   } else {
     el.innerHTML = data.applied
@@ -179,10 +179,13 @@ function renderDeclaration(){
 }
 
 function renderAchievements(){
-  const done = (data.intents || []).filter(i => i.status === "completed");
-  document.getElementById("achievementsBox").innerHTML = done.length
-    ? "<b>実績</b>" + done.map(i => `<div class="card" style="padding:10px 14px">${esc(i.body || i.intent_id)}
-        <div class="meta">完了: ${tsDate(i.completed_at)}</div></div>`).join("")
+  // 実績＝「できること（型）」の抽出結果のみを出す場所（§5決定1）。
+  // 完了プロジェクトの一覧は併記しない（トーク一覧に残す）。抽出は①構造化の役割で、
+  // 完了→できること型の自動抽出パイプラインは未接続のため、抽出前は理由を表示する（§3-3）。
+  const el = document.getElementById("achievementsBox");
+  const doneProjects = (talks || []).filter(t => t.section === "project" && t.display_status === "完了");
+  el.innerHTML = doneProjects.length
+    ? '<span class="muted">完了した取り組みから、できることを整理中です。</span>'
     : '<span class="muted">まだ実績はありません。</span>';
 }
 
@@ -205,9 +208,11 @@ function renderTalks(){
   if (projects.length){
     h += `<div class="sec-title">プロジェクト</div>` + projects.map(t => {
       const origin = t.origin ? `<div class="origin-line">出自: 提議「<a href="/talk/${encodeURIComponent(t.origin.talk_id)}">${esc(t.origin.title||t.origin.talk_id)}</a>」</div>` : "";
-      const act = (isMember() && !t.closed && (t.target||{}).intent_id)
-        ? `<div style="margin-top:6px"><button class="btn sm ghost" onclick="openComplete('${esc((t.target||{}).intent_id)}','${esc(t.title)}')">達成を提案</button></div>` : "";
-      return talkCard(t, origin + act);
+      // F-1: 全プロジェクトカードに「開く」を置く（実行中・完了とも）。達成を提案は実行中のみ。
+      let btns = `<a class="btn sm ghost" href="/talk/${encodeURIComponent(t.talk_id)}">開く</a>`;
+      if (isMember() && !t.closed && (t.target||{}).intent_id)
+        btns += ` <button class="btn sm ghost" onclick="openComplete('${esc((t.target||{}).intent_id)}','${esc(t.title)}')">達成を提案</button>`;
+      return talkCard(t, origin + `<div style="margin-top:8px">${btns}</div>`);
     }).join("");
   }
   if (admissions.length){
@@ -217,7 +222,7 @@ function renderTalks(){
     h += `<div class="sec-title">提議（審議中・休眠）</div>` + live.map(t => talkCard(t)).join("");
   }
   if (agreed.length){
-    h += `<details class="fold"><summary>▼ 合意済みの提議（${agreed.length}件）</summary>` + agreed.map(t => {
+    h += `<details class="fold"><summary>合意済みの提議（${agreed.length}件）</summary>` + agreed.map(t => {
       const act = t.child_project
         ? `<div class="origin-line"><a href="/talk/${encodeURIComponent(t.child_project.talk_id)}">→ プロジェクトを見る</a></div>`
         : (isMember() ? `<div style="margin-top:6px"><button class="btn sm ghost" onclick="openLaunch('${t.talk_id}')">プロジェクトを立ち上げる</button></div>` : "");
@@ -231,7 +236,7 @@ function renderTalks(){
 let createKind = "proposal";
 function openCreate(kind){
   createKind = kind;
-  document.getElementById("cmTitle").textContent = kind === "chat" ? "チャットをはじめる" : "提議を提起する";
+  document.getElementById("cmTitle").textContent = kind === "chat" ? "チャットをはじめる" : "提議トークを立ち上げる";
   document.getElementById("cmNote").textContent = kind === "chat" ? "チャットはメンバーだけが読めます。" : PUBLIC_NOTE;
   document.getElementById("cmConcWrap").style.display = kind === "chat" ? "none" : "block";
   document.getElementById("cmTitleInput").value = ""; document.getElementById("cmConclusion").value = "";
@@ -264,16 +269,15 @@ async function openAdmission(candidate){
 /* ── プロジェクト立ち上げ（設計ダイアログ・prompt を使わない）── */
 let launchProposalId = null;
 async function openLaunch(proposalTalkId){
-  launchProposalId = proposalTalkId;
   const t = await (await fetch(`/api/talks/${encodeURIComponent(proposalTalkId)}`)).json();
-  document.getElementById("lmName").value = (t.title || "") + " のプロジェクト";
-  document.getElementById("lmDesc").value = ""; document.getElementById("lmErr").textContent = "";
-  launchProposalId = { talkId: proposalTalkId, purpose: (t.result||{}).purpose_event_hash };
+  // S-1: プロジェクト名は提議の内容から決まり変更不可（提議トークのタイトルを採用）。
+  document.getElementById("lmName").value = t.title || "";
+  document.getElementById("lmErr").textContent = "";
+  launchProposalId = { talkId: proposalTalkId, title: t.title || "", purpose: (t.result||{}).purpose_event_hash };
   openModal("launchModal");
 }
 async function submitLaunch(btn){
-  const title = document.getElementById("lmName").value.trim();
-  if (!title){ document.getElementById("lmErr").textContent = "プロジェクト名を入力してください"; return; }
+  const title = launchProposalId.title;   // 固定（提議トークのタイトル・S-1）
   btn.disabled = true;
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/projects/launch`, {
     method:"POST", headers:{"Content-Type":"application/json"},

@@ -55,6 +55,13 @@
     <div class="vote-summary" id="voteSummary"></div>
   </div>
 
+  <!-- P-1: プロジェクトへの参加（コミュニティ外の個人も可・公開）-->
+  <div class="sec" id="participateSec" style="display:none">
+    <h2>このプロジェクトに参加する</h2>
+    <p class="public-note">参加の申し出と合意は公開されます（加入トークと違い、メンバー限定ではありません）。参加は既存の参加者の合意で成立します。</p>
+    <button class="btn" onclick="participate(this)">参加を申し出る</button>
+  </div>
+
   <div class="sec">
     <h2>タイムライン</h2>
     <div id="timeline"><span class="muted">まだ記録はありません。</span></div>
@@ -145,6 +152,12 @@ function render(){
     `<div class="tl-item"><span class="tag tag-vote">票</span><span class="who">${esc(d.display_name)}</span> が反対</div>`));
   document.getElementById("timeline").innerHTML = items.length ? items.join("") : '<span class="muted">まだ記録はありません。</span>';
 
+  // P-1: プロジェクト（実行中）には参加の申し出を出す（ログイン済み・当人が未参加のとき）。
+  if (talk.kind === "project" && !talk.closed && sessionId){
+    const already = (talk.participants || []).some(p => p.subject_id === sessionId);
+    document.getElementById("participateSec").style.display = already ? "none" : "block";
+  }
+
   // アクション（closure 済みでない・ログイン済みのときだけ。権限はサーバーが最終判定）
   if (!talk.closed && sessionId){
     document.getElementById("actionSec").style.display = "block";
@@ -181,6 +194,22 @@ async function castVote(stance, btn){
   n.className = "ok";
   n.textContent = (d.commit && d.commit.committed) ? "合意が成立し、台帳に記録されました。" : "投票を記録しました。";
   reload();
+}
+
+async function participate(btn){
+  const n = document.getElementById("notice");
+  if (!sessionId){ PoX.loginRedirect(); return; }
+  btn.disabled = true;
+  // プロジェクトへの参加は project_join トークとして起こす（公開・当事者の合意で成立）。
+  const res = await fetch(`/api/community/${encodeURIComponent(talk.ctx)}/talks`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({kind:"project_join", title:"参加の申し出",
+      target:{intent_id:(talk.target||{}).intent_id, participant:sessionId, participant_kind:"individual"}}) });
+  btn.disabled = false;
+  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
+  location.href = `/talk/${encodeURIComponent(d.talk_id)}`;   // 参加トークで賛成を集める
 }
 
 async function reload(){

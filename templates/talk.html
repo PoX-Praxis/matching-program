@@ -1,0 +1,194 @@
+{% extends "_base.html" %}
+{% block title %}トーク — PoX{% endblock %}
+{% block head %}
+<style>
+  a { color: #1a3a5c; }
+  .muted { color:#8a9099; font-size:13px; }
+  .back { font-size:13px; color:#555; text-decoration:none; }
+  .head-line { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .kind-tag { font-size:11px; font-weight:700; border-radius:3px; padding:2px 8px; letter-spacing:.04em; background:#eef2ff; color:#33417a; }
+  .status { font-size:12px; border-radius:3px; padding:2px 10px; background:#eef2ff; color:#33417a; }
+  .status.done { background:#d4edda; color:#155724; }
+  .lineage { font-size:12px; color:#555; margin:6px 0; }
+  .closed-banner { background:#f6f7f9; border-left:3px solid #9a6b2f; border-radius:0 6px 6px 0;
+                   padding:12px 14px; font-size:13.5px; line-height:1.8; margin:12px 0; }
+  .sec { margin:24px 0 0; padding-top:16px; border-top:1px solid #e6e8ec; }
+  .sec h2 { font-size:14px; letter-spacing:.06em; color:#1f3a5f; margin:0 0 10px; }
+  .conclusion { background:#f5f8fa; border-radius:6px; padding:14px 16px; font-size:15px; line-height:1.9; }
+  .tl-item { padding:8px 0; border-bottom:1px solid #eee; font-size:13.5px; line-height:1.8; }
+  .tl-item .tag { display:inline-block; font-size:11px; font-weight:700; border-radius:3px;
+                  padding:1px 7px; margin-right:8px; }
+  .tag-post { background:#eef4ef; color:#2f5d3f; }
+  .tag-vote { background:#eef2ff; color:#33417a; }
+  .who { font-weight:700; }
+  .vote-summary { font-size:13px; margin:8px 0; }
+  input[type=text], textarea { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ccc;
+    border-radius:6px; font-size:14px; font-family:inherit; }
+  textarea { min-height:70px; resize:vertical; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 18px;
+    border-radius:6px; border:1px solid #1a3a5c; background:#1a3a5c; color:#fff; font-size:14px; cursor:pointer; }
+  .btn.ghost { background:#fff; color:#1a3a5c; }
+  .btn.danger { background:#fff; color:#933; border-color:#c99; }
+  .public-note { font-size:12px; line-height:1.7; color:#6b7280; background:#f6f7f9; border-radius:5px; padding:10px 12px; margin:8px 0; }
+  #notice { font-size:13px; margin-top:10px; }
+  .ok { color:#1a8a1a; font-weight:bold; } .err { color:#c00; }
+</style>
+{% endblock %}
+{% block content %}
+<main class="l-prose">
+<a href="#" id="backLink" class="back">← コミュニティ</a>
+<div id="loading" class="muted" style="margin-top:20px">読み込み中です</div>
+
+<div id="main" style="display:none">
+  <div class="head-line">
+    <span class="kind-tag" id="tKind"></span>
+    <h1 id="tTitle" style="margin:0;font-size:22px"></h1>
+    <span class="status" id="tStatus"></span>
+  </div>
+  <p class="muted" id="tBy"></p>
+  <div class="lineage" id="tLineage"></div>
+  <div class="closed-banner" id="closedBanner" style="display:none"></div>
+
+  <div class="sec" id="conclusionSec" style="display:none">
+    <h2>収束案</h2>
+    <div class="conclusion" id="tConclusion"></div>
+    <div class="vote-summary" id="voteSummary"></div>
+  </div>
+
+  <div class="sec">
+    <h2>タイムライン</h2>
+    <div id="timeline"><span class="muted">まだ記録はありません。</span></div>
+  </div>
+
+  <!-- 審議中のみ表示（当事者。サーバーが最終判定）-->
+  <div class="sec" id="actionSec" style="display:none">
+    <p class="public-note" id="publicNote"></p>
+    <textarea id="postBody" placeholder="発言を書く"></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn ghost" onclick="submitPost(this)">発言する</button>
+      <span id="voteButtons" style="display:none">
+        <button class="btn" onclick="castVote('approve', this)">賛成</button>
+        <button class="btn danger" onclick="castVote('dissent', this)">反対</button>
+      </span>
+    </div>
+  </div>
+  <div id="notice"></div>
+</div>
+
+<script>
+const talkId = decodeURIComponent(location.pathname.split("/").pop());
+const PUBLIC_NOTE = "この発言は公開され、誰でも読めます。名前が公開され、外部に複製・集約されうることがあります。合意に至った場合、議論の記録と合意したアカウントが履歴として残ります。";
+const MEMBER_NOTE = "この発言はコミュニティのメンバーだけが読めます。";
+const DECISION = ["proposal", "admission", "project_join", "project_complete"];
+let talk = null, sessionId = null;
+
+function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function kindLabel(k){ return {proposal:"提議", project:"プロジェクト", project_join:"参加", project_complete:"達成", admission:"加入", chat:"チャット"}[k] || k; }
+
+async function init(){
+  sessionId = await PoX.me();
+  const res = await fetch(`/api/talks/${encodeURIComponent(talkId)}`);
+  if (!res.ok){ document.getElementById("loading").innerHTML = '<span class="err">トークが見つかりません（メンバー限定の場合があります）。</span>'; return; }
+  talk = await res.json();
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("main").style.display = "block";
+  document.getElementById("backLink").href = `/community/${encodeURIComponent(talk.ctx)}`;
+  render();
+}
+
+function render(){
+  document.getElementById("tKind").textContent = kindLabel(talk.kind);
+  document.getElementById("tTitle").textContent = talk.title;
+  const st = document.getElementById("tStatus");
+  st.textContent = talk.display_status || "";
+  st.className = "status" + (["合意済み","完了"].includes(talk.display_status) ? " done" : "");
+  const scope = (talk.kind === "chat" || talk.kind === "admission") ? "メンバー限定" : "公開";
+  document.getElementById("tBy").textContent = `提起: ${talk.created_by_name || talk.created_by} ・ ${scope}`;
+
+  // 出自（親）と子（プロジェクト）
+  let lin = "";
+  if (talk.origin) lin += `出自: 提議「<a href="/talk/${encodeURIComponent(talk.origin.talk_id)}">${esc(talk.origin.title || talk.origin.talk_id)}</a>」`;
+  if (talk.child_project) lin += `${lin ? " ・ " : ""}プロジェクト: <a href="/talk/${encodeURIComponent(talk.child_project.talk_id)}">${esc(talk.child_project.title)}</a>`;
+  document.getElementById("tLineage").innerHTML = lin;
+
+  // closure バナー（合意済み提議・完了プロジェクト）
+  if (talk.closed){
+    const b = document.getElementById("closedBanner");
+    if (talk.kind === "proposal"){
+      const link = talk.child_project
+        ? ` 以降の議論はプロジェクト「<a href="/talk/${encodeURIComponent(talk.child_project.talk_id)}">${esc(talk.child_project.title)}</a>」で行います。`
+        : " このコミュニティのメンバーはここからプロジェクトを立ち上げられます。";
+      b.innerHTML = "この提議は合意済みです。" + link;
+    } else {
+      b.textContent = "このトークは締め切られています（追記できません）。";
+    }
+    b.style.display = "block";
+  }
+
+  // 収束案（提議・決定トークで常時表示）
+  const conclusion = (talk.target || {}).conclusion || (talk.target || {}).result || "";
+  if (DECISION.includes(talk.kind)){
+    document.getElementById("conclusionSec").style.display = "block";
+    document.getElementById("tConclusion").textContent = conclusion || talk.title;
+    const appr = (talk.approvals || []).map(a => a.display_name).join("、") || "—";
+    const diss = (talk.dissents || []).map(d => d.display_name).join("、") || "—";
+    document.getElementById("voteSummary").innerHTML = `賛成: ${esc(appr)} ／ 反対: ${esc(diss)}`;
+  }
+
+  // タイムライン（発言と票を種別で分けて表示）
+  const items = [];
+  (talk.posts || []).forEach(p => items.push(
+    `<div class="tl-item"><span class="tag tag-post">発言</span><span class="who">${esc(p.author_name || p.author)}</span>：${esc(p.body)}</div>`));
+  (talk.approvals || []).forEach(a => items.push(
+    `<div class="tl-item"><span class="tag tag-vote">票</span><span class="who">${esc(a.display_name)}</span> が賛成</div>`));
+  (talk.dissents || []).forEach(d => items.push(
+    `<div class="tl-item"><span class="tag tag-vote">票</span><span class="who">${esc(d.display_name)}</span> が反対</div>`));
+  document.getElementById("timeline").innerHTML = items.length ? items.join("") : '<span class="muted">まだ記録はありません。</span>';
+
+  // アクション（closure 済みでない・ログイン済みのときだけ。権限はサーバーが最終判定）
+  if (!talk.closed && sessionId){
+    document.getElementById("actionSec").style.display = "block";
+    document.getElementById("publicNote").textContent =
+      (talk.kind === "chat" || talk.kind === "admission") ? MEMBER_NOTE : PUBLIC_NOTE;
+    document.getElementById("voteButtons").style.display = DECISION.includes(talk.kind) ? "inline" : "none";
+  }
+}
+
+async function submitPost(btn){
+  const n = document.getElementById("notice");
+  const body = document.getElementById("postBody").value.trim();
+  if (!body) return;
+  btn.disabled = true;
+  const res = await fetch(`/api/talks/${encodeURIComponent(talkId)}/posts`, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({body}) });
+  btn.disabled = false;
+  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
+  document.getElementById("postBody").value = "";
+  reload();
+}
+
+async function castVote(stance, btn){
+  const n = document.getElementById("notice");
+  btn.disabled = true;
+  const res = await fetch(`/api/talks/${encodeURIComponent(talkId)}/vote`, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({stance}) });
+  btn.disabled = false;
+  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
+  n.className = "ok";
+  n.textContent = (d.commit && d.commit.committed) ? "合意が成立し、台帳に記録されました。" : "投票を記録しました。";
+  reload();
+}
+
+async function reload(){
+  talk = await (await fetch(`/api/talks/${encodeURIComponent(talkId)}`)).json();
+  render();
+}
+
+init();
+</script>
+</main>
+{% endblock %}

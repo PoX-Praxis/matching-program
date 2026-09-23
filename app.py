@@ -2066,6 +2066,8 @@ def _talk_public_view(talk):
     return {**talk,
             "display_status": talks.display_status(talk, db_path=DB),
             "closed": talks.is_closed(talk, db_path=DB),
+            "origin": talks.origin_of(talk, db_path=DB),            # プロジェクトの出自（親の提議）
+            "child_project": talks.child_project_of(talk, db_path=DB),  # 合意済み提議の子
             "created_by_name": names.get(talk["created_by"], talk["created_by"]),
             "posts": [{"post_id": p["post_id"], "author": p["author"],
                        "author_name": names.get(p["author"], p["author"]),
@@ -2163,9 +2165,26 @@ def api_list_talks(community_id):
     for t in talks.list_talks(community_id, db_path=DB):
         if t["kind"] in (talks.CHAT, talks.ADMISSION) and not is_mem:
             continue                                     # 加入の審議・チャットは第三者に出さない
-        rows.append({**t, "display_status": talks.display_status(t, db_path=DB),
-                     "closed": talks.is_closed(t, db_path=DB),
-                     "created_by_name": ctx_names.get(t["created_by"], t["created_by"])})
+        row = {**t, "display_status": talks.display_status(t, db_path=DB),
+               "closed": talks.is_closed(t, db_path=DB),
+               "created_by_name": ctx_names.get(t["created_by"], t["created_by"])}
+        # ルート一覧の3区分と、出自・子の導出（指示書43 §1-3・§2-2 / 42 §2）
+        if t["kind"] == talks.PROJECT:
+            row["section"] = "project"
+            row["origin"] = talks.origin_of(t, db_path=DB)          # 出自: 提議「…」（常時1行表示）
+        elif t["kind"] == talks.PROPOSAL:
+            if t["status"] == "agreed":
+                row["section"] = "proposal_agreed"                  # 下部の折りたたみに残す（削除しない）
+                row["child_project"] = talks.child_project_of(t, db_path=DB)
+            else:
+                row["section"] = "proposal_live"                    # 審議中・休眠
+        elif t["kind"] == talks.ADMISSION:
+            row["section"] = "admission"
+        elif t["kind"] == talks.CHAT:
+            row["section"] = "chat"
+        else:
+            row["section"] = "other"                                # project_join / project_complete
+        rows.append(row)
     return jsonify({"ctx": community_id, "talks": rows}), 200
 
 

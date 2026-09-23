@@ -308,14 +308,54 @@ def open_community_join(intent_id, community_id, consent_ref, *, opener, db_path
     return {"talk": get_talk(talk["talk_id"], db_path=db_path)}
 
 
+def _proposal_talk_id_for_purpose(purpose_ref, db_path):
+    """purpose.agreed の event_hash から、その提議トークの talk_id を導出（指示書42 §2）。"""
+    if not purpose_ref:
+        return None
+    for e in le.get_events(type_="purpose.agreed", db_path=db_path):
+        if e["event_hash"] == purpose_ref:
+            return e["payload"].get("talk_id")
+    return None
+
+
+def origin_of(talk, *, db_path="pox.db"):
+    """プロジェクト（実行トーク）の出自＝親の提議トーク {talk_id, title}（指示書43 §1-3・42 §2）。
+    真実は台帳（intent.launched.purpose_ref → purpose.agreed.talk_id）。parent_talk_id はキャッシュ。"""
+    if talk["kind"] != PROJECT:
+        return None
+    pid = talk.get("parent_talk_id") or _proposal_talk_id_for_purpose(
+        (talk.get("target") or {}).get("purpose_ref"), db_path)
+    if not pid:
+        return None
+    p = get_talk(pid, db_path=db_path)
+    return {"talk_id": pid, "title": p["title"] if p else None}
+
+
+def child_project_of(proposal_talk, *, db_path="pox.db"):
+    """合意済み提議トークから立ち上がったプロジェクト {talk_id, title}。無ければ None（§2-2）。"""
+    if proposal_talk["kind"] != PROPOSAL:
+        return None
+    pref = (proposal_talk.get("result") or {}).get("purpose_event_hash")
+    for t in list_talks(proposal_talk["ctx"], db_path=db_path):
+        if t["kind"] != PROJECT:
+            continue
+        if t.get("parent_talk_id") == proposal_talk["talk_id"] or (
+                pref and (t.get("target") or {}).get("purpose_ref") == pref):
+            return {"talk_id": t["talk_id"], "title": t["title"]}
+    return None
+
+
 def launch_project(ctx, launcher, title, purpose_ref, *, db_path="pox.db"):
     """合意された目的（purpose.agreed）からプロジェクトを立ち上げる（§2-4）。
 
-    intent.launched を台帳へ書き、プロジェクトトーク（器）を作る。
+    intent.launched を台帳へ書き、実行トーク（プロジェクトの器）を作る。実行トークは
+    intent.launched の直後に自動で始まり（§1-5）、親の提議トークを parent_talk_id に持つ
+    （真実は台帳の連鎖・42 §2。ここではキャッシュとして保存）。
     """
     intent_id = f"int_{uuid.uuid4().hex[:12]}"
     gov.publish_intent_launched(intent_id, ctx, launcher, purpose_ref, db_path=db_path)
+    parent = _proposal_talk_id_for_purpose(purpose_ref, db_path)
     talk = create_talk(ctx, PROJECT, title, launcher,
                        target={"intent_id": intent_id, "purpose_ref": purpose_ref},
-                       db_path=db_path)
+                       parent_talk_id=parent, db_path=db_path)
     return {"intent_id": intent_id, "talk": talk}

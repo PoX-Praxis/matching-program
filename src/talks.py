@@ -160,6 +160,37 @@ def get_votes(talk_id, *, db_path="pox.db"):
     return {"approvals": approvals, "dissents": dissents}
 
 
+def is_closed(talk, *, db_path="pox.db"):
+    """closure 済みか（追記拒否の条件・指示書44 §2-1）。休眠・審議中は closed ではない。
+      提議 → purpose.agreed あり（status='agreed'）／プロジェクト容器 → intent.completed あり
+      加入・参加・達成 → 合意/完了。チャットは never closed。"""
+    kind, status = talk["kind"], talk["status"]
+    if kind == CHAT:
+        return False
+    if kind == PROJECT:
+        iid = (talk.get("target") or {}).get("intent_id")
+        return any(e["payload"].get("intent_id") == iid
+                   for e in le.get_events(type_="intent.completed", db_path=db_path))
+    return status in ("agreed", "completed")
+
+
+def display_status(talk, *, db_path="pox.db"):
+    """画面表示用の状態語彙（指示書42 §3・43 §1-2。'open' を使わない）。"""
+    kind, status = talk["kind"], talk["status"]
+    if kind == CHAT:
+        return None
+    if kind == PROJECT:
+        return "完了" if is_closed(talk, db_path=db_path) else "実行中"
+    if kind == PROJECT_COMPLETE:
+        return "完了" if status == "completed" else ("休眠" if status == "dormant" else "審議中")
+    # proposal / admission / project_join
+    if status == "agreed":
+        return "合意済み"
+    if status == "dormant":
+        return "休眠"
+    return "審議中"
+
+
 def _set_status(talk_id, status, result, db_path):
     with _connect(db_path) as con:
         con.execute("UPDATE talks SET status=%s, result_json=%s WHERE talk_id=%s",

@@ -2051,13 +2051,27 @@ def _is_participant(intent_id, sid):
 
 
 def _talk_public_view(talk):
-    """公開ビュー（allowlist）。投票の内訳は集計を作らない方針だが、当事者の判断のため
-    賛成・反対したアカウントは公開トークなので開示してよい（沈黙者は出さない）。"""
+    """公開ビュー（allowlist）。表示名を解決して返し、生 subject id を表示の主にしない
+    （指示書43 T-6/M-1・44 §2-4）。集計・順位は作らない（§3-2）が、当事者判断のため
+    賛成・反対したアカウントは公開トークなので氏名で開示する（沈黙者は出さない）。"""
     import talks
     v = talks.get_votes(talk["talk_id"], db_path=DB)
+    posts = talks.get_posts(talk["talk_id"], db_path=DB)
+    ids = (list(v["approvals"]) + list(v["dissents"])
+           + [p["author"] for p in posts] + [talk["created_by"]])
+    names = _resolve_names(ids)
+
+    def who(sid):
+        return {"subject_id": sid, "display_name": names.get(sid, sid)}
     return {**talk,
-            "posts": talks.get_posts(talk["talk_id"], db_path=DB),
-            "approvals": sorted(v["approvals"]), "dissents": sorted(v["dissents"])}
+            "display_status": talks.display_status(talk, db_path=DB),
+            "closed": talks.is_closed(talk, db_path=DB),
+            "created_by_name": names.get(talk["created_by"], talk["created_by"]),
+            "posts": [{"post_id": p["post_id"], "author": p["author"],
+                       "author_name": names.get(p["author"], p["author"]),
+                       "body": p["body"], "created_at": p["created_at"]} for p in posts],
+            "approvals": [who(s) for s in sorted(v["approvals"])],
+            "dissents": [who(s) for s in sorted(v["dissents"])]}
 
 
 @app.post("/api/community/<community_id>/talks")
@@ -2127,23 +2141,31 @@ def api_join_as_community(intent_id):
 
 @app.get("/api/talks/<talk_id>")
 def api_get_talk(talk_id):
-    """トーク詳細。チャットはメンバーのみ、それ以外は公開（§3）。"""
+    """トーク詳細。提議・プロジェクトのトークは公開。チャットと加入の審議はメンバーのみ
+    （指示書43 T-8・44 キャプション確定）。"""
     import talks
     talk = talks.get_talk(talk_id, db_path=DB)
     if talk is None:
         return jsonify({"error": "not_found"}), 404
-    if talk["kind"] == talks.CHAT and not _is_ctx_member(talk["ctx"], current_subject_id()):
-        return jsonify({"error": "not_found"}), 404      # チャットは第三者に存在ごと見せない
+    if talk["kind"] in (talks.CHAT, talks.ADMISSION) and not _is_ctx_member(talk["ctx"], current_subject_id()):
+        return jsonify({"error": "not_found"}), 404      # 第三者には存在ごと見せない（人に付く棄却）
     return jsonify(_talk_public_view(talk)), 200
 
 
 @app.get("/api/community/<community_id>/talks")
 def api_list_talks(community_id):
-    """トーク一覧。チャット以外は公開・名前付き（§3）。チャットはメンバーのみ。"""
+    """トーク一覧。提議・プロジェクトは公開・名前付き。チャットと加入の審議はメンバーのみ
+    （指示書43 T-8・44）。各行に表示用の状態語彙と起票者の表示名を添える。"""
     import talks
     is_mem = _is_ctx_member(community_id, current_subject_id())
-    rows = [t for t in talks.list_talks(community_id, db_path=DB)
-            if t["kind"] != talks.CHAT or is_mem]
+    ctx_names = _resolve_names([t["created_by"] for t in talks.list_talks(community_id, db_path=DB)])
+    rows = []
+    for t in talks.list_talks(community_id, db_path=DB):
+        if t["kind"] in (talks.CHAT, talks.ADMISSION) and not is_mem:
+            continue                                     # 加入の審議・チャットは第三者に出さない
+        rows.append({**t, "display_status": talks.display_status(t, db_path=DB),
+                     "closed": talks.is_closed(t, db_path=DB),
+                     "created_by_name": ctx_names.get(t["created_by"], t["created_by"])})
     return jsonify({"ctx": community_id, "talks": rows}), 200
 
 
@@ -2162,6 +2184,10 @@ def api_talk_post(talk_id):
         return jsonify({"error": "body が必要です"}), 400
     if not _can_participate_talk(talk, sid):
         return jsonify({"error": "このトークに投稿する権限がありません"}), 403
+    # closure 済みトークへの追記は拒否（指示書43 §1-4・44 §2）。休眠・審議中は拒否しない。
+    if talks.is_closed(talk, db_path=DB):
+        return jsonify({"error": "closed",
+                        "detail": "このトークは合意/完了により締め切られています。追記できません。"}), 409
     return jsonify(talks.add_post(talk_id, sid, text, db_path=DB)), 201
 
 
@@ -2178,6 +2204,10 @@ def api_talk_vote(talk_id):
     sid = current_subject_id()
     if not _can_participate_talk(talk, sid):
         return jsonify({"error": "このトークで投票する権限がありません"}), 403
+    # closure 済みトークへの投票は拒否（closure の意味を保つ・指示書44 §2）。
+    if talks.is_closed(talk, db_path=DB):
+        return jsonify({"error": "closed",
+                        "detail": "このトークは締め切られています。投票できません。"}), 409
     stance = (request.get_json(force=True, silent=True) or {}).get("stance")
     if stance not in ("approve", "dissent"):
         return jsonify({"error": "stance は approve か dissent"}), 400

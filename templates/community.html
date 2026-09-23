@@ -2,50 +2,38 @@
 {% block title %}コミュニティ — PoX{% endblock %}
 {% block head %}
 <style>
-  a { color: var(--pox-link, #1a3a5c); }
+  a { color:#1a3a5c; }
   .muted { color:#8a9099; font-size:13px; }
   .row-between { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
   .meta { font-size:12px; color:#888; }
-  .subject-id { color:#999; font-size:11px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
-
-  .card { border:1px solid var(--pox-rule,#e6e8ec); border-radius:var(--radius,6px); padding:16px; margin:10px 0; }
-  .btn { display:inline-flex; align-items:center; justify-content:center; height:var(--ctrl-h,40px);
-         padding:0 16px; border-radius:var(--radius,6px); border:1px solid #1a3a5c; background:#1a3a5c;
-         color:#fff; font-size:13px; cursor:pointer; text-decoration:none; }
+  .card { border:1px solid #e6e8ec; border-radius:6px; padding:14px; margin:10px 0; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 16px;
+         border-radius:6px; border:1px solid #1a3a5c; background:#1a3a5c; color:#fff; font-size:13px;
+         cursor:pointer; text-decoration:none; }
   .btn.ghost { background:#fff; color:#1a3a5c; }
-  .btn.danger { background:#fff; color:#933; border-color:#c99; }
   .btn.sm { height:32px; padding:0 12px; font-size:12px; }
   .btn:disabled { opacity:.5; cursor:default; }
-
-  input[type=text], textarea, select {
-    width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ccc;
-    border-radius:var(--radius,6px); font-size:13px; font-family:inherit;
-  }
+  input[type=text], textarea { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ccc;
+    border-radius:6px; font-size:13px; font-family:inherit; }
   textarea { min-height:60px; resize:vertical; }
-
   .kind-tag { font-size:11px; font-weight:700; border-radius:3px; padding:2px 8px; letter-spacing:.04em; }
-  .k-proposal { background:#eef2ff; color:#33417a; }
-  .k-project  { background:#eaf4ea; color:#1a6a3a; }
-  .k-project_join, .k-project_complete { background:#f5f8fa; color:#2f5d3f; }
-  .k-admission{ background:#fff3cd; color:#856404; }
-  .k-chat     { background:#f0f0f0; color:#555; }
-  .status { font-size:11px; border-radius:3px; padding:2px 8px; }
-  .st-open { background:#eef2ff; color:#33417a; }
-  .st-agreed, .st-completed { background:#d4edda; color:#155724; }
-
-  /* 公開であることの明示（§3-1）。入力欄の近くに置く。 */
-  .public-note { font-size:12px; line-height:1.7; color:#6b7280; background:#f6f7f9;
-                 border-radius:5px; padding:10px 12px; margin:8px 0; }
-
-  .post { border-top:1px solid #eee; padding:8px 0; font-size:13px; }
-  .post .who { font-weight:700; color:#1f3a5f; }
-  .vote-line { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
-  .modal-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100;
-              align-items:center; justify-content:center; }
+  .k-proposal{ background:#eef2ff; color:#33417a; } .k-project{ background:#eaf4ea; color:#1a6a3a; }
+  .k-admission{ background:#fff3cd; color:#856404; } .k-chat{ background:#f0f0f0; color:#555; }
+  .status { font-size:11px; border-radius:3px; padding:2px 8px; background:#eef2ff; color:#33417a; }
+  .status.done { background:#d4edda; color:#155724; }
+  .sec-title { font-size:12px; letter-spacing:.08em; color:#8a9099; margin:22px 0 6px; border-top:1px solid #eee; padding-top:12px; }
+  .origin-line { font-size:12px; color:#555; margin-top:4px; }
+  details.fold > summary { cursor:pointer; font-size:12px; letter-spacing:.06em; color:#5b616a; padding:8px 0; }
+  .public-note { font-size:12px; line-height:1.7; color:#6b7280; background:#f6f7f9; border-radius:5px; padding:10px 12px; margin:8px 0; }
+  /* 設計されたダイアログ（window.prompt を使わない・§2-2/§6）*/
+  .modal-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100; align-items:center; justify-content:center; }
   .modal-ov.open { display:flex; }
-  .modal { background:#fff; border-radius:8px; padding:20px; width:440px; max-width:92vw; max-height:88vh; overflow:auto; }
+  .modal { background:#fff; border-radius:8px; padding:20px; width:440px; max-width:92vw; }
+  .modal h3 { margin:0 0 12px; font-size:1.05rem; }
+  .modal label { display:block; font-size:12px; color:#667; margin:10px 0 4px; }
+  .modal-actions { margin-top:16px; display:flex; gap:8px; justify-content:flex-end; }
   #notice { margin-top:10px; font-size:13px; }
-  .ok { color:#1a8a1a; font-weight:bold; } .err { color:#c00; }
+  .err { color:#c00; } .ok { color:#1a8a1a; font-weight:bold; }
 </style>
 {% endblock %}
 {% block content %}
@@ -71,87 +59,73 @@
   <div id="achievementsBox" style="font-size:13px;margin-top:8px"></div>
 
   <h2 class="pv-h" style="display:block">トーク<span class="en" style="margin-left:8px">TALKS</span></h2>
-  <p class="muted">提議・プロジェクト・加入のトークは公開・名前付きです。チャットはメンバーのみ。</p>
+  <p class="muted">提議・プロジェクトのトークは公開・名前付きです。加入の審議とチャットはメンバーのみ。</p>
   <div id="createBar" style="display:none;margin:8px 0">
-    <button class="btn sm" onclick="openCreate('proposal')">提議トークを立ち上げる</button>
-    <button class="btn sm ghost" onclick="openCreate('chat')">チャットを始める</button>
+    <button class="btn sm" onclick="openCreate('proposal')">提議トークを提起する</button>
+    <button class="btn sm ghost" onclick="openCreate('chat')">チャットをはじめる</button>
   </div>
-  <div id="talkList"></div>
+  <div id="talkSections"></div>
 
   <div id="notice"></div>
 </div>
 
-<!-- トーク詳細モーダル -->
-<div class="modal-ov" id="talkModal">
-  <div class="modal">
-    <div class="row-between">
-      <h3 id="tmTitle" style="margin:0"></h3>
-      <button class="btn ghost sm" onclick="closeTalk()">閉じる</button>
-    </div>
-    <p id="tmMeta" class="meta" style="margin:4px 0 8px"></p>
-    <div id="tmActions"></div>
-    <div id="tmPosts" style="margin:10px 0"></div>
-    <div id="tmPostInput" style="display:none">
-      <p class="public-note" id="tmPublicNote"></p>
-      <textarea id="tmBody" placeholder="発言を書く（公開されます）"></textarea>
-      <button class="btn sm" style="margin-top:6px" onclick="postToTalk(this)">投稿する</button>
-    </div>
-    <div id="tmNotice" style="font-size:13px;margin-top:8px"></div>
-  </div>
-</div>
+<!-- 作成ダイアログ（提議／チャット）-->
+<div class="modal-ov" id="createModal"><div class="modal">
+  <h3 id="cmTitle">提議を提起する</h3>
+  <p class="public-note" id="cmNote"></p>
+  <label>タイトル</label>
+  <input id="cmTitleInput" type="text" placeholder="何について合意を目指すか">
+  <div id="cmConcWrap"><label>結論（合意したい内容・任意）</label>
+    <textarea id="cmConclusion" placeholder="合意に至ったら、この結論が記録されます"></textarea></div>
+  <div class="modal-actions"><button class="btn ghost" onclick="closeModal('createModal')">キャンセル</button>
+    <button class="btn" onclick="submitCreate(this)">提起する</button></div>
+  <div id="cmErr" class="err" style="font-size:13px;margin-top:8px"></div>
+</div></div>
 
-<!-- トーク作成モーダル -->
-<div class="modal-ov" id="createModal">
-  <div class="modal">
-    <div class="row-between">
-      <h3 id="cmTitle" style="margin:0">トークを立ち上げる</h3>
-      <button class="btn ghost sm" onclick="closeCreate()">閉じる</button>
-    </div>
-    <p class="public-note" id="cmPublicNote"></p>
-    <label class="meta">タイトル</label>
-    <input id="cmTitleInput" type="text" placeholder="何について合意を目指すか">
-    <div id="cmConclusionWrap" style="margin-top:8px">
-      <label class="meta">結論（合意したい内容・任意）</label>
-      <textarea id="cmConclusion" placeholder="合意に至ったら、この結論が記録されます"></textarea>
-    </div>
-    <div style="margin-top:12px"><button class="btn" onclick="submitCreate(this)">立ち上げる</button></div>
-    <div id="cmNotice" style="font-size:13px;margin-top:8px"></div>
-  </div>
-</div>
+<!-- プロジェクト立ち上げダイアログ（window.prompt を使わない・§2-2）-->
+<div class="modal-ov" id="launchModal"><div class="modal">
+  <h3>プロジェクトを立ち上げる</h3>
+  <label>プロジェクト名</label>
+  <input id="lmName" type="text">
+  <label>説明（任意）</label>
+  <textarea id="lmDesc"></textarea>
+  <div class="modal-actions"><button class="btn ghost" onclick="closeModal('launchModal')">キャンセル</button>
+    <button class="btn" onclick="submitLaunch(this)">立ち上げる</button></div>
+  <div id="lmErr" class="err" style="font-size:13px;margin-top:8px"></div>
+</div></div>
 
-<!-- 編集モーダル -->
-<div class="modal-ov" id="editModal">
-  <div class="modal">
-    <h3 style="margin:0 0 12px">コミュニティを編集</h3>
-    <label class="meta">名前</label>
-    <input id="editName" type="text">
-    <label class="meta" style="margin-top:8px;display:block">説明</label>
-    <textarea id="editDesc"></textarea>
-    <div style="margin-top:14px"><button class="btn" onclick="saveEdit(this)">保存</button>
-      <button class="btn ghost" onclick="closeEdit()">キャンセル</button></div>
-    <div id="editNotice" style="margin-top:8px;font-size:13px;color:#c00"></div>
-  </div>
-</div>
+<!-- 達成の提案ダイアログ -->
+<div class="modal-ov" id="completeModal"><div class="modal">
+  <h3>達成を提案する</h3>
+  <p class="public-note">達成は参加者の合意で成立します。この提案は公開されます。</p>
+  <label>達成の内容（結果）</label>
+  <textarea id="cpResult"></textarea>
+  <div class="modal-actions"><button class="btn ghost" onclick="closeModal('completeModal')">キャンセル</button>
+    <button class="btn" onclick="submitComplete(this)">達成を提案する</button></div>
+  <div id="cpErr" class="err" style="font-size:13px;margin-top:8px"></div>
+</div></div>
+
+<!-- 編集ダイアログ -->
+<div class="modal-ov" id="editModal"><div class="modal">
+  <h3>コミュニティを編集</h3>
+  <label>名前</label><input id="editName" type="text">
+  <label>説明</label><textarea id="editDesc"></textarea>
+  <div class="modal-actions"><button class="btn ghost" onclick="closeModal('editModal')">キャンセル</button>
+    <button class="btn" onclick="saveEdit(this)">保存</button></div>
+  <div id="editErr" class="err" style="font-size:13px;margin-top:8px"></div>
+</div></div>
 
 <script>
 const communityId = decodeURIComponent(location.pathname.split("/").pop());
-const PUBLIC_NOTE = "この発言は公開され、誰でも読めます。合意に至った場合、議論の記録と合意したアカウントが履歴として残ります。";
-let sessionId = null;
-let data = null;      // /api/community 応答
-let talks = [];       // /api/community/<id>/talks 応答
-let openTalkId = null;
+const PUBLIC_NOTE = "この発言は公開され、誰でも読めます。名前が公開され、外部に複製・集約されうることがあります。合意に至った場合、議論の記録と合意したアカウントが履歴として残ります。";
+let sessionId = null, data = null, talks = [];
 
 function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function tsDate(t){ return t ? new Date(t).toLocaleDateString("ja-JP") : ""; }
-
-function isMember(){
-  if (!sessionId) return false;
-  return data.founder === sessionId || (data.members || []).some(m => m.member_id === sessionId);
-}
-function isParticipant(intentId){
-  // 参加者判定はサーバーが最終確認する。UI は達成/参加の当事者に action を出すだけ。
-  return isMember();
-}
+function kindLabel(k){ return {proposal:"提議", project:"プロジェクト", admission:"加入", chat:"チャット"}[k] || k; }
+function openModal(id){ document.getElementById(id).classList.add("open"); }
+function closeModal(id){ document.getElementById(id).classList.remove("open"); }
+function isMember(){ return !!sessionId && (data.founder === sessionId || (data.members||[]).some(m => m.member_id === sessionId)); }
 
 async function init(){
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}`);
@@ -159,180 +133,123 @@ async function init(){
   data = await res.json();
   sessionId = await PoX.me();
   talks = (await (await fetch(`/api/community/${encodeURIComponent(communityId)}/talks`)).json()).talks || [];
-
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display = "block";
   document.getElementById("cName").textContent = data.name;
   document.getElementById("cDesc").textContent = data.description || "";
-  document.getElementById("memberCount").textContent = (data.members || []).length;
+  document.getElementById("memberCount").textContent = (data.members||[]).length;
   document.getElementById("cFounder").textContent = data.founder_name || data.founder;
-  if (isMember()){
-    document.getElementById("editBtn").style.display = "inline-flex";
-    document.getElementById("createBar").style.display = "block";
-  }
+  if (isMember()){ document.getElementById("editBtn").style.display = "inline-flex";
+    document.getElementById("createBar").style.display = "block"; }
   renderMembers(); renderJoin(); renderDeclaration(); renderAchievements(); renderTalks();
 }
 
 function renderMembers(){
-  const el = document.getElementById("memberList");
   const ms = data.members || [];
-  el.innerHTML = ms.length ? ms.map(m =>
+  document.getElementById("memberList").innerHTML = ms.length ? ms.map(m =>
     `<div style="padding:4px 0"><a href="/profile/${encodeURIComponent(m.member_id)}">${esc(m.display_name || m.member_id)}</a>
      ${m.member_id === data.founder ? '<span class="meta">（作成者）</span>' : ''}</div>`).join("") : '<span class="muted">なし</span>';
 }
 
 function renderJoin(){
   const el = document.getElementById("joinSection");
-  const pending = data.pending || [];
-  let h = "";
   if (!sessionId){
-    h = `<p class="muted">参加申請にはログインが必要です。<a href="/login?next=${encodeURIComponent(location.pathname)}">ログイン →</a></p>`;
+    el.innerHTML = `<p class="muted">参加申請にはログインが必要です。<a href="/login?next=${encodeURIComponent(location.pathname)}">ログイン →</a></p>`;
   } else if (isMember()){
-    // メンバー: 公開の参加申請者を、加入トークで迎える
-    if (pending.length){
-      h = `<div class="card"><b>参加申請</b>（加入は既存メンバーの合意で成立します）
-        ${pending.map(p => `<div class="row-between" style="margin-top:6px">
-          <span><a href="/profile/${encodeURIComponent(p.member_id)}">${esc(p.display_name || p.member_id)}</a></span>
-          <button class="btn sm" onclick="openAdmission('${esc(p.member_id)}')">加入トークを起こす</button></div>`).join("")}</div>`;
-    }
+    const pending = data.pending || [];   // メンバーにのみ返る（加入はメンバー限定審議）
+    el.innerHTML = pending.length
+      ? `<div class="card"><b>参加申請</b>（加入は既存メンバーの合意で成立します）
+         ${pending.map(p => `<div class="row-between" style="margin-top:6px">
+            <span><a href="/profile/${encodeURIComponent(p.member_id)}">${esc(p.display_name || p.member_id)}</a></span>
+            <button class="btn sm" onclick="openAdmission('${esc(p.member_id)}')">加入トークを起こす</button></div>`).join("")}</div>`
+      : "";
   } else {
-    const applied = pending.some(p => p.member_id === sessionId);
-    h = applied
-      ? `<p class="muted">参加を申請済みです。既存メンバーの合意で加入が成立します（公開の加入トーク）。</p>`
+    el.innerHTML = data.applied
+      ? `<p class="muted">参加を申請済みです。既存メンバーの合意で加入が成立します。</p>`
       : `<button class="btn" onclick="applyJoin(this)">このコミュニティに参加を申請する</button>`;
   }
-  el.innerHTML = h;
 }
 
 function renderDeclaration(){
-  const el = document.getElementById("declarationBox");
   const d = data.declaration;
-  if (!d){ el.innerHTML = '<span class="muted">まだ全体方針の宣言はありません。</span>'; return; }
-  el.innerHTML = `<div class="card"><b>意志</b><div>${esc(d.will_text || "—")}</div>
-    ${d.state_have ? `<div style="margin-top:6px"><b>現状（持っているもの）</b><div>${esc(d.state_have)}</div></div>` : ""}</div>`;
+  document.getElementById("declarationBox").innerHTML = d
+    ? `<div class="card"><b>意志</b><div>${esc(d.will_text || "—")}</div>
+       ${d.state_have ? `<div style="margin-top:6px"><b>現状</b><div>${esc(d.state_have)}</div></div>` : ""}</div>`
+    : '<span class="muted">まだ全体方針の宣言はありません。</span>';
 }
 
 function renderAchievements(){
-  const el = document.getElementById("achievementsBox");
   const done = (data.intents || []).filter(i => i.status === "completed");
-  if (!done.length){ el.innerHTML = '<span class="muted">まだ実績はありません。</span>'; return; }
-  el.innerHTML = "<b>実績</b>" + done.map(i =>
-    `<div class="card" style="padding:10px 14px">${esc(i.body || i.intent_id)}
-      <div class="meta">完了: ${tsDate(i.completed_at)}</div></div>`).join("");
+  document.getElementById("achievementsBox").innerHTML = done.length
+    ? "<b>実績</b>" + done.map(i => `<div class="card" style="padding:10px 14px">${esc(i.body || i.intent_id)}
+        <div class="meta">完了: ${tsDate(i.completed_at)}</div></div>`).join("")
+    : '<span class="muted">まだ実績はありません。</span>';
 }
 
-/* ── トーク一覧 ── */
-function kindLabel(k){ return {proposal:"提議", project:"プロジェクト", project_join:"参加", project_complete:"達成", admission:"加入", chat:"チャット"}[k] || k; }
+function talkCard(t, extra){
+  return `<div class="card"><div class="row-between">
+    <span><span class="kind-tag k-${t.kind}">${kindLabel(t.kind)}</span>
+      <a href="/talk/${encodeURIComponent(t.talk_id)}" style="margin-left:8px;font-weight:700;text-decoration:none">${esc(t.title)}</a></span>
+    <span class="status ${["合意済み","完了"].includes(t.display_status)?"done":""}">${esc(t.display_status||"")}</span>
+    </div>${extra||""}</div>`;
+}
 
+/* ルート一覧の3区分（§1-3）: プロジェクト / 審議中の提議 / 合意済みの提議（折りたたみ）*/
 function renderTalks(){
-  const el = document.getElementById("talkList");
-  if (!talks.length){ el.innerHTML = '<span class="muted">まだトークはありません。</span>'; return; }
-  el.innerHTML = talks.map(t => `<div class="card">
-    <div class="row-between">
-      <span><span class="kind-tag k-${t.kind}">${kindLabel(t.kind)}</span>
-        <b style="margin-left:8px">${esc(t.title)}</b></span>
-      <span class="status ${t.status === 'open' ? 'st-open' : 'st-'+t.status}">${t.status}</span>
-    </div>
-    <div class="row-between" style="margin-top:8px">
-      <span class="meta">起票: ${esc((data.members.find(m=>m.member_id===t.created_by)||{}).display_name || t.created_by)}</span>
-      <span>
-        ${t.kind === 'proposal' && t.status === 'agreed' && isMember()
-          ? `<button class="btn sm ghost" onclick="launchProject('${t.talk_id}', this)">プロジェクトを立ち上げる</button>` : ''}
-        ${t.kind === 'project' && isMember()
-          ? `<button class="btn sm ghost" onclick="openComplete('${esc((t.target||{}).intent_id)}','${esc(t.title)}')">達成を提案</button>` : ''}
-        <button class="btn sm ghost" onclick="openTalk('${t.talk_id}')">開く</button>
-      </span>
-    </div></div>`).join("");
-}
-
-/* ── トーク詳細（モーダル）── */
-async function openTalk(talkId){
-  openTalkId = talkId;
-  const t = await (await fetch(`/api/talks/${encodeURIComponent(talkId)}`)).json();
-  document.getElementById("tmTitle").textContent = t.title;
-  document.getElementById("tmMeta").textContent = `${kindLabel(t.kind)} ・ ${t.status}`;
-  const decision = ["proposal","admission","project_join","project_complete"].includes(t.kind);
-  // 投票
-  let actions = "";
-  if (decision && t.status === "open"){
-    actions = `<div class="vote-line">
-      <button class="btn sm" onclick="vote('${talkId}','approve',this)">賛成</button>
-      <button class="btn sm danger" onclick="vote('${talkId}','dissent',this)">反対</button></div>
-      <p class="public-note">${esc(PUBLIC_NOTE)}</p>`;
+  const box = document.getElementById("talkSections");
+  const projects = talks.filter(t => t.section === "project");
+  const live = talks.filter(t => t.section === "proposal_live");
+  const agreed = talks.filter(t => t.section === "proposal_agreed");
+  const admissions = talks.filter(t => t.section === "admission");
+  let h = "";
+  if (projects.length){
+    h += `<div class="sec-title">プロジェクト</div>` + projects.map(t => {
+      const origin = t.origin ? `<div class="origin-line">出自: 提議「<a href="/talk/${encodeURIComponent(t.origin.talk_id)}">${esc(t.origin.title||t.origin.talk_id)}</a>」</div>` : "";
+      const act = (isMember() && !t.closed && (t.target||{}).intent_id)
+        ? `<div style="margin-top:6px"><button class="btn sm ghost" onclick="openComplete('${esc((t.target||{}).intent_id)}','${esc(t.title)}')">達成を提案</button></div>` : "";
+      return talkCard(t, origin + act);
+    }).join("");
   }
-  const appr = (t.approvals||[]).map(esc).join("、") || "—";
-  const diss = (t.dissents||[]).map(esc).join("、") || "—";
-  if (decision) actions += `<p class="meta">賛成: ${appr} ／ 反対: ${diss}</p>`;
-  document.getElementById("tmActions").innerHTML = actions;
-  document.getElementById("tmPosts").innerHTML = (t.posts||[]).length
-    ? t.posts.map(p => `<div class="post"><span class="who">${esc(p.author)}</span>：${esc(p.body)}</div>`).join("")
-    : '<span class="muted">まだ発言はありません。</span>';
-  // 投稿欄（当事者のみ・サーバーが最終判定。UI は member/参加者に出す）
-  const canPost = t.kind === "chat" ? isMember() : (isMember() || (t.kind.startsWith("project") && isParticipant()));
-  document.getElementById("tmPostInput").style.display = canPost ? "block" : "none";
-  document.getElementById("tmPublicNote").textContent = t.kind === "chat"
-    ? "この発言はメンバーだけが読めます。" : PUBLIC_NOTE;
-  document.getElementById("tmBody").value = "";
-  document.getElementById("tmNotice").textContent = "";
-  document.getElementById("talkModal").classList.add("open");
-}
-function closeTalk(){ document.getElementById("talkModal").classList.remove("open"); openTalkId = null; }
-
-async function vote(talkId, stance, btn){
-  const n = document.getElementById("tmNotice");
-  if (!sessionId){ PoX.loginRedirect(); return; }
-  if (btn) btn.disabled = true;
-  const res = await fetch(`/api/talks/${encodeURIComponent(talkId)}/vote`, {
-    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({stance}) });
-  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})){ if(btn) btn.disabled=false; return; }
-  const d = await res.json();
-  if (!res.ok){ n.className="err"; n.textContent = "エラー: " + (d.error || res.status); if(btn) btn.disabled=false; return; }
-  n.className = "ok";
-  n.textContent = d.commit && d.commit.committed ? "合意が成立し、台帳に記録されました。" : "投票を記録しました。";
-  await refresh(); openTalk(talkId);
+  if (admissions.length){
+    h += `<div class="sec-title">加入の審議（メンバーのみ）</div>` + admissions.map(t => talkCard(t)).join("");
+  }
+  if (live.length){
+    h += `<div class="sec-title">提議（審議中・休眠）</div>` + live.map(t => talkCard(t)).join("");
+  }
+  if (agreed.length){
+    h += `<details class="fold"><summary>▼ 合意済みの提議（${agreed.length}件）</summary>` + agreed.map(t => {
+      const act = t.child_project
+        ? `<div class="origin-line"><a href="/talk/${encodeURIComponent(t.child_project.talk_id)}">→ プロジェクトを見る</a></div>`
+        : (isMember() ? `<div style="margin-top:6px"><button class="btn sm ghost" onclick="openLaunch('${t.talk_id}')">プロジェクトを立ち上げる</button></div>` : "");
+      return talkCard(t, act);
+    }).join("") + `</details>`;
+  }
+  box.innerHTML = h || '<span class="muted">まだトークはありません。</span>';
 }
 
-async function postToTalk(btn){
-  const n = document.getElementById("tmNotice");
-  const body = document.getElementById("tmBody").value.trim();
-  if (!body) return;
-  if (btn) btn.disabled = true;
-  const res = await fetch(`/api/talks/${encodeURIComponent(openTalkId)}/posts`, {
-    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({body}) });
-  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})){ if(btn) btn.disabled=false; return; }
-  if (!res.ok){ const d = await res.json().catch(()=>({})); n.className="err"; n.textContent="エラー: "+(d.error||res.status); if(btn) btn.disabled=false; return; }
-  if (btn) btn.disabled = false;
-  openTalk(openTalkId);
-}
-
-/* ── トーク作成 ── */
+/* ── 作成（提議／チャット）ダイアログ ── */
 let createKind = "proposal";
 function openCreate(kind){
   createKind = kind;
-  document.getElementById("cmTitle").textContent = kind === "chat" ? "チャットを始める" : "提議トークを立ち上げる";
-  document.getElementById("cmPublicNote").textContent = kind === "chat"
-    ? "チャットはメンバーだけが読めます。" : PUBLIC_NOTE;
-  document.getElementById("cmConclusionWrap").style.display = kind === "chat" ? "none" : "block";
-  document.getElementById("cmTitleInput").value = "";
-  document.getElementById("cmConclusion").value = "";
-  document.getElementById("cmNotice").textContent = "";
-  document.getElementById("createModal").classList.add("open");
+  document.getElementById("cmTitle").textContent = kind === "chat" ? "チャットをはじめる" : "提議を提起する";
+  document.getElementById("cmNote").textContent = kind === "chat" ? "チャットはメンバーだけが読めます。" : PUBLIC_NOTE;
+  document.getElementById("cmConcWrap").style.display = kind === "chat" ? "none" : "block";
+  document.getElementById("cmTitleInput").value = ""; document.getElementById("cmConclusion").value = "";
+  document.getElementById("cmErr").textContent = "";
+  openModal("createModal");
 }
-function closeCreate(){ document.getElementById("createModal").classList.remove("open"); }
-
 async function submitCreate(btn){
-  const n = document.getElementById("cmNotice");
   const title = document.getElementById("cmTitleInput").value.trim();
-  if (!title){ n.className="err"; n.textContent="タイトルを入力してください"; return; }
+  if (!title){ document.getElementById("cmErr").textContent = "タイトルを入力してください"; return; }
   const target = createKind === "proposal" ? {conclusion: document.getElementById("cmConclusion").value.trim()} : {};
-  if (btn) btn.disabled = true;
+  btn.disabled = true;
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/talks`, {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({kind:createKind, title, target}) });
-  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})){ if(btn) btn.disabled=false; return; }
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({kind:createKind, title, target}) });
+  btn.disabled = false;
+  if (PoX.handle(res)) return;
   const d = await res.json();
-  if (!res.ok){ n.className="err"; n.textContent="エラー: "+(d.error||res.status); if(btn) btn.disabled=false; return; }
-  closeCreate(); await refresh(); openTalk(d.talk_id);
+  if (!res.ok){ document.getElementById("cmErr").textContent = d.error || ("エラー " + res.status); return; }
+  location.href = `/talk/${encodeURIComponent(d.talk_id)}`;
 }
 
 async function openAdmission(candidate){
@@ -341,66 +258,75 @@ async function openAdmission(candidate){
     body: JSON.stringify({kind:"admission", title:`${candidate} の加入`, target:{candidate}}) });
   if (PoX.handle(res)) return;
   const d = await res.json();
-  if (res.ok){ await refresh(); openTalk(d.talk_id); }
+  if (res.ok) location.href = `/talk/${encodeURIComponent(d.talk_id)}`;
 }
 
-async function launchProject(proposalTalkId, btn){
-  if (btn) btn.disabled = true;
+/* ── プロジェクト立ち上げ（設計ダイアログ・prompt を使わない）── */
+let launchProposalId = null;
+async function openLaunch(proposalTalkId){
+  launchProposalId = proposalTalkId;
   const t = await (await fetch(`/api/talks/${encodeURIComponent(proposalTalkId)}`)).json();
-  const purposeRef = (t.result || {}).purpose_event_hash;
-  const title = prompt("プロジェクト名", t.title + " のプロジェクト");
-  if (!title){ if(btn) btn.disabled=false; return; }
+  document.getElementById("lmName").value = (t.title || "") + " のプロジェクト";
+  document.getElementById("lmDesc").value = ""; document.getElementById("lmErr").textContent = "";
+  launchProposalId = { talkId: proposalTalkId, purpose: (t.result||{}).purpose_event_hash };
+  openModal("launchModal");
+}
+async function submitLaunch(btn){
+  const title = document.getElementById("lmName").value.trim();
+  if (!title){ document.getElementById("lmErr").textContent = "プロジェクト名を入力してください"; return; }
+  btn.disabled = true;
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/projects/launch`, {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({title, purpose_ref: purposeRef}) });
-  if (PoX.handle(res)){ if(btn) btn.disabled=false; return; }
-  await refresh();
-}
-
-async function openComplete(intentId, title){
-  const result = prompt("達成の内容（結果）を書いてください", "");
-  if (result === null) return;
-  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/talks`, {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({kind:"project_complete", title:`${title} の達成`,
-                          target:{intent_id:intentId, result}}) });
+    body: JSON.stringify({title, purpose_ref: launchProposalId.purpose}) });
+  btn.disabled = false;
   if (PoX.handle(res)) return;
   const d = await res.json();
-  if (res.ok){ await refresh(); openTalk(d.talk_id); }
+  if (!res.ok){ document.getElementById("lmErr").textContent = d.error || ("エラー " + res.status); return; }
+  location.href = `/talk/${encodeURIComponent(d.talk.talk_id)}`;
+}
+
+/* ── 達成の提案（設計ダイアログ）── */
+let completeIntentId = null;
+function openComplete(intentId, title){ completeIntentId = {intentId, title};
+  document.getElementById("cpResult").value = ""; document.getElementById("cpErr").textContent = ""; openModal("completeModal"); }
+async function submitComplete(btn){
+  const result = document.getElementById("cpResult").value.trim();
+  if (!result){ document.getElementById("cpErr").textContent = "達成の内容を入力してください"; return; }
+  btn.disabled = true;
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/talks`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({kind:"project_complete", title:`${completeIntentId.title} の達成`,
+                          target:{intent_id: completeIntentId.intentId, result}}) });
+  btn.disabled = false;
+  if (PoX.handle(res)) return;
+  const d = await res.json();
+  if (!res.ok){ document.getElementById("cpErr").textContent = d.error || ("エラー " + res.status); return; }
+  location.href = `/talk/${encodeURIComponent(d.talk_id)}`;
 }
 
 async function applyJoin(btn){
   if (!sessionId){ PoX.loginRedirect(); return; }
-  if (btn) btn.disabled = true;
+  btn.disabled = true;
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/join`, {
     method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({member_id: sessionId}) });
-  if (PoX.handle(res)){ if(btn) btn.disabled=false; return; }
-  await refresh();
+  btn.disabled = false;
+  if (PoX.handle(res)) return;
+  init();
 }
 
 /* ── 編集 ── */
-function openEdit(){
-  document.getElementById("editName").value = data.name;
-  document.getElementById("editDesc").value = data.description || "";
-  document.getElementById("editModal").classList.add("open");
-}
-function closeEdit(){ document.getElementById("editModal").classList.remove("open"); }
+function openEdit(){ document.getElementById("editName").value = data.name;
+  document.getElementById("editDesc").value = data.description || ""; document.getElementById("editErr").textContent=""; openModal("editModal"); }
 async function saveEdit(btn){
-  const n = document.getElementById("editNotice");
-  if (btn) btn.disabled = true;
+  btn.disabled = true;
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}`, {
     method:"PATCH", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({name: document.getElementById("editName").value,
+    body: JSON.stringify({requester_id: sessionId, name: document.getElementById("editName").value,
                           description: document.getElementById("editDesc").value}) });
-  if (PoX.handle(res)){ if(btn) btn.disabled=false; return; }
-  if (!res.ok){ n.textContent = "保存に失敗しました"; if(btn) btn.disabled=false; return; }
-  closeEdit(); await refresh();
-}
-
-async function refresh(){
-  data = await (await fetch(`/api/community/${encodeURIComponent(communityId)}`)).json();
-  talks = (await (await fetch(`/api/community/${encodeURIComponent(communityId)}/talks`)).json()).talks || [];
-  renderMembers(); renderJoin(); renderDeclaration(); renderAchievements(); renderTalks();
+  btn.disabled = false;
+  if (PoX.handle(res)) return;
+  if (!res.ok){ document.getElementById("editErr").textContent = "保存に失敗しました"; return; }
+  closeModal("editModal"); init();
 }
 
 init();

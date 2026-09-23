@@ -1627,6 +1627,12 @@ def community_page(community_id):
     return render_template("community.html")
 
 
+@app.get("/talk/<talk_id>")
+def talk_page(talk_id):
+    """トーク詳細ページ（指示書43 §2-1: モーダルを廃止し独立ページに）。"""
+    return render_template("talk.html")
+
+
 # ── メッセージ API ────────────────────────────────────────────
 
 @app.post("/messages")
@@ -1834,9 +1840,9 @@ def api_get_community(community_id):
     # 指示書39（§3-1）: 合意前の提起はメンバーのみ、合意前キャンセルは痕跡を残さない。
     intents = [it for it in intents if _intent_visible(it, is_mem)]
 
-    # pending（参加申請）は公開（指示書41 §8-2 差し戻し: 加入は公開・名前付き）。
-    # 却下・取り下げ（status!='pending'）は get_pending_requests に出ないため公開面に残らない。
-    pending_rows = get_pending_requests(community_id, db_path=DB)
+    # pending（参加申請）はメンバー限定（指示書43 T-8・44 §4: 加入は「人に付く棄却」であり
+    # 第三者に見せない。41 §8-2 の公開を 43 が優先して非公開へ再是正。締め付け方向で安全側）。
+    pending_rows = get_pending_requests(community_id, db_path=DB) if is_mem else []
 
     # チャット（messages）はメンバー間のやりとりで、宣言でも実績でもない → メンバーのみ（§2-3・§8-2 維持）。
     # 第三者・申請者・無関係ログインには返さない。
@@ -1864,16 +1870,17 @@ def api_get_community(community_id):
         # 宣言・実績（完成条件そのもの）は公開。
         "declaration":  declaration,
         "intents":      intents,
-        # pending（参加申請）は公開（§8-2）。
-        "pending": [{"member_id":   p.get("member_id"),
-                     "display_name": names.get(p.get("member_id"), p.get("member_id")),
-                     "joined_at":    p.get("joined_at")} for p in pending_rows],
+        # 申請者自身は自分の申請状態を知れるよう viewer_role で示す（pending 本体はメンバーのみ）。
+        "applied": (viewer is not None and any(p.get("member_id") == viewer
+                    for p in get_pending_requests(community_id, db_path=DB))),
         "viewer_role": ("member" if is_mem
-                        else "applicant" if (viewer is not None and viewer in
-                                             {p.get("member_id") for p in pending_rows})
-                        else "authenticated" if viewer is not None
-                        else "guest"),
+                        else "authenticated" if viewer is not None else "guest"),
     }
+    # pending（参加申請）はメンバーのみ（§43 T-8・44 §4）。キーごと出し分ける。
+    if is_mem:
+        out["pending"] = [{"member_id":   p.get("member_id"),
+                           "display_name": names.get(p.get("member_id"), p.get("member_id")),
+                           "joined_at":    p.get("joined_at")} for p in pending_rows]
     # messages はメンバーのみ（§2-3・§8-2 維持）。キーごと出し分ける。
     if is_mem:
         out["messages"] = [{**m, "from_name": names.get(m.get("from_id"), m.get("from_id"))}

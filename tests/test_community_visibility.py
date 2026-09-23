@@ -73,32 +73,31 @@ def _intent_ids_list(client, cid):
     return [it["intent_id"] for it in client.get(f"/api/community/{cid}/intents").get_json().get("intents", [])]
 
 
-# ── 指示書41 §8-2 差し戻し: 参加申請（pending）は公開（加入は公開・名前付き）────
-def test_pending_public_to_third_party():
+# ── 指示書43 T-8 / 44 §4: 参加申請（pending）はメンバー限定（第三者・申請者に非公開）────
+def test_pending_hidden_from_third_party():
     cid = _setup()
     _apply(cid, "u_bob")
     data = _cli().get(f"/api/community/{cid}").get_json()   # 未ログイン＝第三者
-    assert "u_bob" in [p["member_id"] for p in data.get("pending", [])]
+    assert "pending" not in data
     assert data["viewer_role"] == "guest"
     assert "members" in data and "declaration" in data and "intents" in data
 
 
-def test_authenticated_nonmember_sees_pending():
+def test_authenticated_nonmember_gets_no_pending():
     cid = _setup()
     _apply(cid, "u_bob")
     data = _cli("u_stranger").get(f"/api/community/{cid}").get_json()
-    assert "u_bob" in [p["member_id"] for p in data.get("pending", [])]
+    assert "pending" not in data
     assert data["viewer_role"] == "authenticated"
 
 
-def test_applicant_sees_all_pending_public():
+def test_applicant_gets_applied_flag_not_pending_list():
     cid = _setup()
     _apply(cid, "u_bob")
-    _apply(cid, "u_carol")
-    data = _cli("u_carol").get(f"/api/community/{cid}").get_json()
-    ids = sorted(p["member_id"] for p in data.get("pending", []))
-    assert ids == ["u_bob", "u_carol"]         # 公開なので全件見える
-    assert data["viewer_role"] == "applicant"
+    # 申請者本人は自分が申請済みであることは分かるが、pending 一覧（他人含む）は見えない
+    data = _cli("u_bob").get(f"/api/community/{cid}").get_json()
+    assert data.get("applied") is True
+    assert "pending" not in data
 
 
 # ── §5-5: メンバーには pending 全件が返り、承認できる ───────────────────────

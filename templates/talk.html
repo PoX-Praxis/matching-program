@@ -32,6 +32,11 @@
   .public-note { font-size:12px; line-height:1.7; color:#6b7280; background:#f6f7f9; border-radius:5px; padding:10px 12px; margin:8px 0; }
   #notice { font-size:13px; margin-top:10px; }
   .ok { color:#1a8a1a; font-weight:bold; } .err { color:#c00; }
+  .denom { font-size:13px; color:#555; margin:6px 0; }
+  .modal-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100; align-items:center; justify-content:center; }
+  .modal-ov.open { display:flex; }
+  .modal { background:#fff; border-radius:8px; padding:20px; width:460px; max-width:92vw; max-height:88vh; overflow:auto; }
+  .cj-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #eee; }
 </style>
 {% endblock %}
 {% block content %}
@@ -55,11 +60,14 @@
     <div class="vote-summary" id="voteSummary"></div>
   </div>
 
-  <!-- P-1: プロジェクトへの参加（コミュニティ外の個人も可・公開）-->
+  <!-- P-1: プロジェクトへの参加（コミュニティ外の個人・コミュニティも可・公開）-->
   <div class="sec" id="participateSec" style="display:none">
     <h2>このプロジェクトに参加する</h2>
-    <p class="public-note">参加の申し出と合意は公開されます（加入トークと違い、メンバー限定ではありません）。参加は既存の参加者の合意で成立します。</p>
-    <button class="btn" onclick="participate(this)">参加を申し出る</button>
+    <p class="public-note">参加の申し出と合意は公開されます（加入トークと違い、メンバー限定ではありません）。参加は既存の参加者の合意で成立します。見送られても、同じプロジェクトに後から再び申し出られます。</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="participate(this)">個人として参加を申し出る</button>
+      <button class="btn ghost" onclick="openCommunityJoin()">コミュニティとして参加を申し出る</button>
+    </div>
   </div>
 
   <div class="sec">
@@ -81,6 +89,14 @@
   </div>
   <div id="notice"></div>
 </div>
+
+<!-- コミュニティとして参加ダイアログ（§47 §4）-->
+<div class="modal-ov" id="commJoinModal"><div class="modal">
+  <h3 style="margin:0 0 8px">コミュニティとして参加</h3>
+  <p class="public-note">あなたがメンバーのコミュニティで、このプロジェクトへの参加を合意（提議トークで target を定めて合意）していれば、その合意を根拠に参加を申し出られます。</p>
+  <div id="commJoinList" class="muted">読み込み中です</div>
+  <div style="margin-top:12px;text-align:right"><button class="btn ghost" onclick="closeCommJoin()">閉じる</button></div>
+</div></div>
 
 <script>
 const talkId = decodeURIComponent(location.pathname.split("/").pop());
@@ -139,7 +155,13 @@ function render(){
     document.getElementById("tConclusion").textContent = conclusion || talk.title;
     const appr = (talk.approvals || []).map(a => a.display_name).join("、") || "—";
     const diss = (talk.dissents || []).map(d => d.display_name).join("、") || "—";
-    document.getElementById("voteSummary").innerHTML = `賛成: ${esc(appr)} ／ 反対: ${esc(diss)}`;
+    let vs = `賛成: ${esc(appr)} ／ 反対: ${esc(diss)}`;
+    // 参加・達成は「基準点の時点の参加者頭数」を分母として明記（§47 §4）。
+    if (talk.denominator){
+      const dn = talk.denominator.map(d => d.display_name).join("、") || "—";
+      vs += `<div class="denom">分母（基準点の参加者・${talk.denominator.length}名）: ${esc(dn)}</div>`;
+    }
+    document.getElementById("voteSummary").innerHTML = vs;
   }
 
   // タイムライン（発言と票を種別で分けて表示）
@@ -210,6 +232,36 @@ async function participate(btn){
   const d = await res.json().catch(()=>({}));
   if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
   location.href = `/talk/${encodeURIComponent(d.talk_id)}`;   // 参加トークで賛成を集める
+}
+
+async function openCommunityJoin(){
+  document.getElementById("commJoinModal").classList.add("open");
+  const el = document.getElementById("commJoinList");
+  el.textContent = "読み込み中です";
+  const iid = (talk.target||{}).intent_id;
+  const res = await fetch(`/api/projects/${encodeURIComponent(iid)}/join-options`);
+  if (PoX.handle(res)) return;
+  const d = await res.json().catch(()=>({communities:[]}));
+  const list = d.communities || [];
+  if (!list.length){ el.innerHTML = '<span class="muted">あなたがメンバーのコミュニティはありません。</span>'; return; }
+  el.innerHTML = list.map(c => c.consent_ref
+    ? `<div class="cj-row"><span>${esc(c.name)}</span><button class="btn sm" onclick="doCommunityJoin('${esc(c.community_id)}','${esc(c.consent_ref)}',this)">このコミュニティで参加を申し出る</button></div>`
+    : `<div class="cj-row"><span>${esc(c.name)}</span><span class="muted">先に <a href="/community/${encodeURIComponent(c.community_id)}">このプロジェクトに参加する提議</a> を合意してください</span></div>`
+  ).join("");
+}
+function closeCommJoin(){ document.getElementById("commJoinModal").classList.remove("open"); }
+
+async function doCommunityJoin(communityId, consentRef, btn){
+  btn.disabled = true;
+  const iid = (talk.target||{}).intent_id;
+  const res = await fetch(`/api/projects/${encodeURIComponent(iid)}/join-as-community`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({community_id: communityId, consent_ref: consentRef}) });
+  btn.disabled = false;
+  if (PoX.handle(res)) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ const n = document.getElementById("notice"); n.className="err"; n.textContent = d.error || ("エラー " + res.status); return; }
+  location.href = `/talk/${encodeURIComponent(d.talk.talk_id)}`;   // 参加トークで賛成を集める
 }
 
 async function reload(){

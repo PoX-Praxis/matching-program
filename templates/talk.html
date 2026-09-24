@@ -60,15 +60,38 @@
     <div class="vote-summary" id="voteSummary"></div>
   </div>
 
+  <!-- 108-l: 実行中プロジェクトの詳細に、現在の参加者と分母（基準点の N 名）を常時表示 -->
+  <div class="sec" id="participantsSec" style="display:none">
+    <h2>参加者</h2>
+    <div class="denom" id="participantsList"></div>
+    <div id="completeAction" style="margin-top:8px;display:none">
+      <button class="btn ghost" onclick="openComplete(this)">達成を提案</button>
+    </div>
+  </div>
+
   <!-- P-1: プロジェクトへの参加（コミュニティ外の個人・コミュニティも可・公開）-->
   <div class="sec" id="participateSec" style="display:none">
     <h2>このプロジェクトに参加する</h2>
     <p class="public-note">参加の申し出と合意は公開されます（加入トークと違い、メンバー限定ではありません）。参加は既存の参加者の合意で成立します。見送られても、同じプロジェクトに後から再び申し出られます。</p>
+    <p class="muted" id="affiliationNote" style="display:none"></p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" onclick="participate(this)">個人として参加を申し出る</button>
-      <button class="btn ghost" onclick="openCommunityJoin()">コミュニティとして参加を申し出る</button>
+      <button class="btn" id="joinIndividualBtn" onclick="participate(this)" style="display:none">個人として参加を申し出る</button>
+      <button class="btn ghost" id="joinCommunityBtn" onclick="openCommunityJoin()" style="display:none">コミュニティとして参加を申し出る</button>
     </div>
   </div>
+
+  <!-- 達成の提案ダイアログ（当事者のみ・§48 111）-->
+  <div class="modal-ov" id="completeModal"><div class="modal">
+    <h3 style="margin:0 0 8px">達成を提案する</h3>
+    <p class="public-note">達成は参加者の合意で成立します。この提案は公開されます。</p>
+    <label>達成の内容（結果）</label>
+    <textarea id="cpResult" placeholder="何が達成されたか"></textarea>
+    <div id="cpErr" class="err" style="font-size:13px"></div>
+    <div style="margin-top:12px;text-align:right;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn ghost" onclick="closeComplete()">閉じる</button>
+      <button class="btn" onclick="submitComplete(this)">達成を提案する</button>
+    </div>
+  </div></div>
 
   <div class="sec">
     <h2>タイムライン</h2>
@@ -174,10 +197,30 @@ function render(){
     `<div class="tl-item"><span class="tag tag-vote">票</span><span class="who">${esc(d.display_name)}</span> が反対</div>`));
   document.getElementById("timeline").innerHTML = items.length ? items.join("") : '<span class="muted">まだ記録はありません。</span>';
 
-  // P-1: プロジェクト（実行中）には参加の申し出を出す（ログイン済み・当人が未参加のとき）。
-  if (talk.kind === "project" && !talk.closed && sessionId){
-    const already = (talk.participants || []).some(p => p.subject_id === sessionId);
-    document.getElementById("participateSec").style.display = already ? "none" : "block";
+  // 108-l: プロジェクト詳細に現在の参加者と分母（基準点の N 名）を常時表示する。
+  if (talk.kind === "project"){
+    document.getElementById("participantsSec").style.display = "block";
+    const ps = talk.participants || [];
+    const names = ps.map(p => esc(p.display_name)).join("、") || "—";
+    document.getElementById("participantsList").innerHTML =
+      `分母（基準点の参加者・${ps.length}名）: ${names}`;
+    // 111: 実行中プロジェクトで参加者だけが「達成を提案」できる（未参加者には出ない）。
+    document.getElementById("completeAction").style.display = talk.can_propose_complete ? "block" : "none";
+  }
+
+  // 参加の申し出の出し分けはサーバーの join_offer に従う（§48 §1-2 / 108-k・m・n・p・112）。
+  const offer = talk.join_offer;
+  if (talk.kind === "project" && offer){
+    document.getElementById("participateSec").style.display = "block";
+    document.getElementById("joinIndividualBtn").style.display = offer.individual ? "inline-flex" : "none";
+    document.getElementById("joinCommunityBtn").style.display = offer.community ? "inline-flex" : "none";
+    const note = document.getElementById("affiliationNote");
+    if (offer.affiliation === "none"){
+      note.textContent = "あなたはどのコミュニティにも所属していないため、個人として参加を申し出られます。";
+      note.style.display = "block";
+    } else {
+      note.style.display = "none";
+    }
   }
 
   // アクション（closure 済みでない・ログイン済みのときだけ。権限はサーバーが最終判定）
@@ -232,6 +275,26 @@ async function participate(btn){
   const d = await res.json().catch(()=>({}));
   if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
   location.href = `/talk/${encodeURIComponent(d.talk_id)}`;   // 参加トークで賛成を集める
+}
+
+function openComplete(){ document.getElementById("completeModal").classList.add("open"); document.getElementById("cpErr").textContent = ""; }
+function closeComplete(){ document.getElementById("completeModal").classList.remove("open"); }
+
+async function submitComplete(btn){
+  const err = document.getElementById("cpErr");
+  const result = document.getElementById("cpResult").value.trim();
+  if (!result){ err.textContent = "達成の内容を入力してください"; return; }
+  btn.disabled = true;
+  // 達成の提案は project_complete トークとして起こす（参加者のみ・公開・参加者の合意で成立）。
+  const res = await fetch(`/api/community/${encodeURIComponent(talk.ctx)}/talks`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({kind:"project_complete", title:`${talk.title} の達成`,
+      target:{intent_id:(talk.target||{}).intent_id, result}}) });
+  btn.disabled = false;
+  if (PoX.handle(res, {on403:m=>{err.textContent=m;}})) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ err.textContent = d.detail || d.error || ("エラー " + res.status); return; }
+  location.href = `/talk/${encodeURIComponent(d.talk_id)}`;   // 達成トークで賛成を集める
 }
 
 async function openCommunityJoin(){

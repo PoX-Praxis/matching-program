@@ -94,17 +94,6 @@
   <div id="lmErr" class="err" style="font-size:13px;margin-top:8px"></div>
 </div></div>
 
-<!-- 達成の提案ダイアログ -->
-<div class="modal-ov" id="completeModal"><div class="modal">
-  <h3>達成を提案する</h3>
-  <p class="public-note">達成は参加者の合意で成立します。この提案は公開されます。</p>
-  <label>達成の内容（結果）</label>
-  <textarea id="cpResult"></textarea>
-  <div class="modal-actions"><button class="btn ghost" onclick="closeModal('completeModal')">キャンセル</button>
-    <button class="btn" onclick="submitComplete(this)">達成を提案する</button></div>
-  <div id="cpErr" class="err" style="font-size:13px;margin-top:8px"></div>
-</div></div>
-
 <!-- 編集ダイアログ -->
 <div class="modal-ov" id="editModal"><div class="modal">
   <h3>コミュニティを編集</h3>
@@ -208,10 +197,9 @@ function renderTalks(){
   if (projects.length){
     h += `<div class="sec-title">プロジェクト</div>` + projects.map(t => {
       const origin = t.origin ? `<div class="origin-line">出自: 提議「<a href="/talk/${encodeURIComponent(t.origin.talk_id)}">${esc(t.origin.title||t.origin.talk_id)}</a>」</div>` : "";
-      // F-1: 全プロジェクトカードに「開く」を置く（実行中・完了とも）。達成を提案は実行中のみ。
-      let btns = `<a class="btn sm ghost" href="/talk/${encodeURIComponent(t.talk_id)}">開く</a>`;
-      if (isMember() && !t.closed && (t.target||{}).intent_id)
-        btns += ` <button class="btn sm ghost" onclick="openComplete('${esc((t.target||{}).intent_id)}','${esc(t.title)}')">達成を提案</button>`;
+      // F-1: 全プロジェクトカードに「開く」を置く（実行中・完了とも）。
+      // 達成の提案は当事者（参加者）のみ・実行中プロジェクトの詳細で行う（指示書48 §1-1 / 111）。
+      const btns = `<a class="btn sm ghost" href="/talk/${encodeURIComponent(t.talk_id)}">開く</a>`;
       return talkCard(t, origin + `<div style="margin-top:8px">${btns}</div>`);
     }).join("");
   }
@@ -289,24 +277,7 @@ async function submitLaunch(btn){
   location.href = `/talk/${encodeURIComponent(d.talk.talk_id)}`;
 }
 
-/* ── 達成の提案（設計ダイアログ）── */
-let completeIntentId = null;
-function openComplete(intentId, title){ completeIntentId = {intentId, title};
-  document.getElementById("cpResult").value = ""; document.getElementById("cpErr").textContent = ""; openModal("completeModal"); }
-async function submitComplete(btn){
-  const result = document.getElementById("cpResult").value.trim();
-  if (!result){ document.getElementById("cpErr").textContent = "達成の内容を入力してください"; return; }
-  btn.disabled = true;
-  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/talks`, {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({kind:"project_complete", title:`${completeIntentId.title} の達成`,
-                          target:{intent_id: completeIntentId.intentId, result}}) });
-  btn.disabled = false;
-  if (PoX.handle(res)) return;
-  const d = await res.json();
-  if (!res.ok){ document.getElementById("cpErr").textContent = d.error || ("エラー " + res.status); return; }
-  location.href = `/talk/${encodeURIComponent(d.talk_id)}`;
-}
+/* 達成の提案は当事者（参加者）のみ・実行中プロジェクトの詳細（talk.html）で行う（指示書48 §1-1 / 111）。 */
 
 async function applyJoin(btn){
   if (!sessionId){ PoX.loginRedirect(); return; }

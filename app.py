@@ -2057,6 +2057,42 @@ def _is_participant(intent_id, sid):
     return sid in gov.participants_at(intent_id, 10**18, db_path=DB)
 
 
+def _member_of_any_community(sid):
+    """sid がいずれかのコミュニティのメンバー（または代表）か（指示書48 §1-2 の所属判定）。"""
+    if not sid:
+        return False
+    from community import get_all_communities, is_member, is_founder
+    return any(is_member(c["id"], sid, db_path=DB) or is_founder(c["id"], sid, db_path=DB)
+               for c in get_all_communities(db_path=DB))
+
+
+def _project_join_offer(talk, sid):
+    """実行中プロジェクトの「参加を申し出る」導線の出し分け（指示書48 §1-2）。
+
+    返り値 None は「導線を出さない」。dict は {individual, community, affiliation}:
+      - 立ち上げ者・承認済み参加者（＝当事者）: None（108-k：申し出は出さない）
+      - 所属コミュニティの一般メンバー（未参加）: 個人のみ（108-p／108-m）
+      - 他コミュニティメンバー・所属のある外部個人（未参加）: 個人＋コミュニティの両方
+      - どのコミュニティにも所属がない（未参加）: 個人のみ＋「所属していない」旨（108-n）
+      - 未ログイン: None（112：導線なし。行為は 401）
+    """
+    import talks
+    if talk["kind"] != talks.PROJECT:
+        return None
+    if not sid or talks.is_closed(talk, db_path=DB):
+        return None
+    intent_id = (talk.get("target") or {}).get("intent_id")
+    if _is_participant(intent_id, sid):
+        return None                                    # 108-k: 当事者には申し出を出さない
+    if _is_ctx_member(talk["ctx"], sid):
+        # 108-p / 108-m: 所属コミュニティの一般メンバーは個人としてのみ
+        return {"individual": True, "community": False, "affiliation": "owning_member"}
+    if _member_of_any_community(sid):
+        return {"individual": True, "community": True, "affiliation": "other_community"}
+    # 108-n: 所属コミュニティが無い → 個人としてのみ＋「所属していない」旨
+    return {"individual": True, "community": False, "affiliation": "none"}
+
+
 def _talk_public_view(talk):
     """公開ビュー（allowlist）。表示名を解決して返し、生 subject id を表示の主にしない
     （指示書43 T-6/M-1・44 §2-4）。集計・順位は作らない（§3-2）が、当事者判断のため
@@ -2087,12 +2123,20 @@ def _talk_public_view(talk):
             dset = dset | {tgt["participant"]}     # 申し出た当人を分母に含む（§5-3 の1対1）
         dnames = _resolve_names(sorted(dset))
         denominator = [{"subject_id": p, "display_name": dnames.get(p, p)} for p in sorted(dset)]
+    # 実行中プロジェクトの参加申し出の出し分け・当事者の達成提案可否（指示書48 §1-2 / 111）。
+    sid = current_subject_id()
+    join_offer = _project_join_offer(talk, sid)
+    can_propose_complete = bool(
+        talk["kind"] == talks.PROJECT and not talks.is_closed(talk, db_path=DB)
+        and _is_participant((talk.get("target") or {}).get("intent_id"), sid))
     return {**talk,
             "display_status": talks.display_status(talk, db_path=DB),
             "closed": talks.is_closed(talk, db_path=DB),
             "origin": talks.origin_of(talk, db_path=DB),            # プロジェクトの出自（親の提議）
             "child_project": talks.child_project_of(talk, db_path=DB),  # 合意済み提議の子
             "participants": participants,
+            "join_offer": join_offer,            # 参加申し出の出し分け（None＝出さない・§48 §1-2）
+            "can_propose_complete": can_propose_complete,   # 当事者の達成提案可否（§48 111）
             "denominator": denominator,          # 参加・達成の分母（基準点の参加者頭数・§47 §4）
             "created_by_name": names.get(talk["created_by"], talk["created_by"]),
             "posts": [{"post_id": p["post_id"], "author": p["author"],
@@ -2291,8 +2335,12 @@ def _can_participate_talk(talk, sid):
     if not sid:
         return False
     kind = talk["kind"]
-    if kind in (talks.CHAT, talks.PROPOSAL, talks.ADMISSION, talks.PROJECT):
+    # 提議・加入の審議・チャットの書き込みはメンバー（指示書48 §1-4 案A: 閲覧と書き込みを分ける）
+    if kind in (talks.CHAT, talks.PROPOSAL, talks.ADMISSION):
         return _is_ctx_member(talk["ctx"], sid)
+    # プロジェクト（実行トーク）の発言・達成提案は当事者（参加者）のみ（指示書48 §1-1 / 108-o）
+    if kind == talks.PROJECT:
+        return _is_participant(talk["target"].get("intent_id"), sid)
     if kind == talks.PROJECT_JOIN:
         return sid == talk["target"].get("participant") or _is_participant(talk["target"].get("intent_id"), sid)
     if kind == talks.PROJECT_COMPLETE:

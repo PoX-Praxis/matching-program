@@ -2077,12 +2077,23 @@ def _talk_public_view(talk):
         pids = sorted(gov.participants_at(talk["target"]["intent_id"], 10**18, db_path=DB))
         pnames = _resolve_names(pids)
         participants = [{"subject_id": p, "display_name": pnames.get(p, p)} for p in pids]
+    # 参加・達成の決定トークは「基準点の時点の分母（参加者頭数）」を表示名つきで返す（指示書47 §4）。
+    denominator = None
+    if talk["kind"] in (talks.PROJECT_JOIN, talks.PROJECT_COMPLETE):
+        import governance as gov
+        tgt = talk.get("target") or {}
+        dset = gov.participants_at(tgt.get("intent_id"), talk["basis_seq"], db_path=DB)
+        if talk["kind"] == talks.PROJECT_JOIN and tgt.get("participant"):
+            dset = dset | {tgt["participant"]}     # 申し出た当人を分母に含む（§5-3 の1対1）
+        dnames = _resolve_names(sorted(dset))
+        denominator = [{"subject_id": p, "display_name": dnames.get(p, p)} for p in sorted(dset)]
     return {**talk,
             "display_status": talks.display_status(talk, db_path=DB),
             "closed": talks.is_closed(talk, db_path=DB),
             "origin": talks.origin_of(talk, db_path=DB),            # プロジェクトの出自（親の提議）
             "child_project": talks.child_project_of(talk, db_path=DB),  # 合意済み提議の子
             "participants": participants,
+            "denominator": denominator,          # 参加・達成の分母（基準点の参加者頭数・§47 §4）
             "created_by_name": names.get(talk["created_by"], talk["created_by"]),
             "posts": [{"post_id": p["post_id"], "author": p["author"],
                        "author_name": names.get(p["author"], p["author"]),
@@ -2154,6 +2165,29 @@ def api_join_as_community(intent_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify(r), 201
+
+
+@app.get("/api/projects/<intent_id>/join-options")
+@login_required
+def api_project_join_options(intent_id):
+    """コミュニティとして参加する際の選択肢（指示書47 §4）。ログイン中の主体が
+    メンバーであるコミュニティを列挙し、各コミュニティが当該 intent への参加を合意済みなら
+    その purpose.agreed の event_hash を consent_ref として返す（無ければ null＝先に合意が必要）。"""
+    from community import get_all_communities, is_member, is_founder
+    import ledger_events as le
+    sid = current_subject_id()
+    out = []
+    for c in get_all_communities(db_path=DB):
+        cid = c["id"]
+        if not (is_member(cid, sid, db_path=DB) or is_founder(cid, sid, db_path=DB)):
+            continue
+        consent = None
+        for e in le.get_events(type_="purpose.agreed", db_path=DB):
+            p = e["payload"]
+            if p.get("ctx") == cid and p.get("target_intent_id") == intent_id:
+                consent = e["event_hash"]
+        out.append({"community_id": cid, "name": c["name"], "consent_ref": consent})
+    return jsonify({"intent_id": intent_id, "communities": out})
 
 
 @app.get("/api/talks/<talk_id>")

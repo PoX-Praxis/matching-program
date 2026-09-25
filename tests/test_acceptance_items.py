@@ -109,8 +109,12 @@ def test_t031_agreed_proposal_post_returns_409():
     assert r.status_code == 409 and r.get_json()["error"] == "closed"
 
 
-def test_t033_dormant_open_proposal_allows_post():
-    # 審議中（未合意）の提議には投稿できる（誤拒否しない）
+def test_t033_dormant_proposal_allows_post(monkeypatch):
+    # 休眠のトークには投稿できる（誤って拒否しない）。指示書49 で休眠を実際に導出して検証する。
+    from datetime import datetime, timedelta, timezone
+    import talks
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(talks, "_clock", lambda: t0)
     cid = _community()
     # bob を加入させ分母2に→単独賛成では合意しない＝審議中のまま
     atk = _cli("u_alice").post(f"/api/community/{cid}/talks",
@@ -118,6 +122,8 @@ def test_t033_dormant_open_proposal_allows_post():
     _cli("u_alice").post(f"/api/talks/{atk}/vote", json={"stance": "approve"})
     tk = _cli("u_alice").post(f"/api/community/{cid}/talks",
                               json={"kind": "proposal", "title": "審議中", "target": {}}).get_json()["talk_id"]
+    monkeypatch.setattr(talks, "_clock", lambda: t0 + timedelta(days=60))
+    assert _cli().get(f"/api/talks/{tk}").get_json()["display_status"] == "休眠"
     assert _cli("u_alice").post(f"/api/talks/{tk}/posts", json={"body": "議論"}).status_code == 201
 
 

@@ -12,11 +12,13 @@ kind:
   project_join    … プロジェクトへの参加 → 既存参加者の合意で intent.participant.joined
   project_complete… プロジェクトの達成 → 合意で intent.completed
 
-status: open（審議中）/ agreed / completed / dormant（合意に至らず休眠・§3-3。取消は無い）
+status: open（審議中）/ agreed / completed（取消は無い）
+休眠は status に持たず、最後の活動からの経過で表示時に導出する（指示書49・43 §5-1）。
+台帳に書かず、投稿の可否・可視性・合意判定には影響させない。
 """
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from db_connect import get_connection, is_postgres
 import ledger_events as le
@@ -30,8 +32,17 @@ DECISION_KINDS = {PROPOSAL, ADMISSION, PROJECT_JOIN, PROJECT_COMPLETE}
 PUBLIC_KINDS = KINDS - {CHAT}          # チャット以外はすべて公開（§3）
 
 
+# 休眠の閾値（指示書49 §2: 定数。表示のみに使い、挙動には影響させない）。
+DORMANT_AFTER = timedelta(days=30)
+
+
+def _clock() -> datetime:
+    """現在時刻。休眠の表示と投稿時刻にだけ使う（合意判定には使わない）。テストで差し替える。"""
+    return datetime.now(timezone.utc)
+
+
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return _clock().isoformat()
 
 
 def _connect(db_path: str = "pox.db"):
@@ -174,19 +185,50 @@ def is_closed(talk, *, db_path="pox.db"):
     return status in ("agreed", "completed")
 
 
-def display_status(talk, *, db_path="pox.db"):
+def _parse_ts(ts):
+    try:
+        dt = datetime.fromisoformat(ts)
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def last_activity_at(talk, *, db_path="pox.db"):
+    """最後の活動時刻（トークの作成・投稿・票のうち最も新しいもの）。"""
+    with _connect(db_path) as con:
+        p = con.execute("SELECT MAX(created_at) FROM talk_posts WHERE talk_id=%s",
+                        (talk["talk_id"],)).fetchone()
+        v = con.execute("SELECT MAX(updated_at) FROM talk_votes WHERE talk_id=%s",
+                        (talk["talk_id"],)).fetchone()
+    stamps = [_parse_ts(x) for x in (talk.get("created_at"), p and p[0], v and v[0]) if x]
+    stamps = [x for x in stamps if x]
+    return max(stamps) if stamps else None
+
+
+def is_dormant(talk, *, now=None, db_path="pox.db"):
+    """休眠か（表示のみの導出・指示書49）。締め切られていない決定トークで、最後の活動から
+    DORMANT_AFTER を超えて無活動のもの。チャットとプロジェクト（実行中／完了）は対象外。
+    追記があれば最後の活動が更新され、再開操作なしに休眠でなくなる。"""
+    if talk["kind"] not in DECISION_KINDS or is_closed(talk, db_path=db_path):
+        return False
+    last = last_activity_at(talk, db_path=db_path)
+    if last is None:
+        return False
+    return (now or _clock()) - last > DORMANT_AFTER
+
+
+def display_status(talk, *, now=None, db_path="pox.db"):
     """画面表示用の状態語彙（指示書42 §3・43 §1-2。'open' を使わない）。"""
     kind, status = talk["kind"], talk["status"]
     if kind == CHAT:
         return None
     if kind == PROJECT:
         return "完了" if is_closed(talk, db_path=db_path) else "実行中"
-    if kind == PROJECT_COMPLETE:
-        return "完了" if status == "completed" else ("休眠" if status == "dormant" else "審議中")
-    # proposal / admission / project_join
+    if kind == PROJECT_COMPLETE and status == "completed":
+        return "完了"
     if status == "agreed":
         return "合意済み"
-    if status == "dormant":
+    if is_dormant(talk, now=now, db_path=db_path):
         return "休眠"
     return "審議中"
 

@@ -1,6 +1,6 @@
 # 受入項目 → 自動テスト 対応表（指示書48 G-3）
 
-更新: 2026-09-25（指示書48 第2PR 時点）
+更新: 2026-09-25（指示書49 時点）
 対象: `PoX_テスト項目一覧.md` の **実装側 66 項目**（1〜19, 26, 31〜37, 39〜44, 46〜50, 63, 68〜75, 76〜85, 88〜90, 93〜98）と、実機テスト由来の項目（99〜117）。
 
 ## 区分の凡例
@@ -8,11 +8,12 @@
 | 区分 | 意味 |
 |---|---|
 | **新規23**（46） | 指示書46 §4（PR #105）で `tests/test_acceptance_items.py` に追加した 23 件。うち **16 件が 66 項目**（19 項目分）、**7 件が実機テスト1 由来**（99, 101, 107, 108, 108-a〜c） |
-| **48** | 指示書48 で追加（PR #107 と本 PR） |
+| **48** | 指示書48 で追加（PR #107・#108） |
+| **49** | 指示書49 で追加 |
 | **既存** | 指示書41〜44 の実装時からあるテスト |
 | **未実装** | 実装が無いのでテストも無い（理由を記載） |
 
-テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake
+テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake, `dorm`=test_dormancy
 
 ## 1. 台帳・合意
 
@@ -46,9 +47,10 @@
 |---|---|---|
 | 31 | `acc::test_t031_agreed_proposal_post_returns_409`, `clo::test_closed_proposal_rejects_post_and_vote` | 新規23＋既存 |
 | 32 | `acc::test_t032_completed_project_rejects_post_409` | 48 |
-| 33 | `acc::test_t033_dormant_open_proposal_allows_post`（※実体は審議中への投稿。休眠は下記のとおり未導出） | 新規23 |
+| 33 | `acc::test_t033_dormant_proposal_allows_post`（指示書49 で休眠を実際に導出して検証する形に修正） | 新規23→49 で修正 |
 | 34 | `clo::test_open_proposal_allows_post_and_vote` | 既存 |
-| **35, 36** | **未実装**: `status='dormant'` を設定・導出する処理が存在しない（表示語彙だけがある）。無活動期間からの休眠の導出と、発言による自動復帰は実装されていない | 未実装 |
+| 35 | `dorm::test_t035a_dormant_after_threshold`, `dorm::test_t035b_dormancy_writes_no_ledger_event`, `dorm::test_t035c_dormant_talk_stays_public` | 49 |
+| 36 | `dorm::test_t036a_post_revives_dormant_talk`, `dorm::test_t036b_dormant_talk_accepts_post_and_vote` | 49 |
 | 37 | `acc::test_t037_closed_talks_are_not_deleted`, `acc::test_t099_completed_project_stays_in_list` | 48＋新規23 |
 
 ## 4. 可視性・プライバシー

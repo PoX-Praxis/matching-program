@@ -153,9 +153,17 @@ function renderJoin(){
             <button class="btn sm" onclick="openAdmission('${esc(p.member_id)}')">加入トークを立ち上げる</button></div>`).join("")}</div>`
       : "";
   } else {
-    el.innerHTML = data.applied
-      ? `<p class="muted">参加を申請済みです。既存メンバーの合意で加入が成立します。</p>`
-      : `<button class="btn" onclick="applyJoin(this)">このコミュニティに参加を申請する</button>`;
+    // 本人面（指示書45 A-2）: 自分の申請の結果と要約だけ。審議の内容は表示しない。
+    const mine = data.my_application;
+    if (mine && mine.status === "見送り"){
+      el.innerHTML = `<div class="card" id="myApplication"><b>あなたの参加申請</b>：見送り
+         ${mine.summary ? `<div class="muted" style="margin-top:4px">${esc(mine.summary)}</div>` : ""}</div>`;
+    } else if (mine && mine.status === "審議中"){
+      el.innerHTML = `<div class="card" id="myApplication"><b>あなたの参加申請</b>：審議中
+         <div class="muted" style="margin-top:4px">既存メンバーの合意で加入が成立します。審議の内容はメンバーだけが見られます。</div></div>`;
+    } else {
+      el.innerHTML = `<button class="btn" onclick="applyJoin(this)">このコミュニティに参加を申請する</button>`;
+    }
   }
 }
 

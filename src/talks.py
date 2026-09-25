@@ -9,7 +9,7 @@ kind:
   proposal        … 提議トーク（目的の合意を目指す）→ 合意で purpose.agreed
   admission       … 加入トーク（新メンバーの加入）→ 合意で member.joined
   project         … プロジェクトトーク（intent.launched で開く器）
-  project_join    … プロジェクトへの参加（1対1）→ 合意で intent.participant.joined
+  project_join    … プロジェクトへの参加 → 既存参加者の合意で intent.participant.joined
   project_complete… プロジェクトの達成 → 合意で intent.completed
 
 status: open（審議中）/ agreed / completed / dormant（合意に至らず休眠・§3-3。取消は無い）
@@ -210,10 +210,9 @@ def evaluate_talk(talk, *, db_path="pox.db"):
         return gov.judge_project_decision(intent_id, talk["basis_seq"],
                                           votes["approvals"], votes["dissents"], db_path=db_path)
     if kind == PROJECT_JOIN:
-        # 分母＝基準点時点の参加者 ＋ 参加しようとしている当人（1対1は2人で即時成立・§5-3）。
+        # 分母＝基準点時点の既存参加者のみ（申し出た当人は含めない・指示書48 108-r）。
         intent_id = talk["target"].get("intent_id")
-        candidate = talk["target"].get("participant")
-        denom = gov.participants_at(intent_id, talk["basis_seq"], db_path=db_path) | {candidate}
+        denom = gov.participants_at(intent_id, talk["basis_seq"], db_path=db_path)
         crossed = gov.anchors_crossed(talk["basis_seq"], db_path=db_path)
         return evaluate_agreement(denominator=denom, approvals=votes["approvals"],
                                   dissents=votes["dissents"], anchors_crossed=crossed)

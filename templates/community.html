@@ -127,7 +127,7 @@ async function init(){
   document.getElementById("cName").textContent = data.name;
   document.getElementById("cDesc").textContent = data.description || "";
   document.getElementById("memberCount").textContent = (data.members||[]).length;
-  document.getElementById("cFounder").textContent = data.founder_name || data.founder;
+  document.getElementById("cFounder").textContent = data.founder_name || "表示名未設定のアカウント";
   if (isMember()){ document.getElementById("editBtn").style.display = "inline-flex";
     document.getElementById("createBar").style.display = "block"; }
   renderMembers(); renderJoin(); renderDeclaration(); renderAchievements(); renderTalks();
@@ -136,7 +136,7 @@ async function init(){
 function renderMembers(){
   const ms = data.members || [];
   document.getElementById("memberList").innerHTML = ms.length ? ms.map(m =>
-    `<div style="padding:4px 0"><a href="/profile/${encodeURIComponent(m.member_id)}">${esc(m.display_name || m.member_id)}</a>
+    `<div style="padding:4px 0"><a href="/profile/${encodeURIComponent(m.member_id)}">${esc(m.display_name || "表示名未設定のアカウント")}</a>
      ${m.member_id === data.founder ? '<span class="meta">（作成者）</span>' : ''}</div>`).join("") : '<span class="muted">なし</span>';
 }
 
@@ -149,7 +149,7 @@ function renderJoin(){
     el.innerHTML = pending.length
       ? `<div class="card"><b>参加申請</b>（加入は既存メンバーの合意で成立します）
          ${pending.map(p => `<div class="row-between" style="margin-top:6px">
-            <span><a href="/profile/${encodeURIComponent(p.member_id)}">${esc(p.display_name || p.member_id)}</a></span>
+            <span><a href="/profile/${encodeURIComponent(p.member_id)}">${esc(p.display_name || "表示名未設定のアカウント")}</a></span>
             <button class="btn sm" onclick="openAdmission('${esc(p.member_id)}')">加入トークを立ち上げる</button></div>`).join("")}</div>`
       : "";
   } else {

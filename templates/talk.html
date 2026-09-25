@@ -60,26 +60,39 @@
     <div class="vote-summary" id="voteSummary"></div>
   </div>
 
-  <!-- 108-l: 実行中プロジェクトの詳細に、現在の参加者と分母（基準点の N 名）を常時表示 -->
-  <div class="sec" id="participantsSec" style="display:none">
+  {#- 行為の導線と参加者一覧はサーバーが閲覧者ごとにレンダリングする（指示書48 §4-2）。
+      導線が不要な閲覧者には要素そのものを出さない（非表示ではなく不在）。 -#}
+  {% if view and view.kind == "project" %}
+  <!-- 108-l / 108-s: プロジェクト詳細に、現在の参加者と分母（N 名）を常時表示 -->
+  <div class="sec" id="participantsSec">
     <h2>参加者</h2>
-    <div class="denom" id="participantsList"></div>
-    <div id="completeAction" style="margin-top:8px;display:none">
+    <div class="denom" id="participantsList">参加者（{{ view.participants|length }}名）: {% for p in view.participants %}{{ p.display_name }}{% if not loop.last %}、{% endif %}{% else %}—{% endfor %}</div>
+    <div class="denom" id="participantsDenom">参加・達成の合意の分母: 提起した時点の参加者（現在 {{ view.participants|length }}名）。申し出た本人は分母に含みません。</div>
+    {% if view.can_propose_complete %}
+    <!-- 111: 当事者（参加者）だけに「達成を提案」を出す -->
+    <div id="completeAction" style="margin-top:8px">
       <button class="btn ghost" onclick="openComplete(this)">達成を提案</button>
     </div>
+    {% endif %}
   </div>
+  {% endif %}
 
-  <!-- P-1: プロジェクトへの参加（コミュニティ外の個人・コミュニティも可・公開）-->
-  <div class="sec" id="participateSec" style="display:none">
+  {% if view and view.join_offer %}
+  <!-- P-1 / §48 §1-2: 参加の申し出（当事者・未ログインには出さない）-->
+  <div class="sec" id="participateSec">
     <h2>このプロジェクトに参加する</h2>
     <p class="public-note">参加の申し出と合意は公開されます（加入トークと違い、メンバー限定ではありません）。参加は既存の参加者の合意で成立します。見送られても、同じプロジェクトに後から再び申し出られます。</p>
-    <p class="muted" id="affiliationNote" style="display:none"></p>
+    {% if view.join_offer.affiliation == "none" %}
+    <p class="muted" id="affiliationNote">あなたはどのコミュニティにも所属していないため、コミュニティとしての参加はできません。個人として参加を申し出られます。</p>
+    {% endif %}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="joinIndividualBtn" onclick="participate(this)" style="display:none">個人として参加を申し出る</button>
-      <button class="btn ghost" id="joinCommunityBtn" onclick="openCommunityJoin()" style="display:none">コミュニティとして参加を申し出る</button>
+      {% if view.join_offer.individual %}<button class="btn" id="joinIndividualBtn" onclick="participate(this)">個人として参加を申し出る</button>{% endif %}
+      {% if view.join_offer.community %}<button class="btn ghost" id="joinCommunityBtn" onclick="openCommunityJoin()">コミュニティとして参加を申し出る</button>{% endif %}
     </div>
   </div>
+  {% endif %}
 
+  {% if view and view.can_propose_complete %}
   <!-- 達成の提案ダイアログ（当事者のみ・§48 111）-->
   <div class="modal-ov" id="completeModal"><div class="modal">
     <h3 style="margin:0 0 8px">達成を提案する</h3>
@@ -92,24 +105,29 @@
       <button class="btn" onclick="submitComplete(this)">達成を提案する</button>
     </div>
   </div></div>
+  {% endif %}
 
   <div class="sec">
     <h2>タイムライン</h2>
     <div id="timeline"><span class="muted">まだ記録はありません。</span></div>
   </div>
 
-  <!-- 審議中のみ表示（当事者。サーバーが最終判定）-->
-  <div class="sec" id="actionSec" style="display:none">
+  {% if view and view.can_post %}
+  <!-- 115: 発言欄は書き込める当事者にだけ出す（最終判定は API の 401/403/409）-->
+  <div class="sec" id="actionSec">
     <p class="public-note" id="publicNote"></p>
     <textarea id="postBody" placeholder="発言を書く"></textarea>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn ghost" onclick="submitPost(this)">発言する</button>
-      <span id="voteButtons" style="display:none">
+      {% if view.can_vote %}
+      <span id="voteButtons">
         <button class="btn" onclick="castVote('approve', this)">賛成</button>
         <button class="btn danger" onclick="castVote('dissent', this)">反対</button>
       </span>
+      {% endif %}
     </div>
   </div>
+  {% endif %}
   <div id="notice"></div>
 </div>
 
@@ -126,6 +144,7 @@ const talkId = decodeURIComponent(location.pathname.split("/").pop());
 const PUBLIC_NOTE = "この発言は公開され、誰でも読めます。名前が公開され、外部に複製・集約されうることがあります。合意に至った場合、議論の記録と合意したアカウントが履歴として残ります。";
 const MEMBER_NOTE = "この発言はコミュニティのメンバーだけが読めます。";
 const DECISION = ["proposal", "admission", "project_join", "project_complete"];
+const UNNAMED = "表示名未設定のアカウント";   // 生 id を画面に出さない（指示書48 114）
 let talk = null, sessionId = null;
 
 function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -149,7 +168,7 @@ function render(){
   st.textContent = talk.display_status || "";
   st.className = "status" + (["合意済み","完了"].includes(talk.display_status) ? " done" : "");
   const scope = (talk.kind === "chat" || talk.kind === "admission") ? "メンバー限定" : "公開";
-  document.getElementById("tBy").textContent = `提起: ${talk.created_by_name || talk.created_by} ・ ${scope}`;
+  document.getElementById("tBy").textContent = `提起: ${talk.created_by_name || UNNAMED} ・ ${scope}`;
 
   // 出自（親）と子（プロジェクト）
   let lin = "";
@@ -190,46 +209,33 @@ function render(){
   // タイムライン（発言と票を種別で分けて表示）
   const items = [];
   (talk.posts || []).forEach(p => items.push(
-    `<div class="tl-item"><span class="tag tag-post">発言</span><span class="who">${esc(p.author_name || p.author)}</span>：${esc(p.body)}</div>`));
+    `<div class="tl-item"><span class="tag tag-post">発言</span><span class="who">${esc(p.author_name || UNNAMED)}</span>：${esc(p.body)}</div>`));
   (talk.approvals || []).forEach(a => items.push(
     `<div class="tl-item"><span class="tag tag-vote">票</span><span class="who">${esc(a.display_name)}</span> が賛成</div>`));
   (talk.dissents || []).forEach(d => items.push(
     `<div class="tl-item"><span class="tag tag-vote">票</span><span class="who">${esc(d.display_name)}</span> が反対</div>`));
   document.getElementById("timeline").innerHTML = items.length ? items.join("") : '<span class="muted">まだ記録はありません。</span>';
 
-  // 108-l: プロジェクト詳細に現在の参加者と分母（基準点の N 名）を常時表示する。
-  if (talk.kind === "project"){
-    document.getElementById("participantsSec").style.display = "block";
+  // 108-l / 108-s: 参加者一覧（サーバー描画済み。再読込後の値で更新する）。
+  const plist = document.getElementById("participantsList");
+  if (plist){
     const ps = talk.participants || [];
-    const names = ps.map(p => esc(p.display_name)).join("、") || "—";
-    document.getElementById("participantsList").innerHTML =
-      `分母（基準点の参加者・${ps.length}名）: ${names}`;
-    // 111: 実行中プロジェクトで参加者だけが「達成を提案」できる（未参加者には出ない）。
-    document.getElementById("completeAction").style.display = talk.can_propose_complete ? "block" : "none";
+    plist.textContent = `参加者（${ps.length}名）: ` + (ps.map(p => p.display_name).join("、") || "—");
   }
+  const ca = document.getElementById("completeAction");
+  if (ca) ca.style.display = talk.can_propose_complete ? "block" : "none";
 
-  // 参加の申し出の出し分けはサーバーの join_offer に従う（§48 §1-2 / 108-k・m・n・p・112）。
-  const offer = talk.join_offer;
-  if (talk.kind === "project" && offer){
-    document.getElementById("participateSec").style.display = "block";
-    document.getElementById("joinIndividualBtn").style.display = offer.individual ? "inline-flex" : "none";
-    document.getElementById("joinCommunityBtn").style.display = offer.community ? "inline-flex" : "none";
-    const note = document.getElementById("affiliationNote");
-    if (offer.affiliation === "none"){
-      note.textContent = "あなたはどのコミュニティにも所属していないため、個人として参加を申し出られます。";
-      note.style.display = "block";
-    } else {
-      note.style.display = "none";
-    }
-  }
-
-  // アクション（closure 済みでない・ログイン済みのときだけ。権限はサーバーが最終判定）
-  if (!talk.closed && sessionId){
-    document.getElementById("actionSec").style.display = "block";
+  // 発言欄・票（要素の有無はサーバーが決める。締め切り後などは再読込の値で隠す）。
+  const act = document.getElementById("actionSec");
+  if (act){
+    act.style.display = talk.can_post ? "block" : "none";
     document.getElementById("publicNote").textContent =
       (talk.kind === "chat" || talk.kind === "admission") ? MEMBER_NOTE : PUBLIC_NOTE;
-    document.getElementById("voteButtons").style.display = DECISION.includes(talk.kind) ? "inline" : "none";
+    const vb = document.getElementById("voteButtons");
+    if (vb) vb.style.display = talk.can_vote ? "inline" : "none";
   }
+  const pSec = document.getElementById("participateSec");
+  if (pSec) pSec.style.display = talk.join_offer ? "block" : "none";
 }
 
 async function submitPost(btn){

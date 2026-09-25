@@ -263,3 +263,95 @@ def test_t108c_project_join_is_public():
                                    "target": {"intent_id": iid, "participant": "u_ext", "participant_kind": "individual"}}).get_json()["talk_id"]
     # 参加トークは公開（第三者に 200・加入トークと違う）
     assert _cli().get(f"/api/talks/{jtk}").status_code == 200
+
+
+# ── 指示書48 G-3: 対応表で既存テストが無かった項目の補完 ──────────────────────────
+def _talk_launch_project(cid):
+    _, purpose = _agree_proposal(cid)
+    lr = _launch(cid, purpose)
+    return lr["intent_id"], lr["talk"]["talk_id"]
+
+
+def test_t011_t080_no_ledger_update_or_delete_routes():
+    # 台帳に更新・削除の経路が無い（追記専用）: ledger/event を含むルートに PUT/PATCH/DELETE が無い
+    for rule in appmod.app.url_map.iter_rules():
+        if "ledger" in rule.rule or "event" in rule.rule:
+            assert not ({"PUT", "PATCH", "DELETE"} & set(rule.methods)), rule.rule
+
+
+def test_t014_ruleset_version_frozen_at_talk_creation():
+    import governance as gov
+    cid = _community()
+    tk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                              json={"kind": "proposal", "title": "後で判定", "target": {}}).get_json()
+    rv0 = tk["ruleset_version"]
+    # 規則を変える合意を別に成立させる（版が進む）
+    ch = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                              json={"kind": "proposal", "title": "規則変更",
+                                    "target": {"changes_ruleset": True}}).get_json()["talk_id"]
+    _cli("u_alice").post(f"/api/talks/{ch}/vote", json={"stance": "approve"})
+    assert gov.resolve_ruleset_version(cid, db_path=appmod.DB) != rv0
+    # 先に作ったトークの版は作成時点のまま
+    assert _cli().get(f"/api/talks/{tk['talk_id']}").get_json()["ruleset_version"] == rv0
+
+
+def test_t032_completed_project_rejects_post_409():
+    cid = _community()
+    iid, ptk = _talk_launch_project(cid)
+    ctk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                               json={"kind": "project_complete", "title": "done",
+                                     "target": {"intent_id": iid, "result": "r"}}).get_json()["talk_id"]
+    _cli("u_alice").post(f"/api/talks/{ctk}/vote", json={"stance": "approve"})
+    assert _cli("u_alice").post(f"/api/talks/{ptk}/posts", json={"body": "x"}).status_code == 409
+    html = _cli("u_alice").get(f"/talk/{ptk}").get_data(as_text=True)
+    assert 'id="actionSec"' not in html                    # UI にも投稿欄が出ない
+
+
+def test_t037_closed_talks_are_not_deleted():
+    cid = _community()
+    tk, _ = _agree_proposal(cid)
+    assert _cli().get(f"/api/talks/{tk}").status_code == 200
+    assert tk in [t["talk_id"] for t in _cli().get(f"/api/community/{cid}/talks").get_json()["talks"]]
+
+
+def test_t040_public_talk_content_same_for_all_viewers():
+    # 公開トークの内容は閲覧者で変わらない。閲覧者ごとに変わるのは行為の導線のみ（指示書48 §1-2）。
+    cid = _community()
+    _iid, ptk = _talk_launch_project(cid)
+    _cli("u_alice").post(f"/api/talks/{ptk}/posts", json={"body": "進捗"})
+    affordances = {"join_offer", "can_propose_complete", "can_post", "can_vote"}
+    views = [{k: v for k, v in _cli(s).get(f"/api/talks/{ptk}").get_json().items() if k not in affordances}
+             for s in (None, "u_ext", "u_alice")]
+    assert views[0] == views[1] == views[2]
+
+
+def test_t042_admission_talk_visible_to_members():
+    cid = _community()
+    atk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                               json={"kind": "admission", "title": "a",
+                                     "target": {"candidate": "u_bob"}}).get_json()["talk_id"]
+    assert _cli("u_alice").get(f"/api/talks/{atk}").status_code == 200
+
+
+def test_t046_t047_no_talks_by_participant_or_search_route():
+    rules = [r.rule for r in appmod.app.url_map.iter_rules()]
+    assert not [r for r in rules if "search" in r and "talk" in r]
+    assert not [r for r in rules if "talk" in r and ("<subject" in r or "<user" in r or "<participant" in r)]
+
+
+def test_t074_basis_seq_unchanged_after_later_events():
+    cid = _community()
+    tk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                              json={"kind": "proposal", "title": "x", "target": {}}).get_json()
+    _agree_proposal(cid, title="後から成立")                 # 以後に台帳が進む
+    assert _cli().get(f"/api/talks/{tk['talk_id']}").get_json()["basis_seq"] == tk["basis_seq"]
+
+
+def test_t075_agreement_is_irreversible():
+    cid = _community()
+    tk, purpose = _agree_proposal(cid)
+    # 合意後の反対票は受け付けず（409）、合意の事実も取り消されない
+    assert _cli("u_alice").post(f"/api/talks/{tk}/vote", json={"stance": "dissent"}).status_code == 409
+    assert _cli().get(f"/api/talks/{tk}").get_json()["result"]["purpose_event_hash"] == purpose
+    types = set(_types(appmod.DB))
+    assert not [t for t in types if t.endswith((".revoked", ".cancelled", ".withdrawn"))]

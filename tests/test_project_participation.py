@@ -68,13 +68,14 @@ def test_t108e_participant_joined_written():
     assert pj and pj[0]["intent_id"] == iid and pj[0]["participant_kind"] == "individual"
 
 
-# 108-g: 最初の外部の申し出は 立ち上げ者（分母の初期値）＋当人 の合意で成立
+# 108-g: 最初の外部の申し出は 立ち上げ者（分母の初期値）の合意で成立
+# （指示書48 108-r で訂正: 申し出た当人は分母に含めない）
 def test_t108g_denominator_initial_is_launcher():
     cid, iid, _ = _project()
     jtk = _offer(cid, iid, "u_ext").get_json()["talk_id"]
     d = _cli().get(f"/api/talks/{jtk}").get_json()      # 参加トークは公開＝未ログインでも読める
     ids = sorted(x["subject_id"] for x in d["denominator"])
-    assert ids == ["u_alice", "u_ext"]                  # 立ち上げ者 u_alice ＋ 申し出た u_ext（頭数2）
+    assert ids == ["u_alice"]                           # 立ち上げ者 u_alice のみ（頭数1）
 
 
 # 108-c/108-h: 申し出・合意は公開 ／ 未ログインでは申し出られない

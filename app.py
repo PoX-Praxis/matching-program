@@ -1629,8 +1629,18 @@ def community_page(community_id):
 
 @app.get("/talk/<talk_id>")
 def talk_page(talk_id):
-    """トーク詳細ページ（指示書43 §2-1: モーダルを廃止し独立ページに）。"""
-    return render_template("talk.html")
+    """トーク詳細ページ（指示書43 §2-1: モーダルを廃止し独立ページに）。
+
+    行為の導線（参加の申し出・達成の提案・発言欄・票）と参加者の一覧は、閲覧者ごとに
+    サーバー側でレンダリングする（指示書48 §4-2: 表示の可否をレンダリング結果で検証できる）。
+    メンバー限定のトークを第三者が開いた場合は view=None（API と同じく存在を出さない）。"""
+    import talks
+    view = None
+    talk = talks.get_talk(talk_id, db_path=DB)
+    if talk is not None and not (talk["kind"] in (talks.CHAT, talks.ADMISSION)
+                                 and not _is_ctx_member(talk["ctx"], current_subject_id())):
+        view = _talk_public_view(talk)
+    return render_template("talk.html", view=view)
 
 
 # ── メッセージ API ────────────────────────────────────────────
@@ -1656,9 +1666,13 @@ def post_message():
 # 同一性は subject_id。表示名は通常DBの可変値で、台帳/ハッシュ/三つ組には入れない。
 # コミュニティは communities.name を正とし、display_names には二重に持たない（食い違い防止）。
 
-def _resolve_names(subject_ids):
+UNNAMED_LABEL = "表示名未設定のアカウント"
+
+
+def _resolve_names(subject_ids, fallback=None):
     """複数 subject_id → {sid: 表示名}。community は communities.name、個人は display_names、
-    無ければ subject_id にフォールバック。"""
+    無ければ fallback（未指定なら subject_id）。参加・加入系の画面は fallback=UNNAMED_LABEL を渡し、
+    生 id を表示に出さない（指示書48 114・テスト49）。"""
     import display_names
     ids = [s for s in {s for s in subject_ids if s}]
     if not ids:
@@ -1667,7 +1681,7 @@ def _resolve_names(subject_ids):
     out = {}
     for s in ids:
         c = get_community(s, db_path=DB)          # community_id は subject_id と同空間
-        out[s] = (c["name"] if c else None) or dn.get(s) or s
+        out[s] = (c["name"] if c else None) or dn.get(s) or (fallback or s)
     return out
 
 
@@ -1851,7 +1865,7 @@ def api_get_community(community_id):
     names = _resolve_names(list(member_ids)
                            + [p.get("member_id") for p in pending_rows]
                            + [m.get("from_id") for m in messages_rows]
-                           + [c.get("founder")])
+                           + [c.get("founder")], fallback=UNNAMED_LABEL)
 
     # ── allowlist：返す項目を明示的に列挙（除外方式にしない・§2-5）──
     out = {
@@ -2057,6 +2071,16 @@ def _is_participant(intent_id, sid):
     return sid in gov.participants_at(intent_id, 10**18, db_path=DB)
 
 
+def _is_join_offerer_only(talk, sid):
+    """参加トークで sid が「申し出た当人」であり既存参加者ではないか。当人は分母外なので
+    賛成・反対の票を持たない（指示書48 108-r）。発言（申し出の説明）はできる。"""
+    import talks
+    if talk["kind"] != talks.PROJECT_JOIN:
+        return False
+    tgt = talk.get("target") or {}
+    return sid == tgt.get("participant") and not _is_participant(tgt.get("intent_id"), sid)
+
+
 def _member_of_any_community(sid):
     """sid がいずれかのコミュニティのメンバー（または代表）か（指示書48 §1-2 の所属判定）。"""
     if not sid:
@@ -2102,7 +2126,7 @@ def _talk_public_view(talk):
     posts = talks.get_posts(talk["talk_id"], db_path=DB)
     ids = (list(v["approvals"]) + list(v["dissents"])
            + [p["author"] for p in posts] + [talk["created_by"]])
-    names = _resolve_names(ids)
+    names = _resolve_names(ids, fallback=UNNAMED_LABEL)
 
     def who(sid):
         return {"subject_id": sid, "display_name": names.get(sid, sid)}
@@ -2111,24 +2135,28 @@ def _talk_public_view(talk):
     if talk["kind"] == talks.PROJECT and (talk.get("target") or {}).get("intent_id"):
         import governance as gov
         pids = sorted(gov.participants_at(talk["target"]["intent_id"], 10**18, db_path=DB))
-        pnames = _resolve_names(pids)
+        pnames = _resolve_names(pids, fallback=UNNAMED_LABEL)
         participants = [{"subject_id": p, "display_name": pnames.get(p, p)} for p in pids]
     # 参加・達成の決定トークは「基準点の時点の分母（参加者頭数）」を表示名つきで返す（指示書47 §4）。
+    # 分母は基準点の時点の既存参加者のみ。申し出た当人は含めない（指示書48 108-r）。
     denominator = None
     if talk["kind"] in (talks.PROJECT_JOIN, talks.PROJECT_COMPLETE):
         import governance as gov
         tgt = talk.get("target") or {}
         dset = gov.participants_at(tgt.get("intent_id"), talk["basis_seq"], db_path=DB)
-        if talk["kind"] == talks.PROJECT_JOIN and tgt.get("participant"):
-            dset = dset | {tgt["participant"]}     # 申し出た当人を分母に含む（§5-3 の1対1）
-        dnames = _resolve_names(sorted(dset))
+        dnames = _resolve_names(sorted(dset), fallback=UNNAMED_LABEL)
         denominator = [{"subject_id": p, "display_name": dnames.get(p, p)} for p in sorted(dset)]
     # 実行中プロジェクトの参加申し出の出し分け・当事者の達成提案可否（指示書48 §1-2 / 111）。
     sid = current_subject_id()
     join_offer = _project_join_offer(talk, sid)
+    closed = talks.is_closed(talk, db_path=DB)
     can_propose_complete = bool(
-        talk["kind"] == talks.PROJECT and not talks.is_closed(talk, db_path=DB)
+        talk["kind"] == talks.PROJECT and not closed
         and _is_participant((talk.get("target") or {}).get("intent_id"), sid))
+    # 発言欄・投票の出し分け（指示書48 115）。権限の最終判定は API（403）。
+    can_post = bool(sid and not closed and _can_participate_talk(talk, sid))
+    can_vote = bool(can_post and talk["kind"] in talks.DECISION_KINDS
+                    and not _is_join_offerer_only(talk, sid))
     return {**talk,
             "display_status": talks.display_status(talk, db_path=DB),
             "closed": talks.is_closed(talk, db_path=DB),
@@ -2137,6 +2165,8 @@ def _talk_public_view(talk):
             "participants": participants,
             "join_offer": join_offer,            # 参加申し出の出し分け（None＝出さない・§48 §1-2）
             "can_propose_complete": can_propose_complete,   # 当事者の達成提案可否（§48 111）
+            "can_post": can_post,                # 発言欄を出すか（§48 115）
+            "can_vote": can_vote,                # 賛成/反対を出すか（分母外の申し出者には出さない・108-r）
             "denominator": denominator,          # 参加・達成の分母（基準点の参加者頭数・§47 §4）
             "created_by_name": names.get(talk["created_by"], talk["created_by"]),
             "posts": [{"post_id": p["post_id"], "author": p["author"],
@@ -2253,7 +2283,8 @@ def api_list_talks(community_id):
     （指示書43 T-8・44）。各行に表示用の状態語彙と起票者の表示名を添える。"""
     import talks
     is_mem = _is_ctx_member(community_id, current_subject_id())
-    ctx_names = _resolve_names([t["created_by"] for t in talks.list_talks(community_id, db_path=DB)])
+    ctx_names = _resolve_names([t["created_by"] for t in talks.list_talks(community_id, db_path=DB)],
+                               fallback=UNNAMED_LABEL)
     rows = []
     for t in talks.list_talks(community_id, db_path=DB):
         if t["kind"] in (talks.CHAT, talks.ADMISSION) and not is_mem:
@@ -2316,6 +2347,8 @@ def api_talk_vote(talk_id):
     sid = current_subject_id()
     if not _can_participate_talk(talk, sid):
         return jsonify({"error": "このトークで投票する権限がありません"}), 403
+    if _is_join_offerer_only(talk, sid):
+        return jsonify({"error": "申し出た本人は分母に含まれないため、票を投じられません"}), 403
     # closure 済みトークへの投票は拒否（closure の意味を保つ・指示書44 §2）。
     if talks.is_closed(talk, db_path=DB):
         return jsonify({"error": "closed",

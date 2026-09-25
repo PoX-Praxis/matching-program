@@ -96,14 +96,14 @@ def test_project_launch_join_complete():
                               json={"title": "翻訳PJ", "purpose_ref": purpose_ref}).get_json()
     intent_id = lr["intent_id"]
     assert le.get_events(type_="intent.launched", db_path=appmod.DB)[0]["payload"]["purpose_ref"] == purpose_ref
-    # 外部の個人 u_ext が参加（1対1: launcher u_alice ＋ u_ext の2人で即時成立）
+    # 外部の個人 u_ext が参加。分母は既存参加者（launcher u_alice の1名）のみで、
+    # 申し出た本人は含めない（指示書48 108-r）→ u_alice の賛成で即時成立。
     jtk = _cli("u_ext").post(f"/api/community/{cid}/talks",
                              json={"kind": "project_join", "title": "join",
                                    "target": {"intent_id": intent_id, "participant": "u_ext",
                                               "participant_kind": "individual"}}).get_json()["talk_id"]
-    _cli("u_alice").post(f"/api/talks/{jtk}/vote", json={"stance": "approve"})
-    r = _cli("u_ext").post(f"/api/talks/{jtk}/vote", json={"stance": "approve"}).get_json()
-    assert r["commit"]["committed"] is True                 # 2人全員賛成で即時成立
+    r = _cli("u_alice").post(f"/api/talks/{jtk}/vote", json={"stance": "approve"}).get_json()
+    assert r["commit"]["committed"] is True                 # 分母1の全員賛成で即時成立
     pj = le.get_events(type_="intent.participant.joined", db_path=appmod.DB)
     assert any(e["payload"]["participant"] == "u_ext" and e["payload"]["participant_kind"] == "individual"
                for e in pj)

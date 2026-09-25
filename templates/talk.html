@@ -126,6 +126,14 @@
       </span>
       {% endif %}
     </div>
+    {% if view.kind == "admission" %}
+    <!-- 45 A-1: 加入の見送りの確定（反対が表明されているときだけ。台帳には書かない・メンバー限定）-->
+    <div id="declineBox" style="margin-top:14px;{% if not view.can_decline %}display:none{% endif %}">
+      <p class="public-note">反対が表明されているため、この加入は成立しません。見送りを確定すると、このトークは決定済みになり追記できなくなります。申請者本人には「見送り」と下の要約だけが伝わり、審議の内容は伝わりません。</p>
+      <input type="text" id="declineSummary" maxlength="280" placeholder="申請者に伝える要約（任意）">
+      <div style="margin-top:8px"><button class="btn ghost" onclick="confirmDecline(this)">見送りを確定する</button></div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
   <div id="notice"></div>
@@ -233,9 +241,25 @@ function render(){
       (talk.kind === "chat" || talk.kind === "admission") ? MEMBER_NOTE : PUBLIC_NOTE;
     const vb = document.getElementById("voteButtons");
     if (vb) vb.style.display = talk.can_vote ? "inline" : "none";
+    const db = document.getElementById("declineBox");
+    if (db) db.style.display = talk.can_decline ? "block" : "none";
   }
   const pSec = document.getElementById("participateSec");
   if (pSec) pSec.style.display = talk.join_offer ? "block" : "none";
+}
+
+async function confirmDecline(btn){
+  const n = document.getElementById("notice");
+  btn.disabled = true;
+  const res = await fetch(`/api/talks/${encodeURIComponent(talkId)}/decline`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({summary: document.getElementById("declineSummary").value}) });
+  btn.disabled = false;
+  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
+  n.className = "ok"; n.textContent = "見送りを確定しました。";
+  reload();
 }
 
 async function submitPost(btn){

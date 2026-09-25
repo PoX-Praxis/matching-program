@@ -1,6 +1,6 @@
 # 受入項目 → 自動テスト 対応表（指示書48 G-3）
 
-更新: 2026-09-25（指示書49 時点）
+更新: 2026-09-25（指示書45 A群 時点）
 対象: `PoX_テスト項目一覧.md` の **実装側 66 項目**（1〜19, 26, 31〜37, 39〜44, 46〜50, 63, 68〜75, 76〜85, 88〜90, 93〜98）と、実機テスト由来の項目（99〜117）。
 
 ## 区分の凡例
@@ -10,10 +10,11 @@
 | **新規23**（46） | 指示書46 §4（PR #105）で `tests/test_acceptance_items.py` に追加した 23 件。うち **16 件が 66 項目**（19 項目分）、**7 件が実機テスト1 由来**（99, 101, 107, 108, 108-a〜c） |
 | **48** | 指示書48 で追加（PR #107・#108） |
 | **49** | 指示書49 で追加 |
+| **45A** | 指示書45 A群で追加 |
 | **既存** | 指示書41〜44 の実装時からあるテスト |
 | **未実装** | 実装が無いのでテストも無い（理由を記載） |
 
-テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake, `dorm`=test_dormancy
+テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake, `dorm`=test_dormancy, `hyg`=test_ledger_hygiene
 
 ## 1. 台帳・合意
 
@@ -101,11 +102,21 @@
 | 79 | `acc::test_t048_t050_no_raw_id_in_talk_view`, `rights::test_t114_no_raw_id_for_unnamed_accounts`（部分: 全エンドポイントの探索ではない。プロフィール・DM は表示名＋id 併記が仕様） | 新規23＋48 |
 | 80 | `acc::test_t080_old_intent_write_endpoints_frozen`, `acc::test_t011_t080_no_ledger_update_or_delete_routes` | 新規23＋48 |
 
-## 10. 指示書45（未実装）
+## 10. 指示書45
 
-| 項目 | 区分 |
-|---|---|
-| 81〜85, 88〜90, 93〜98 | **未実装**（指示書45 は台帳に触るため単独 PR。実装時にテストを追加） |
+| 項目 | テスト | 区分 |
+|---|---|---|
+| 81 | `hyg::test_t081_admission_closed_after_decision`, `hyg::test_t081_dormant_admission_is_not_rejected`, `hyg::test_t081_decline_requires_dissent_and_membership` | 45A |
+| 82 | `hyg::test_t082_decline_not_written_to_ledger` | 45A |
+| 83 | `hyg::test_t083_admission_approval_writes_member_joined` | 45A |
+| 84 | `hyg::test_t084_applicant_sees_only_own_outcome` | 45A |
+| 85 | `hyg::test_t085_noindex_on_member_only_surfaces`, `hyg::test_t085_robots_txt_exists` | 45A |
+| 86, 87 | 運用（キャッシュ・検索インデックス）。自動テストの対象外 | 運用 |
+| 88 | `hyg::test_t088_approvals_work_without_keys` | 45A |
+| 89, 90 | `hyg::test_t089_t090_documented`（`docs/ledger_limits.md`） | 45A |
+| 91 | 確認報告（離脱の実装有無）。テストは既存 `mem::test_leave_emits_member_left_and_derivation` | 既存 |
+| 92 | 運用（デプロイ版の同一性）。自動テストの対象外 | 運用 |
+| 93〜98 | **未実装**（B 群。B-0 の報告後に着手） | 未実装 |
 
 ## 12. 実機テスト由来（99〜117）
 

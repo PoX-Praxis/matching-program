@@ -15,7 +15,7 @@ PoX ③ 最小プラットフォーム
 import sys, os, uuid, secrets
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session
+from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session, g, Response
 from werkzeug.utils import secure_filename
 from db_connect import is_postgres
 import auth, mailer, anchor, drafts
@@ -37,6 +37,45 @@ from messages import get_community_messages
 
 app = Flask(__name__)
 DB = os.environ.get("POX_DB", "pox.db")
+
+
+# ── 公開衛生（指示書45 A-3）─────────────────────────────────────────────────
+# メンバー限定面（加入トーク・チャット・参加申請・本人面）のページと API には
+# X-Robots-Tag: noindex, nofollow を付ける。/talk/<id> は公開トークと URL を共有するため
+# robots.txt では分けられず、レスポンス単位のヘッダーが唯一の手段になる。
+NOINDEX = "noindex, nofollow"
+_NOINDEX_PREFIXES = ("/api/my/",)
+
+
+def _mark_noindex():
+    g.pox_noindex = True
+
+
+@app.after_request
+def _apply_noindex(resp):
+    if getattr(g, "pox_noindex", False) or request.path.startswith(_NOINDEX_PREFIXES):
+        resp.headers["X-Robots-Tag"] = NOINDEX
+    return resp
+
+
+ROBOTS_TXT = """User-agent: *
+# 本人・運用向けの面（公開の対象ではない）
+Disallow: /api/my/
+Disallow: /mypage
+Disallow: /edit
+Disallow: /inbox
+Disallow: /conversation
+Disallow: /v4/drafts/
+Disallow: /dev
+Disallow: /ledger
+# 加入トーク・チャットは公開トークと同じ /talk/<id> を使うため、ここでは分けられない。
+# それらはレスポンスの X-Robots-Tag: noindex と、第三者への 404 で扱う（指示書45 A-3）。
+"""
+
+
+@app.get("/robots.txt")
+def robots_txt():
+    return Response(ROBOTS_TXT, mimetype="text/plain")
 
 # セッション署名鍵（指示書17 §3）。本番では POX_SECRET_KEY を必ず設定する。
 app.secret_key = os.environ.get("POX_SECRET_KEY")
@@ -1637,6 +1676,8 @@ def talk_page(talk_id):
     import talks
     view = None
     talk = talks.get_talk(talk_id, db_path=DB)
+    if talk is not None and talk["kind"] in (talks.CHAT, talks.ADMISSION):
+        _mark_noindex()                                  # 加入トーク・チャットは索引させない（45 A-3）
     if talk is not None and not (talk["kind"] in (talks.CHAT, talks.ADMISSION)
                                  and not _is_ctx_member(talk["ctx"], current_subject_id())):
         view = _talk_public_view(talk)
@@ -1890,8 +1931,16 @@ def api_get_community(community_id):
         "viewer_role": ("member" if is_mem
                         else "authenticated" if viewer is not None else "guest"),
     }
+    # 本人面（指示書45 A-2）: 申請者本人には自分の申請の結果と要約だけを返す。審議の内容は返さない。
+    if viewer is not None and not is_mem:
+        import talks
+        mine = talks.admission_outcome_for(community_id, viewer, db_path=DB)
+        if mine:
+            out["my_application"] = mine
+            _mark_noindex()
     # pending（参加申請）はメンバーのみ（§43 T-8・44 §4）。キーごと出し分ける。
     if is_mem:
+        _mark_noindex()                  # pending・messages を含む応答は索引させない（45 A-3）
         out["pending"] = [{"member_id":   p.get("member_id"),
                            "display_name": names.get(p.get("member_id"), p.get("member_id")),
                            "joined_at":    p.get("joined_at")} for p in pending_rows]
@@ -2157,6 +2206,9 @@ def _talk_public_view(talk):
     can_post = bool(sid and not closed and _can_participate_talk(talk, sid))
     can_vote = bool(can_post and talk["kind"] in talks.DECISION_KINDS
                     and not _is_join_offerer_only(talk, sid))
+    # 加入の見送りの確定（メンバーのみ・反対が表明されているときだけ・45 A-1）
+    can_decline = bool(can_post and talk["kind"] == talks.ADMISSION
+                       and talks.can_decline_admission(talk, db_path=DB))
     return {**talk,
             "display_status": talks.display_status(talk, db_path=DB),
             "closed": talks.is_closed(talk, db_path=DB),
@@ -2166,7 +2218,8 @@ def _talk_public_view(talk):
             "join_offer": join_offer,            # 参加申し出の出し分け（None＝出さない・§48 §1-2）
             "can_propose_complete": can_propose_complete,   # 当事者の達成提案可否（§48 111）
             "can_post": can_post,                # 発言欄を出すか（§48 115）
-            "can_vote": can_vote,                # 賛成/反対を出すか（分母外の申し出者には出さない・108-r）
+            "can_vote": can_vote,
+            "can_decline": can_decline,          # 加入の見送りを確定できるか（45 A-1）                # 賛成/反対を出すか（分母外の申し出者には出さない・108-r）
             "denominator": denominator,          # 参加・達成の分母（基準点の参加者頭数・§47 §4）
             "created_by_name": names.get(talk["created_by"], talk["created_by"]),
             "posts": [{"post_id": p["post_id"], "author": p["author"],
@@ -2272,8 +2325,10 @@ def api_get_talk(talk_id):
     talk = talks.get_talk(talk_id, db_path=DB)
     if talk is None:
         return jsonify({"error": "not_found"}), 404
-    if talk["kind"] in (talks.CHAT, talks.ADMISSION) and not _is_ctx_member(talk["ctx"], current_subject_id()):
-        return jsonify({"error": "not_found"}), 404      # 第三者には存在ごと見せない（人に付く棄却）
+    if talk["kind"] in (talks.CHAT, talks.ADMISSION):
+        _mark_noindex()                                  # メンバー限定面は索引させない（45 A-3）
+        if not _is_ctx_member(talk["ctx"], current_subject_id()):
+            return jsonify({"error": "not_found"}), 404  # 第三者には存在ごと見せない（人に付く棄却）
     return jsonify(_talk_public_view(talk)), 200
 
 
@@ -2283,6 +2338,8 @@ def api_list_talks(community_id):
     （指示書43 T-8・44）。各行に表示用の状態語彙と起票者の表示名を添える。"""
     import talks
     is_mem = _is_ctx_member(community_id, current_subject_id())
+    if is_mem:
+        _mark_noindex()              # 加入の審議・チャットを含む一覧は索引させない（45 A-3）
     ctx_names = _resolve_names([t["created_by"] for t in talks.list_talks(community_id, db_path=DB)],
                                fallback=UNNAMED_LABEL)
     rows = []
@@ -2360,6 +2417,45 @@ def api_talk_vote(talk_id):
     commit = talks.try_commit(talk_id, db_path=DB)
     return jsonify({"vote": {"voter": sid, "stance": stance}, "commit": commit,
                     "status": talks.get_talk(talk_id, db_path=DB)["status"]}), 200
+
+
+@app.post("/api/talks/<talk_id>/decline")
+@login_required
+def api_talk_decline(talk_id):
+    """加入の見送りを確定する（指示書45 A-1）。メンバーのみ。通常DBにのみ記録し台帳に書かない。
+    反対が表明されていない審議中のトーク・決定済みのトークは確定できない（409）。"""
+    import talks
+    talk = talks.get_talk(talk_id, db_path=DB)
+    if talk is None or talk["kind"] != talks.ADMISSION:
+        return jsonify({"error": "not_found"}), 404
+    _mark_noindex()
+    sid = current_subject_id()
+    if not _is_ctx_member(talk["ctx"], sid):
+        return jsonify({"error": "not_found"}), 404          # 第三者には存在ごと見せない
+    if talks.is_closed(talk, db_path=DB):
+        return jsonify({"error": "closed", "detail": "この加入トークは決定済みです。"}), 409
+    body = request.get_json(force=True, silent=True) or {}
+    r = talks.decline_admission(talk_id, sid, summary=body.get("summary") or "", db_path=DB)
+    if r is None:
+        return jsonify({"error": "not_decidable",
+                        "detail": "反対の表明が無いため、見送りを確定できません。"}), 409
+    return jsonify(_talk_public_view(r)), 200
+
+
+@app.get("/api/my/applications")
+@login_required
+def api_my_applications():
+    """本人面（指示書45 A-2）: 自分のコミュニティ参加申請の状態（審議中／承認／見送り）と
+    要約だけを返す。審議の内容（発言・票・誰が反対したか）は本人にも返さない。"""
+    import talks
+    from community import get_my_communities
+    sid = current_subject_id()
+    out = []
+    for c in get_my_communities(sid, db_path=DB):
+        o = talks.admission_outcome_for(c["id"], sid, db_path=DB)
+        if o and not is_founder(c["id"], sid, db_path=DB):
+            out.append({"community_id": c["id"], "community_name": c["name"], **o})
+    return jsonify({"applications": out})
 
 
 def _can_participate_talk(talk, sid):

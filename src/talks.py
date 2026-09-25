@@ -12,7 +12,8 @@ kind:
   project_join    … プロジェクトへの参加 → 既存参加者の合意で intent.participant.joined
   project_complete… プロジェクトの達成 → 合意で intent.completed
 
-status: open（審議中）/ agreed / completed（取消は無い）
+status: open（審議中）/ agreed / completed / declined（加入の見送り・通常DBのみ・指示書45 A-1）
+（取消は無い）
 休眠は status に持たず、最後の活動からの経過で表示時に導出する（指示書49・43 §5-1）。
 台帳に書かず、投稿の可否・可視性・合意判定には影響させない。
 """
@@ -29,6 +30,7 @@ CHAT, PROPOSAL, ADMISSION, PROJECT, PROJECT_JOIN, PROJECT_COMPLETE = (
     "chat", "proposal", "admission", "project", "project_join", "project_complete")
 KINDS = {CHAT, PROPOSAL, ADMISSION, PROJECT, PROJECT_JOIN, PROJECT_COMPLETE}
 DECISION_KINDS = {PROPOSAL, ADMISSION, PROJECT_JOIN, PROJECT_COMPLETE}
+DECLINED = "declined"   # 加入の見送りの決定（通常DB・メンバー限定。台帳には書かない・指示書45 A-1）
 PUBLIC_KINDS = KINDS - {CHAT}          # チャット以外はすべて公開（§3）
 
 
@@ -182,7 +184,7 @@ def is_closed(talk, *, db_path="pox.db"):
         iid = (talk.get("target") or {}).get("intent_id")
         return any(e["payload"].get("intent_id") == iid
                    for e in le.get_events(type_="intent.completed", db_path=db_path))
-    return status in ("agreed", "completed")
+    return status in ("agreed", "completed", DECLINED)
 
 
 def _parse_ts(ts):
@@ -226,6 +228,8 @@ def display_status(talk, *, now=None, db_path="pox.db"):
         return "完了" if is_closed(talk, db_path=db_path) else "実行中"
     if kind == PROJECT_COMPLETE and status == "completed":
         return "完了"
+    if kind == ADMISSION and status in ("agreed", DECLINED):
+        return "決定済み"                 # 加入は 審議中／決定済み（指示書45 A-1）
     if status == "agreed":
         return "合意済み"
     if is_dormant(talk, now=now, db_path=db_path):
@@ -400,3 +404,51 @@ def launch_project(ctx, launcher, title, purpose_ref, *, db_path="pox.db"):
                        target={"intent_id": intent_id, "purpose_ref": purpose_ref},
                        parent_talk_id=parent, db_path=db_path)
     return {"intent_id": intent_id, "talk": talk}
+
+
+# ── 加入の見送りの決定（指示書45 A-1）────────────────────────────────────────
+def can_decline_admission(talk, *, db_path="pox.db"):
+    """加入トークで見送りを確定できるか。審議中で、分母内のメンバーから反対が表明されている
+    （＝§5 の規則で成立しない状態にある）ときだけ確定できる。"""
+    if talk["kind"] != ADMISSION or is_closed(talk, db_path=db_path):
+        return False
+    return evaluate_talk(talk, db_path=db_path).get("reason") == "vetoed"
+
+
+def decline_admission(talk_id, decided_by, *, summary="", db_path="pox.db"):
+    """加入の見送りを決定する。通常DBのみに記録し、台帳には書かない（人に付く棄却を
+    台帳に残さない・指示書44 §3-1／45 A-1）。決定後は追記不可（is_closed）。トークは削除しない。
+    申請者本人には結果と要約だけを返す（本人面・45 A-2）。"""
+    talk = get_talk(talk_id, db_path=db_path)
+    if talk is None or not can_decline_admission(talk, db_path=db_path):
+        return None
+    candidate = (talk["target"] or {}).get("candidate")
+    result = {"declined": candidate, "decided_by": decided_by, "summary": (summary or "").strip()[:280]}
+    _set_status(talk_id, DECLINED, result, db_path)
+    from community import _connect as _cconnect
+    with _cconnect(db_path) as con:
+        con.execute("UPDATE community_members SET status='rejected' "
+                    "WHERE community_id=%s AND member_id=%s AND status='pending'",
+                    (talk["ctx"], candidate))
+    return get_talk(talk_id, db_path=db_path)
+
+
+def admission_outcome_for(ctx, candidate, *, db_path="pox.db"):
+    """申請者本人向けの結果（本人面）。審議の内容・票・発言は含めない。
+    返り値: {"status": 審議中|承認|見送り, "summary": str|None}（申請が無ければ None）。"""
+    from community import _connect as _cconnect
+    with _cconnect(db_path) as con:
+        row = con.execute("SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
+                          (ctx, candidate)).fetchone()
+    if not row:
+        return None
+    if row[0] == "active":
+        return {"status": "承認", "summary": None}
+    if row[0] == "pending":
+        return {"status": "審議中", "summary": None}
+    summary = None
+    for t in list_talks(ctx, db_path=db_path):
+        if (t["kind"] == ADMISSION and t["status"] == DECLINED
+                and (t["target"] or {}).get("candidate") == candidate):
+            summary = (t["result"] or {}).get("summary") or None
+    return {"status": "見送り", "summary": summary}

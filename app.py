@@ -1962,6 +1962,10 @@ def api_join_community(community_id):
     if not member_id:
         return jsonify({"error": "member_id が必要です"}), 400
     result = request_join(community_id, member_id, db_path=DB)
+    if result.pop("duplicate", False):
+        # 審議中の申請がある間は新規の申請を受け付けない（二重申請の防止・45A 追補2）
+        return jsonify({"error": "pending",
+                        "detail": "このコミュニティへの参加申請は審議中です。結果が出るまでお待ちください。"}), 409
     return jsonify(result), 200
 
 

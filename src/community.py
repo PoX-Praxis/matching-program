@@ -78,11 +78,27 @@ def get_all_communities(db_path: str = "pox.db") -> list:
 
 
 def request_join(community_id: str, member_id: str, db_path: str = "pox.db") -> dict:
+    """参加申請（通常DBのみ・台帳に書かない）。
+
+    - 審議中（pending）の申請が既にあれば二重申請として duplicate=True を返す（API は 409）。
+    - 見送り（rejected）で決定済みなら**再申請を受け付ける**（pending に戻す。指示書45A 追補2）。
+      恒久的に締め出さない。再申請の事実・回数はどこにも記録しない（行の状態を戻すだけ）。
+    - 既にメンバー（active）ならそのまま返す。
+    """
     with _connect(db_path) as con:
         existing = con.execute(
             "SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
             (community_id, member_id),
         ).fetchone()
+        if existing and existing[0] == "pending":
+            return {"community_id": community_id, "member_id": member_id, "status": "pending",
+                    "duplicate": True}
+        if existing and existing[0] == "rejected":
+            con.execute(
+                "UPDATE community_members SET status='pending', joined_at=%s "
+                "WHERE community_id=%s AND member_id=%s",
+                (_now(), community_id, member_id))
+            return {"community_id": community_id, "member_id": member_id, "status": "pending"}
         if existing:
             return {"community_id": community_id, "member_id": member_id, "status": existing[0]}
         joined_at = _now()

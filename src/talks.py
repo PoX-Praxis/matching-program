@@ -30,6 +30,7 @@ CHAT, PROPOSAL, ADMISSION, PROJECT, PROJECT_JOIN, PROJECT_COMPLETE = (
     "chat", "proposal", "admission", "project", "project_join", "project_complete")
 KINDS = {CHAT, PROPOSAL, ADMISSION, PROJECT, PROJECT_JOIN, PROJECT_COMPLETE}
 DECISION_KINDS = {PROPOSAL, ADMISSION, PROJECT_JOIN, PROJECT_COMPLETE}
+REAPPLY_MESSAGE = "今回の参加申請は見送りになりました。このコミュニティには、もう一度参加を申請できます。"
 DECLINED = "declined"   # 加入の見送りの決定（通常DB・メンバー限定。台帳には書かない・指示書45 A-1）
 PUBLIC_KINDS = KINDS - {CHAT}          # チャット以外はすべて公開（§3）
 
@@ -436,7 +437,9 @@ def decline_admission(talk_id, decided_by, *, summary="", db_path="pox.db"):
 
 def admission_outcome_for(ctx, candidate, *, db_path="pox.db"):
     """申請者本人向けの結果（本人面）。審議の内容・票・発言は含めない。
-    返り値: {"status": 審議中|承認|見送り, "summary": str|None}（申請が無ければ None）。"""
+    返り値: {"status": 審議中|承認|見送り, "summary": str|None, "can_reapply": bool,
+            "message": str（見送りのときだけ）}（申請が無ければ None）。
+    審議中は、再申請の後でも前回の要約を出さない（今回の審議の結果ではないため）。"""
     from community import _connect as _cconnect
     with _cconnect(db_path) as con:
         row = con.execute("SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
@@ -444,12 +447,14 @@ def admission_outcome_for(ctx, candidate, *, db_path="pox.db"):
     if not row:
         return None
     if row[0] == "active":
-        return {"status": "承認", "summary": None}
+        return {"status": "承認", "summary": None, "can_reapply": False}
     if row[0] == "pending":
-        return {"status": "審議中", "summary": None}
+        return {"status": "審議中", "summary": None, "can_reapply": False}
     summary = None
     for t in list_talks(ctx, db_path=db_path):
         if (t["kind"] == ADMISSION and t["status"] == DECLINED
                 and (t["target"] or {}).get("candidate") == candidate):
             summary = (t["result"] or {}).get("summary") or None
-    return {"status": "見送り", "summary": summary}
+    # 見送りは恒久的な締め出しではない。本人面で再申請できることを明示する（45A 追補2）。
+    return {"status": "見送り", "summary": summary, "can_reapply": True,
+            "message": REAPPLY_MESSAGE}

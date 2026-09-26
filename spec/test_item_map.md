@@ -11,6 +11,7 @@
 | **48** | 指示書48 で追加（PR #107・#108） |
 | **49** | 指示書49 で追加 |
 | **45A** | 指示書45 A群で追加 |
+| **45A 追補2** | 見送り後の再申請で追加（再申請は可・発注者の決定 2026-09-27） |
 | **既存** | 指示書41〜44 の実装時からあるテスト |
 | **未実装** | 実装が無いのでテストも無い（理由を記載） |
 
@@ -126,6 +127,10 @@
 | 91 | 確認報告（離脱の実装有無）。テストは既存 `mem::test_leave_emits_member_left_and_derivation` | 既存 |
 | 92 | 運用（デプロイ版の同一性）。自動テストの対象外 | 運用 |
 | 93〜98 | **未実装**（B 群。B-0 の報告後に着手） | 未実装 |
+| 118 | `hyg::test_t118_declined_applicant_can_reapply` | 45A 追補2 |
+| 119 | `hyg::test_t119_self_view_shows_decline_and_reapply` | 45A 追補2 |
+| 120 | `hyg::test_t120_reapply_is_normal_review_and_duplicate_409` | 45A 追補2 |
+| 121 | `hyg::test_t121_decline_and_reapply_not_in_ledger` | 45A 追補2 |
 
 ## 12. 実機テスト由来（99〜117）
 

@@ -225,7 +225,8 @@ _SQLITE_DDL = [
         talk_id    TEXT NOT NULL,
         author     TEXT NOT NULL,
         body       TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        ins_seq    INTEGER
     )""",
     """CREATE TABLE IF NOT EXISTS talk_votes (
         talk_id    TEXT NOT NULL,
@@ -451,7 +452,8 @@ _PG_DDL = [
         talk_id    TEXT NOT NULL,
         author     TEXT NOT NULL,
         body       TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        ins_seq    INTEGER
     )""",
     """CREATE TABLE IF NOT EXISTS talk_votes (
         talk_id    TEXT NOT NULL,
@@ -542,6 +544,10 @@ def _migrate_columns(con) -> None:
     # necessities の seeking / canon_version（指示書28 §3-3/§3-4）。
     _add_column_if_missing(con, "necessities", "seeking", "TEXT")
     _add_column_if_missing(con, "necessities", "canon_version", "TEXT")
+    # talk_posts の挿入順（指示書45B §2: discussion_hash v1 は挿入順で連結）。既存行は created_at 順で補完。
+    _add_column_if_missing(con, "talk_posts", "ins_seq", "INTEGER")
+    from talks import ensure_post_order
+    ensure_post_order(con)
 
 
 def _migrate_user_snapshots(con) -> None:

@@ -125,12 +125,13 @@ def test_t084_applicant_sees_only_own_outcome():
     cid = _community_with_two_members()
     tk = _apply_and_open(cid)
     d = _cli("u_carol").get(f"/api/community/{cid}").get_json()
-    assert d["my_application"] == {"status": "審議中", "summary": None}
+    assert d["my_application"] == {"status": "審議中", "summary": None, "can_reapply": False}
     _cli("u_alice").post(f"/api/talks/{tk}/posts", json={"body": "審議の中身（本人に見せない）"})
     _cli("u_bob").post(f"/api/talks/{tk}/vote", json={"stance": "dissent"})
     _cli("u_alice").post(f"/api/talks/{tk}/decline", json={"summary": "今回は見送ります"})
     d = _cli("u_carol").get(f"/api/community/{cid}").get_json()
-    assert d["my_application"] == {"status": "見送り", "summary": "今回は見送ります"}
+    assert d["my_application"]["status"] == "見送り"
+    assert d["my_application"]["summary"] == "今回は見送ります"
     apps = _cli("u_carol").get("/api/my/applications").get_json()["applications"]
     assert [(a["community_id"], a["status"], a["summary"]) for a in apps] == [(cid, "見送り", "今回は見送ります")]
     # 審議の内容（トーク本体・発言・票・反対した人）は本人にも見えない
@@ -138,7 +139,7 @@ def test_t084_applicant_sees_only_own_outcome():
     shown = str(d["my_application"]) + str(apps)              # 本人に伝わる内容はこれだけ
     for leaked in ("審議の中身", "u_bob", "u_alice", "dissent", "反対", tk):
         assert leaked not in shown, leaked
-    assert set(d["my_application"]) == {"status", "summary"}
+    assert set(d["my_application"]) == {"status", "summary", "can_reapply", "message"}
     assert "pending" not in d and "messages" not in d
     # 他人の申請状態は見えない（第三者・別の申請者）
     assert "my_application" not in _cli("u_ext").get(f"/api/community/{cid}").get_json()
@@ -190,3 +191,77 @@ def test_t089_t090_documented():
     doc = open(os.path.join(ROOT, "docs", "ledger_limits.md"), encoding="utf-8").read()
     assert "署名機構は無い" in doc and "attestations" in doc          # 89
     assert "basis_seq" in doc and "申告値" in doc                     # 90
+
+
+# ── 45A 追補2: 見送り後の再申請（項目 118〜121）──────────────────────────────
+def test_t118_declined_applicant_can_reapply():
+    cid = _community_with_two_members()
+    _decline(cid)                                          # u_carol が見送られる
+    r = _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    assert r.status_code == 200 and r.get_json()["status"] == "pending"
+    # メンバーの画面には再び参加申請として現れる（通常の審議に戻る）
+    pend = _cli("u_alice").get(f"/api/community/{cid}").get_json()["pending"]
+    assert [p["member_id"] for p in pend] == ["u_carol"]
+    # 再申請から通常どおり承認まで進める（承認は既存の member.joined）
+    tk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                              json={"kind": "admission", "title": "再申請",
+                                    "target": {"candidate": "u_carol"}}).get_json()["talk_id"]
+    _cli("u_alice").post(f"/api/talks/{tk}/vote", json={"stance": "approve"})
+    _cli("u_bob").post(f"/api/talks/{tk}/vote", json={"stance": "approve"})
+    assert "u_carol" in [m["member_id"] for m in _cli().get(f"/api/community/{cid}").get_json()["members"]]
+
+
+def test_t119_self_view_shows_decline_and_reapply():
+    cid = _community_with_two_members()
+    _decline(cid, summary="活動の時期が合わないため")
+    mine = _cli("u_carol").get(f"/api/community/{cid}").get_json()["my_application"]
+    assert mine["status"] == "見送り" and mine["summary"] == "活動の時期が合わないため"
+    assert mine["can_reapply"] is True
+    assert mine["message"] == "今回の参加申請は見送りになりました。このコミュニティには、もう一度参加を申請できます。"
+    apps = _cli("u_carol").get("/api/my/applications").get_json()["applications"]
+    assert apps[0]["can_reapply"] is True and "もう一度参加を申請できます" in apps[0]["message"]
+    # 要約は確定者が書いた場合のみ
+    _decline(cid, cand="u_dave", summary="")
+    assert _cli("u_dave").get(f"/api/community/{cid}").get_json()["my_application"]["summary"] is None
+    # 画面: 見送りの本人面に再申請の導線がある
+    html = open(os.path.join(ROOT, "templates", "community.html"), encoding="utf-8").read()
+    assert 'id="reapplyBtn"' in html and "もう一度参加を申請する" in html
+    # 再申請後の審議中には、前回の要約を出さない
+    _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    assert _cli("u_carol").get(f"/api/community/{cid}").get_json()["my_application"] == \
+        {"status": "審議中", "summary": None, "can_reapply": False}
+
+
+def test_t120_reapply_is_normal_review_and_duplicate_409():
+    cid = _community_with_two_members()
+    _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    # 審議中の二重申請は 409
+    r = _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    assert r.status_code == 409
+    # 見送り→再申請は自動承認されない（メンバーにならず、審議中に戻るだけ）
+    tk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                              json={"kind": "admission", "title": "加入",
+                                    "target": {"candidate": "u_carol"}}).get_json()["talk_id"]
+    _cli("u_bob").post(f"/api/talks/{tk}/vote", json={"stance": "dissent"})
+    _cli("u_alice").post(f"/api/talks/{tk}/decline", json={})
+    assert _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"}).status_code == 200
+    d = _cli().get(f"/api/community/{cid}").get_json()
+    assert "u_carol" not in [m["member_id"] for m in d["members"]]
+    assert _cli("u_carol").get(f"/api/community/{cid}").get_json()["my_application"]["status"] == "審議中"
+    # 再申請の審議中にも二重申請は 409
+    assert _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"}).status_code == 409
+
+
+def test_t121_decline_and_reapply_not_in_ledger():
+    cid = _community_with_two_members()
+    before = len(le.get_events(db_path=appmod.DB))
+    _decline(cid)
+    _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})   # 409
+    events = le.get_events(db_path=appmod.DB)
+    assert len(events) == before
+    assert not [e for e in events if e["type"].startswith("admission.")]
+    # 第三者の画面に見送り・再申請の事実は出ない
+    guest = _cli().get(f"/api/community/{cid}").get_json()
+    assert "my_application" not in guest and "pending" not in guest
+    assert "見送り" not in str(guest)

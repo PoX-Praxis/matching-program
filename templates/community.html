@@ -156,8 +156,11 @@ function renderJoin(){
     // 本人面（指示書45 A-2）: 自分の申請の結果と要約だけ。審議の内容は表示しない。
     const mine = data.my_application;
     if (mine && mine.status === "見送り"){
+      // 45A 追補2: 見送り・要約（確定者が書いた場合のみ）・再申請できることと、その導線
       el.innerHTML = `<div class="card" id="myApplication"><b>あなたの参加申請</b>：見送り
-         ${mine.summary ? `<div class="muted" style="margin-top:4px">${esc(mine.summary)}</div>` : ""}</div>`;
+         ${mine.summary ? `<div class="muted" style="margin-top:4px">要約: ${esc(mine.summary)}</div>` : ""}
+         <div style="margin-top:6px">${esc(mine.message || "")}</div>
+         ${mine.can_reapply ? `<div style="margin-top:8px"><button class="btn" id="reapplyBtn" onclick="applyJoin(this)">もう一度参加を申請する</button></div>` : ""}</div>`;
     } else if (mine && mine.status === "審議中"){
       el.innerHTML = `<div class="card" id="myApplication"><b>あなたの参加申請</b>：審議中
          <div class="muted" style="margin-top:4px">既存メンバーの合意で加入が成立します。審議の内容はメンバーだけが見られます。</div></div>`;

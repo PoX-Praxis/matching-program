@@ -120,6 +120,17 @@ def test_t049_agreement_ignores_clock(monkeypatch):
     assert r1 == r2
 
 
+# 休眠の対象外: 加入・参加のトークは長く無活動でも休眠にならない（49 追補 §1-4）
+def test_t049_non_proposal_decision_talks_never_dormant(monkeypatch):
+    cid, _tk = _open_proposal(monkeypatch)
+    _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    atk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                               json={"kind": "admission", "title": "a",
+                                     "target": {"candidate": "u_carol"}}).get_json()["talk_id"]
+    _at(monkeypatch, T0 + timedelta(days=365))
+    assert _cli("u_alice").get(f"/api/talks/{atk}").get_json()["display_status"] == "審議中"
+
+
 # 休眠の対象外: プロジェクトとチャットは休眠にならない（プロジェクトは 実行中／完了）
 def test_t049_project_and_chat_never_dormant(monkeypatch):
     _at(monkeypatch, T0)

@@ -48,6 +48,28 @@ def _now() -> str:
     return _clock().isoformat()
 
 
+_POST_ORDER_READY: set = set()
+
+
+def ensure_post_order(con):
+    """talk_posts.ins_seq（トーク内の挿入順）を補完し、(talk_id, ins_seq) を一意にする。冪等。
+
+    discussion_hash v1 は発言を**挿入順**で連結する（指示書45B §2）。ins_seq 導入前の行は、
+    それまでの並び（created_at 昇順）どおりに番号を振るので、既存のハッシュは変わらない
+    （同時刻の行だけは post_id で順を決める。以前は順序が不定だった）。"""
+    rows = con.execute(
+        "SELECT talk_id, post_id FROM talk_posts WHERE ins_seq IS NULL "
+        "ORDER BY talk_id, created_at, post_id").fetchall()
+    nxt = {}
+    for talk_id, post_id in rows:
+        if talk_id not in nxt:
+            m = con.execute("SELECT MAX(ins_seq) FROM talk_posts WHERE talk_id=%s", (talk_id,)).fetchone()
+            nxt[talk_id] = (m[0] or 0) + 1 if m else 1
+        con.execute("UPDATE talk_posts SET ins_seq=%s WHERE post_id=%s", (nxt[talk_id], post_id))
+        nxt[talk_id] += 1
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS talk_posts_ins_order ON talk_posts (talk_id, ins_seq)")
+
+
 def _connect(db_path: str = "pox.db"):
     con = get_connection(db_path)
     if not is_postgres():
@@ -62,13 +84,19 @@ def _connect(db_path: str = "pox.db"):
         con.execute(
             "CREATE TABLE IF NOT EXISTS talk_posts ("
             "post_id TEXT PRIMARY KEY, talk_id TEXT NOT NULL, author TEXT NOT NULL, "
-            "body TEXT NOT NULL, created_at TEXT NOT NULL)"
+            "body TEXT NOT NULL, created_at TEXT NOT NULL, ins_seq INTEGER)"
         )
         con.execute(
             "CREATE TABLE IF NOT EXISTS talk_votes ("
             "talk_id TEXT NOT NULL, voter TEXT NOT NULL, stance TEXT NOT NULL, "
             "updated_at TEXT NOT NULL, PRIMARY KEY (talk_id, voter))"
         )
+        if db_path not in _POST_ORDER_READY:
+            cols = {r[1] for r in con.execute("PRAGMA table_info(talk_posts)").fetchall()}
+            if "ins_seq" not in cols:
+                con.execute("ALTER TABLE talk_posts ADD COLUMN ins_seq INTEGER")
+            ensure_post_order(con)
+            _POST_ORDER_READY.add(db_path)
         con.commit()
     return con
 
@@ -125,11 +153,23 @@ def list_talks(ctx, *, db_path="pox.db"):
 
 # ── 投稿（経緯）──────────────────────────────────────────────────────────────
 def add_post(talk_id, author, body, *, db_path="pox.db"):
+    """発言を追記する。トーク内の挿入順 ins_seq を振る（discussion_hash v1 の並び順）。
+    同時に振られた番号の衝突は (talk_id, ins_seq) の一意制約で検出して採番し直す。"""
     pid = f"tp_{uuid.uuid4().hex[:12]}"
-    with _connect(db_path) as con:
-        con.execute(
-            "INSERT INTO talk_posts (post_id, talk_id, author, body, created_at) "
-            "VALUES (%s,%s,%s,%s,%s)", (pid, talk_id, author, body, _now()))
+    for attempt in range(5):
+        try:
+            with _connect(db_path) as con:
+                m = con.execute("SELECT MAX(ins_seq) FROM talk_posts WHERE talk_id=%s",
+                                (talk_id,)).fetchone()
+                seq = ((m[0] if m else None) or 0) + 1
+                con.execute(
+                    "INSERT INTO talk_posts (post_id, talk_id, author, body, created_at, ins_seq) "
+                    "VALUES (%s,%s,%s,%s,%s,%s)", (pid, talk_id, author, body, _now(), seq))
+            break
+        except Exception as e:  # noqa: BLE001
+            if attempt < 4 and ("unique" in str(e).lower() or "integrity" in type(e).__name__.lower()):
+                continue
+            raise
     return {"post_id": pid, "talk_id": talk_id, "author": author, "body": body}
 
 
@@ -137,13 +177,14 @@ def get_posts(talk_id, *, db_path="pox.db"):
     with _connect(db_path) as con:
         rows = con.execute(
             "SELECT post_id, talk_id, author, body, created_at FROM talk_posts "
-            "WHERE talk_id=%s ORDER BY created_at ASC", (talk_id,)).fetchall()
+            "WHERE talk_id=%s ORDER BY ins_seq ASC", (talk_id,)).fetchall()
     return [{"post_id": r[0], "talk_id": r[1], "author": r[2], "body": r[3], "created_at": r[4]}
             for r in rows]
 
 
 def _discussion_text(talk_id, db_path):
-    """経緯（トーク本文）の連結。discussion_hash の入力。順序は投稿の時系列で決定的。"""
+    """経緯（トーク本文）の連結。discussion_hash v1 の入力（docs/ledger_limits.md で凍結）:
+    発言のみを挿入順（ins_seq 昇順）で `投稿者id: 本文` にし、改行で連結する。"""
     return "\n".join(f"{p['author']}: {p['body']}" for p in get_posts(talk_id, db_path=db_path))
 
 

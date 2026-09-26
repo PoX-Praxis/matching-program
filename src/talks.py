@@ -208,10 +208,11 @@ def last_activity_at(talk, *, db_path="pox.db"):
 
 
 def is_dormant(talk, *, now=None, db_path="pox.db"):
-    """休眠か（表示のみの導出・指示書49）。締め切られていない決定トークで、最後の活動から
-    DORMANT_AFTER を超えて無活動のもの。チャットとプロジェクト（実行中／完了）は対象外。
-    追記があれば最後の活動が更新され、再開操作なしに休眠でなくなる。"""
-    if talk["kind"] not in DECISION_KINDS or is_closed(talk, db_path=db_path):
+    """休眠か（表示のみの導出・指示書49／49 追補 §1-4）。審議中の**提議トーク**だけが対象で、
+    最後の活動（発言の投稿・票の投下）から DORMANT_AFTER を超えて無活動のもの。
+    加入トーク・参加・達成・プロジェクト・チャットには休眠を出さない（45A 追補 §1-4）。
+    追記・票があれば最後の活動が更新され、再開操作なしに休眠でなくなる。"""
+    if talk["kind"] != PROPOSAL or is_closed(talk, db_path=db_path):
         return False
     last = last_activity_at(talk, db_path=db_path)
     if last is None:

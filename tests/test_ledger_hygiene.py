@@ -77,7 +77,8 @@ def test_t081_dormant_admission_is_not_rejected(monkeypatch):
     cid = _community_with_two_members()
     tk = _apply_and_open(cid)
     monkeypatch.setattr(talks, "_clock", lambda: t0 + timedelta(days=60))
-    assert _cli("u_alice").get(f"/api/talks/{tk}").get_json()["display_status"] == "休眠"
+    # 加入トークには休眠の語彙を出さない（45A 追補 §1-4）。長く無活動でも審議中のまま、投稿も拒否しない
+    assert _cli("u_alice").get(f"/api/talks/{tk}").get_json()["display_status"] == "審議中"
     assert _cli("u_alice").post(f"/api/talks/{tk}/posts", json={"body": "再開"}).status_code == 201
 
 

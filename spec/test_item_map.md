@@ -1,6 +1,6 @@
 # 受入項目 → 自動テスト 対応表（指示書48 G-3）
 
-更新: 2026-09-25（指示書45 A群 時点）
+更新: 2026-09-26（49 追補・45A 追補 時点）
 対象: `PoX_テスト項目一覧.md` の **実装側 66 項目**（1〜19, 26, 31〜37, 39〜44, 46〜50, 63, 68〜75, 76〜85, 88〜90, 93〜98）と、実機テスト由来の項目（99〜117）。
 
 ## 区分の凡例
@@ -48,10 +48,19 @@
 |---|---|---|
 | 31 | `acc::test_t031_agreed_proposal_post_returns_409`, `clo::test_closed_proposal_rejects_post_and_vote` | 新規23＋既存 |
 | 32 | `acc::test_t032_completed_project_rejects_post_409` | 48 |
-| 33 | `acc::test_t033_dormant_proposal_allows_post`（指示書49 で休眠を実際に導出して検証する形に修正） | 新規23→49 で修正 |
+| 33 | `acc::test_t033_dormant_proposal_allows_post` | 新規23→49 で修正 |
 | 34 | `clo::test_open_proposal_allows_post_and_vote` | 既存 |
-| 35 | `dorm::test_t035a_dormant_after_threshold`, `dorm::test_t035b_dormancy_writes_no_ledger_event`, `dorm::test_t035c_dormant_talk_stays_public` | 49 |
-| 36 | `dorm::test_t036a_post_revives_dormant_talk`, `dorm::test_t036b_dormant_talk_accepts_post_and_vote` | 49 |
+| 35 | 35-a〜35-c に分割（下記） | 49 |
+| 35-a | `dorm::test_t035a_dormant_after_threshold` | 49 |
+| 35-b | `dorm::test_t035b_dormancy_writes_no_ledger_event` | 49 |
+| 35-c | `dorm::test_t035c_dormant_talk_stays_public` | 49 |
+| 36 | 36-a・36-b に分割（下記） | 49 |
+| 36-a | `dorm::test_t036a_post_revives_dormant_talk` | 49 |
+| 36-b | `dorm::test_t036b_dormant_talk_accepts_post_and_vote` | 49 |
+| （対象外） | `dorm::test_t049_non_proposal_decision_talks_never_dormant`, `dorm::test_t049_project_and_chat_never_dormant` | 49 追補 |
+| （決定性） | `dorm::test_t049_agreement_ignores_clock` | 49 |
+
+**`test_t033` の扱い（49 追補 §2）**: 指示書46 で入った旧 `test_t033_dormant_open_proposal_allows_post` は、名前に反して**審議中の提議への投稿しか確かめておらず、休眠を検証していなかった**（カバレッジの錯覚）。指示書49 で休眠そのものの検証を 35-a〜36-b として追加し、`test_t033` は「時刻を注入して実際に休眠にした提議へ投稿できる」ことを確かめる形に書き直した（36-b と同じ性質の確認として残している）。
 | 37 | `acc::test_t037_closed_talks_are_not_deleted`, `acc::test_t099_completed_project_stays_in_list` | 48＋新規23 |
 
 ## 4. 可視性・プライバシー

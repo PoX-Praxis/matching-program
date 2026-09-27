@@ -93,6 +93,15 @@ if _PROD and not os.environ.get("POX_EMAIL_SALT"):
         "全アカウント喪失につながるため許可しません。Render の環境変数に設定してください"
         "（開発時のみ POX_DEBUG=1 で既定ソルトにフォールバックします）。"
     )
+# POX_LEGACY_BOUNDARY_SEQ は削除の検証（redaction）の legacy 境界。未設定のまま動かすと
+# 改ざん検出が誤検出（legacy なし）か空振り（全件 legacy）になるため、本番では起動を止める
+# （指示書45C §1-1。フォールバックしない）。値は docs/ledger_limits.md の監査で確定する。
+if _PROD:
+    try:
+        import redaction as _redaction
+        _redaction.legacy_boundary_seq()
+    except _redaction.BoundaryNotConfigured as _e:
+        raise SystemExit(f"[FATAL] {_e} Render の環境変数に設定してください。")
 # メール送信設定の漏れは起動を止めないが、本番で未設定なら開発モード（メール不送）に
 # なるため警告する。判定は現在のバックエンド（resend_api / smtp）に応じる。
 if _PROD and not mailer.is_configured():

@@ -8,3 +8,7 @@ POX_EMAIL_SALT は POX_SECRET_KEY とは独立の環境変数であることの�
 import os
 
 os.environ.setdefault("POX_EMAIL_SALT", "test-insecure-email-salt")
+
+# 削除の検証の legacy 境界（指示書45C §1-1）。本番は未設定なら起動しない。
+# テストの DB には #113 以前の合意が無いので 0（＝legacy なし）を明示的に与える。
+os.environ.setdefault("POX_LEGACY_BOUNDARY_SEQ", "0")

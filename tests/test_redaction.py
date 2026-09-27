@@ -14,7 +14,7 @@ import ledger_events as le
 import redaction
 import talks
 
-REDACTED = "［削除済み］"
+REDACTED = redaction.REDACTED_BODY   # 伏せ字の定数（45C §2）
 SECRET = "山田さんの持病は○○です"        # 伏せられる本文（他人の属性への言及）
 
 
@@ -157,28 +157,107 @@ def test_t098_removing_redaction_record_breaks_verification():
     assert le.verify_chain(db_path=appmod.DB)["ok"] is False       # 台帳の連結も壊れる
 
 
-# ── 93-a: legacy（#101 以前）の合意は、再計算が一致しなくても改ざんと判定しない ────────
+# ── 93-a: legacy の合意は、再計算が一致しなくても改ざんと判定しない（境界 seq 以下）────────
 def test_t093a_legacy_agreement_not_flagged(monkeypatch):
     tk, ref, pids = _agreed_proposal()
     with talks._connect(appmod.DB) as con:                      # 合意後に追記できた時代の状態を模す
         con.execute("UPDATE talk_posts SET body=%s WHERE post_id=%s", ("合意後の追記", pids[2]))
-    monkeypatch.setattr(redaction, "LEGACY_BOUNDARY_AT", "2999-01-01T00:00:00.000Z")
-    r = redaction.verify_discussion(tk, ref, db_path=appmod.DB)
-    assert r["status"] == "legacy_unverified"
+    agreed = [e for e in le.get_events(type_="purpose.agreed", db_path=appmod.DB)][-1]
+    monkeypatch.setenv("POX_LEGACY_BOUNDARY_SEQ", str(agreed["seq"]))       # この合意までが legacy
+    assert redaction.verify_discussion(tk, ref, db_path=appmod.DB)["status"] == "legacy_unverified"
     # legacy の連鎖は台帳の保存値から始まる
     _redact_in_db(pids[1]); ev = _record(tk, ref, [pids[1]])
-    stored = le.get_events(type_="purpose.agreed", db_path=appmod.DB)[-1]["payload"]["discussion_hash"]
-    assert ev["payload"]["prev_hash"] == stored
-    # 境界は seq でも指定できる（本番の境界 seq を確定したら設定する）
-    monkeypatch.setattr(redaction, "LEGACY_BOUNDARY_AT", "2000-01-01T00:00:00.000Z")
-    monkeypatch.setattr(redaction, "LEGACY_BOUNDARY_SEQ", 10**9)
-    _cli()  # noqa
+    assert ev["payload"]["prev_hash"] == agreed["payload"]["discussion_hash"]
+    # 境界より後の合意は legacy にならない（同じ改変は改ざんとして検出される）
     tk2, ref2, pids2 = _agreed_proposal()
     with talks._connect(appmod.DB) as con:
-        con.execute("UPDATE talk_posts SET body=%s WHERE post_id=%s", ("改変", pids2[0]))
+        con.execute("UPDATE talk_posts SET body=%s WHERE post_id=%s", ("合意後の追記", pids2[2]))
+    agreed2 = [e for e in le.get_events(type_="purpose.agreed", db_path=appmod.DB)][-1]
+    monkeypatch.setenv("POX_LEGACY_BOUNDARY_SEQ", str(agreed2["seq"]))
     assert redaction.verify_discussion(tk2, ref2, db_path=appmod.DB)["status"] == "legacy_unverified"
-    # 継承の印は台帳に書かない（redaction 以外のイベントが増えていない）
+    monkeypatch.setenv("POX_LEGACY_BOUNDARY_SEQ", str(agreed2["seq"] - 1))
+    assert redaction.verify_discussion(tk2, ref2, db_path=appmod.DB)["status"] == "tampered"
+    # 継承の印は台帳に書かない
     assert not [e for e in le.get_events(db_path=appmod.DB) if "legacy" in e["type"]]
+
+
+# ── 93-b: 伏せ字（定数）に置き換えた本文から再計算し、result_hash と一致する ─────────────
+def test_t093b_constant_placeholder_reproduces_result_hash():
+    tk, ref, pids = _agreed_proposal()
+    with talks._connect(appmod.DB) as con:
+        con.execute("UPDATE talk_posts SET body=%s WHERE post_id=%s", ("【非表示】", pids[1]))
+    ev = _record(tk, ref, [pids[1]])
+    # 同じ手順（定数そのものに置換）を別の DB で独立にやり直しても同じ result_hash になる
+    tk2, ref2, pids2 = _agreed_proposal()
+    with talks._connect(appmod.DB) as con:
+        con.execute("UPDATE talk_posts SET body=%s WHERE post_id=%s", ("【非表示】", pids2[1]))
+    assert redaction.current_discussion_hash(tk2, db_path=appmod.DB) == ev["payload"]["result_hash"]
+    # 伏せ字が定数と違う（前後の空白・改行、別の文字列）と記録を拒否する
+    for bad in (" 【非表示】", "【非表示】\n", "［削除済み］", ""):
+        tk3, ref3, pids3 = _agreed_proposal()
+        with talks._connect(appmod.DB) as con:
+            con.execute("UPDATE talk_posts SET body=%s WHERE post_id=%s", (bad, pids3[1]))
+        with pytest.raises(ValueError):
+            _record(tk3, ref3, [pids3[1]])
+    # 行を消した場合も記録を拒否する（並びと投稿者が失われ再計算できない）
+    tk4, ref4, pids4 = _agreed_proposal()
+    with talks._connect(appmod.DB) as con:
+        con.execute("DELETE FROM talk_posts WHERE post_id=%s", (pids4[1],))
+    with pytest.raises(ValueError):
+        _record(tk4, ref4, [pids4[1]])
+
+
+# ── 93-c: POX_LEGACY_BOUNDARY_SEQ 未設定では起動しない（検証が静かに無効化されない）─────────
+def test_t093c_boundary_unset_fails_fast(monkeypatch):
+    import subprocess
+    env = {k: v for k, v in os.environ.items() if k not in ("POX_LEGACY_BOUNDARY_SEQ", "POX_DEBUG")}
+    env["POX_EMAIL_SALT"] = "x"
+    r = subprocess.run([sys.executable, "-c", "import app"], cwd=ROOT, env=env,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode != 0
+    assert "POX_LEGACY_BOUNDARY_SEQ" in (r.stderr + r.stdout)
+    assert "docs/ledger_limits.md" in (r.stderr + r.stdout)
+    # 不正値も同じ（フォールバックしない）
+    env["POX_LEGACY_BOUNDARY_SEQ"] = "abc"
+    assert subprocess.run([sys.executable, "-c", "import app"], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=120).returncode != 0
+    # 設定すれば起動する
+    env["POX_LEGACY_BOUNDARY_SEQ"] = "0"
+    assert subprocess.run([sys.executable, "-c", "import app"], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=120).returncode == 0
+    # 起動後に未設定になっても、検証は legacy なし／全件 legacy に倒れず例外になる
+    tk, ref, pids = _agreed_proposal()
+    monkeypatch.delenv("POX_LEGACY_BOUNDARY_SEQ", raising=False)
+    with pytest.raises(redaction.BoundaryNotConfigured):
+        redaction.verify_discussion(tk, ref, db_path=appmod.DB)
+
+
+# ── 45C §1-2: 監査（境界以降の合意を総当たりで再計算し、不一致を一覧する）────────────
+def test_t045c_audit_lists_mismatches_after_boundary():
+    tk, ref, pids = _agreed_proposal()
+    # 加入・参加・達成の合意もトークへ辿れる
+    cid = _cli("u_alice").get(f"/api/talks/{tk}").get_json()["ctx"]
+    lr = _cli("u_alice").post(f"/api/community/{cid}/projects/launch",
+                              json={"title": "PJ", "purpose_ref": ref}).get_json()
+    jtk = _cli("u_ext").post(f"/api/community/{cid}/talks",
+                             json={"kind": "project_join", "title": "j",
+                                   "target": {"intent_id": lr["intent_id"], "participant": "u_ext"}}).get_json()["talk_id"]
+    _cli("u_ext").post(f"/api/talks/{jtk}/posts", json={"body": "参加したい"})
+    _cli("u_alice").post(f"/api/talks/{jtk}/vote", json={"stance": "approve"})
+    r = redaction.audit_after_boundary(0, db_path=appmod.DB)
+    assert r["mismatches"] == [] and r["unresolved"] == [] and r["checked"] >= 2
+    # 境界より後の合意の本文を改変すると不一致として出る（talk_id・保存値・再計算値・投稿数）
+    with talks._connect(appmod.DB) as con:
+        con.execute("UPDATE talk_posts SET body=%s WHERE post_id=%s", ("改変", pids[0]))
+    r = redaction.audit_after_boundary(0, db_path=appmod.DB)
+    assert [m["talk_id"] for m in r["mismatches"]] == [tk]
+    assert set(r["mismatches"][0]) >= {"talk_id", "stored", "recomputed", "posts"}
+    # 境界をその合意より後にすると監査の対象外になる
+    agreed_seq = [e for e in le.get_events(type_="purpose.agreed", db_path=appmod.DB)][-1]["seq"]
+    assert redaction.audit_after_boundary(agreed_seq, db_path=appmod.DB)["mismatches"] == []
+    # 監査は台帳に書かない
+    n = len(le.get_events(db_path=appmod.DB)); redaction.audit_after_boundary(0, db_path=appmod.DB)
+    assert len(le.get_events(db_path=appmod.DB)) == n
 
 
 # ── 合意済みトークへの追記は現行 main で不可（45B §3 の再確認）──────────────────────

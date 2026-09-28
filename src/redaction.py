@@ -37,6 +37,8 @@ REASON_CLASSES = ("legal", "subject_request")
 # LEGACY_BOUNDARY_SEQ に設定する（設定されていれば seq で判定し、無ければ時刻で判定する）。
 LEGACY_BOUNDARY_AT = "2026-09-23T08:49:23.000Z"
 LEGACY_BOUNDARY_SEQ = None
+# 監査の起点（境界の候補）: #101 が main に入った時刻。
+BOUNDARY_CANDIDATE_101_AT = LEGACY_BOUNDARY_AT
 
 
 def _now_ms() -> str:
@@ -66,8 +68,11 @@ def redactions_for(target_ref, *, db_path="pox.db"):
             if e["payload"].get("target_ref") == target_ref]
 
 
-def is_legacy(agreement_event) -> bool:
-    """境界より前に記録された合意か（45B §3）。台帳には何も書かず、境界の定数で判定する。"""
+def is_legacy(agreement_event, *, boundary_seq=None) -> bool:
+    """境界より前に記録された合意か（45B §3）。台帳には何も書かず、境界の定数で判定する。
+    boundary_seq を渡すとその seq 以下を legacy とする（監査で境界候補を試すため）。"""
+    if boundary_seq is not None:
+        return agreement_event["seq"] <= boundary_seq
     if LEGACY_BOUNDARY_SEQ is not None:
         return agreement_event["seq"] <= LEGACY_BOUNDARY_SEQ
     return agreement_event["at"] < LEGACY_BOUNDARY_AT
@@ -116,7 +121,7 @@ def record_redaction(talk_id, target_ref, *, redacted_post_ids, reason_class, de
     return {**res, "type": EVENT_TYPE, "actor": decided_by, "payload": payload}
 
 
-def verify_discussion(talk_id, target_ref, *, db_path="pox.db") -> dict:
+def verify_discussion(talk_id, target_ref, *, boundary_seq=None, db_path="pox.db") -> dict:
     """現行本文の discussion_hash を台帳と照合する。
 
     status:
@@ -139,6 +144,74 @@ def verify_discussion(talk_id, target_ref, *, db_path="pox.db") -> dict:
     if current == expected_prev:
         return {"status": "redacted" if chain else "intact", "hash": current,
                 "redactions": len(chain)}
-    if is_legacy(target):
+    if is_legacy(target, boundary_seq=boundary_seq):
         return {"status": "legacy_unverified", "hash": current, "stored": expected_prev}
     return {"status": "tampered", "reason": "hash_mismatch", "hash": current, "expected": expected_prev}
+
+
+# ── 監査（45C §1-2）: 境界以降の合意を総当たりで再計算する ───────────────────────
+AGREEMENT_TYPES = ("purpose.agreed", "member.joined", "intent.participant.joined", "intent.completed")
+
+
+def agreement_talk_id(event, *, db_path="pox.db"):
+    """discussion_hash を持つ合意イベントから、合意対象トークを導出する（見つからなければ None）。"""
+    p = event["payload"]
+    if "discussion_hash" not in p:
+        return None
+    if event["type"] == "purpose.agreed":
+        return p.get("talk_id")
+    if event["type"] == "member.joined":
+        cands = [t for t in talks.list_talks(p.get("ctx"), db_path=db_path)
+                 if t["kind"] == talks.ADMISSION and t["status"] == "agreed"
+                 and (t["target"] or {}).get("candidate") == p.get("subject_id")]
+    elif event["type"] == "intent.participant.joined":
+        ctx = gov.intent_ctx(p.get("intent_id"), db_path=db_path)
+        pool = talks.list_talks(ctx, db_path=db_path) if ctx else []
+        cands = [t for t in pool if t["kind"] == talks.PROJECT_JOIN and t["status"] == "agreed"
+                 and (t["target"] or {}).get("intent_id") == p.get("intent_id")
+                 and (t["target"] or {}).get("participant") == p.get("participant")]
+    elif event["type"] == "intent.completed":
+        ctx = gov.intent_ctx(p.get("intent_id"), db_path=db_path)
+        pool = talks.list_talks(ctx, db_path=db_path) if ctx else []
+        cands = [t for t in pool if t["kind"] == talks.PROJECT_COMPLETE and t["status"] == "completed"
+                 and (t["target"] or {}).get("intent_id") == p.get("intent_id")]
+    else:
+        return None
+    # 同じ discussion_hash を持つトークに絞る（再申請などで同じ対象のトークが複数ある場合）
+    for t in cands:
+        if current_discussion_hash(t["talk_id"], db_path=db_path) == p["discussion_hash"]:
+            return t["talk_id"]
+    return cands[-1]["talk_id"] if cands else None
+
+
+def audit_after_boundary(boundary_seq, *, db_path="pox.db") -> dict:
+    """境界 seq より後の合意を総当たりで再計算し、不一致と未解決（トークを導出できない）を返す。"""
+    mismatches, unresolved, checked = [], [], 0
+    for e in le.get_events(db_path=db_path):
+        if e["type"] not in AGREEMENT_TYPES or e["seq"] <= boundary_seq:
+            continue
+        if "discussion_hash" not in e["payload"]:
+            continue                                   # 旧経路（代表承認）の member.joined など
+        tid = agreement_talk_id(e, db_path=db_path)
+        if tid is None:
+            unresolved.append({"seq": e["seq"], "type": e["type"], "event_hash": e["event_hash"]})
+            continue
+        checked += 1
+        r = verify_discussion(tid, e["event_hash"], boundary_seq=boundary_seq, db_path=db_path)
+        if r["status"] not in ("intact", "redacted"):
+            mismatches.append({"talk_id": tid, "seq": e["seq"], "type": e["type"],
+                               "stored": e["payload"]["discussion_hash"],
+                               "recomputed": current_discussion_hash(tid, db_path=db_path),
+                               "posts": len(talks.get_posts(tid, db_path=db_path)),
+                               "status": r["status"]})
+    return {"boundary_seq": boundary_seq, "checked": checked,
+            "mismatches": mismatches, "unresolved": unresolved}
+
+
+def seq_before(at_iso, *, db_path="pox.db") -> int:
+    """時刻 at_iso より前に記録された最後の seq（境界の候補を時刻から求める）。"""
+    last = 0
+    for e in le.get_events(db_path=db_path):
+        if e["at"] < at_iso:
+            last = e["seq"]
+    return last

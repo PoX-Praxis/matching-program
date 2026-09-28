@@ -240,6 +240,13 @@ _SQLITE_DDL = [
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
 
 _PG_DDL = [
+    # 軌跡の伏せ（vulnerable_hidden）の変更履歴。追記型・表示しない（指示書50 v3 §2-2）。
+    """CREATE TABLE IF NOT EXISTS snapshot_visibility_log (
+        snapshot_id TEXT NOT NULL,
+        user_id     TEXT NOT NULL,
+        hidden      INTEGER NOT NULL,
+        changed_at  TEXT NOT NULL
+    )""",
     # pgvector 拡張（Render Postgres では利用可能）
     "CREATE EXTENSION IF NOT EXISTS vector",
 

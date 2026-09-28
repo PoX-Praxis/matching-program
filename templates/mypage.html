@@ -26,29 +26,13 @@
     background:#fbe9ea;color:#8c2f34;font-size:13px;line-height:1.7;
     padding:11px 13px;border-radius:4px;margin:0 0 20px;
   }
-  .mypage .mp-lanenote{font-size:11.5px;line-height:1.8;color:#9aa0a8;margin:10px 0 0}
 
   /* ---------- 接続（カード） ---------- */
   .mypage .mp-card{border:1px solid var(--rule);border-radius:6px;padding:14px;margin-bottom:10px}
   .mypage .mp-card .row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:3px 0}
   .mypage .mp-card .row .k{color:var(--label);font-size:11.5px;font-weight:700;letter-spacing:.06em;flex:none}
 
-  /* ---------- 軌跡（2レーン） ---------- */
-  .mypage .mp-lanes{
-    display:grid;grid-template-columns:1fr 1fr;gap:1px;
-    background:var(--rule);border:1px solid var(--rule);border-radius:6px;
-    overflow:hidden;margin-top:14px;
-  }
-  .mypage .mp-lane{background:#fff;padding:14px 12px;min-height:96px}
-  .mypage .mp-lane h4{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--label);margin:0 0 10px}
-  .mypage .mp-lane p{font-size:12.5px;line-height:1.8;color:#9aa0a8;margin:0}
-  .mypage .mp-tl{margin:0 0 12px}
-  .mypage .mp-tl:last-child{margin-bottom:0}
-  .mypage .mp-tl .d{color:#9aa0a8;font-size:11px;display:block;margin-bottom:2px}
-  .mypage .mp-tl details > summary{cursor:pointer;color:var(--navy);font-size:12.5px}
-  .mypage .mp-tl .sub{font-size:12px;line-height:1.7;color:var(--ink2);margin:3px 0}
-  .mypage .mp-tl .sub.ev{color:#8a9099}
-  .mypage .mp-tl a{color:var(--step-ink);text-decoration:none}
+  /* 軌跡の描画は _trajectory.html（版ごとのツリー・指示書50 v3） */
   .mypage .mp-empty{font-size:13.5px;line-height:1.8;color:#8a9099;padding:18px 0}
 
   /* ---------- 照合の準備状態（指示書08・枠のみ） ---------- */
@@ -69,6 +53,7 @@
   .mypage .muted { color:#8a9099; font-size:12.5px; }
 </style>
 {% include "_profile_view.html" %}
+{% include "_trajectory.html" %}
 {% endblock %}
 {% block content %}
 <a href="/" class="back">← トップに戻る</a>
@@ -88,11 +73,10 @@
   <div id="notice"></div>
   <div id="connCards"></div>
 
-  <!-- 軌跡（2レーン） -->
+  <!-- 軌跡（版ごとのツリー・指示書50 v3） -->
   <h2 class="pv-h">軌跡<span class="en">TRAJECTORY</span></h2>
   <p class="pv-blkcap">自分の変化と、接続の記録。</p>
   <div id="timeline"><span class="muted">読み込み中です</span></div>
-  <p class="mp-lanenote">並び順は時間順であり、因果ではありません。</p>
 
 </main>
 
@@ -344,57 +328,12 @@ async function doApprove(otherId, btn) {
   renderConnections(await ledgerRes.json(), myId);
 }
 
-/* ══ 軌跡（2レーン）══════════════════════════════════════════════
-   「自分の変化」と「接続」を並走させる。接続は成立/終了の事実のみ・数値はUIに出さない。 */
-function tlDate(at) { return at ? new Date(at).toLocaleDateString("ja-JP") : ""; }
-function tlConnLabel(ev) {
-  return ev === "established" ? "接続成立" : (ev === "ended" ? "接続終了" : escHtml(ev || ""));
-}
+/* ══ 軌跡（版ごとのツリー・指示書50 v3）══════════════════════════════
+   描画は共通の PoXTrajectory。本人ビューは伏せの操作を持つ。 */
 async function loadTimeline(userId, viewer) {
   const el = document.getElementById("timeline");
   if (!el) return;
-  let data;
-  try {
-    const q = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
-    data = await (await fetch(`/api/timeline/${encodeURIComponent(userId)}${q}`)).json();
-  } catch (e) { el.innerHTML = `<span class="muted">軌跡を読み込めませんでした。</span>`; return; }
-
-  const items = (data && data.items) || [];
-  const owner = data.viewer_role === "owner";
-  const changeLane = [];
-  const connLane   = [];
-
-  for (const it of items) {
-    const d = tlDate(it.at);
-    if (it.kind === "connection") {
-      const other = it.other || "?";
-      connLane.push(`<div class="mp-tl"><span class="d">${escHtml(d)}</span>
-        <a href="/profile/${encodeURIComponent(other)}">${escHtml(other)}</a> と${tlConnLabel(it.event)}</div>`);
-      continue;
-    }
-    if (it.hidden) {
-      changeLane.push(`<div class="mp-tl"><span class="d">${escHtml(d)}</span>
-        <span class="muted">この時点の内容は非公開です</span></div>`);
-      continue;
-    }
-    const will = it.will_text ? `<div class="sub"><b>意志:</b> ${escHtml(it.will_text)}</div>` : "";
-    const nec  = it.necessity_text ? `<div class="sub"><b>必要としている相手:</b> ${escHtml(it.necessity_text)}</div>` : "";
-    const ev   = it.evidence_span ? `<div class="sub ev"><b>根拠:</b> ${escHtml(it.evidence_span)}</div>` : "";
-    let toggle = "";
-    if (owner && it.snapshot_id) {
-      toggle = `<div class="sub"><label style="font-size:11.5px;color:#666">
-        <input type="checkbox" ${it.vulnerable_hidden ? "checked" : ""}
-          onchange="toggleHidden('${it.snapshot_id}', this.checked, this)">
-        この時点の内容を他の人に見せない</label></div>`;
-    }
-    changeLane.push(`<div class="mp-tl"><span class="d">${escHtml(d)}</span>
-      <details><summary>プロフィールを更新</summary>${will}${nec}${ev}${toggle}</details></div>`);
-  }
-
-  el.innerHTML = `<div class="mp-lanes">
-    <div class="mp-lane"><h4>自分の変化</h4>${changeLane.length ? changeLane.join("") : "<p>まだありません</p>"}</div>
-    <div class="mp-lane"><h4>接続</h4>${connLane.length ? connLane.join("") : "<p>まだありません</p>"}</div>
-  </div>`;
+  PoXTrajectory.load(el, userId, { owner: true, onToggle: toggleHidden });
 }
 
 /* 脆弱な時点を第三者に伏せる/戻す（消さない・当事者相手には見える）。 */

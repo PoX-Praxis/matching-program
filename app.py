@@ -1374,34 +1374,44 @@ def api_timeline(user_id):
             dt = dt.replace(tzinfo=timezone.utc)
         return dt >= public_since
 
+    import snapshots as _snapshots
+    import trajectory as _traj
+
+    def _snaps_of(uid):
+        try:
+            return _snapshots.get_snapshots(uid, db_path=DB)
+        except Exception:  # noqa: BLE001
+            return []
+    snaps = _snaps_of(user_id)
+
+    # 接続の相手の表示名（生 id を表示に出さない・項目114／50 v3 136）
+    others = set()
+    for v in vessels:
+        join = (v.get("joins") or [{}])[0]
+        if user_id in (v.get("founder"), join.get("joiner")):
+            others.add(join.get("joiner") if user_id == v.get("founder") else v.get("founder"))
+    names = _resolve_names([o for o in others if o], fallback=UNNAMED_LABEL)
+
+    # 平坦な items（後方互換）。可視性は指示書50 v3 §1: 第三者にも本文（伏せた時点を除く）、
+    # 根拠・内部数値・raw は本人のみ。
     items = []
-    try:
-        from snapshots import get_snapshots
-        snaps = get_snapshots(user_id, db_path=DB)
-    except Exception:  # noqa: BLE001
-        snaps = []
     for s in snaps:
-        nec = s.get("necessity") or {}
-        hidden = bool(s.get("vulnerable_hidden"))
+        c = _traj._content(s, viewer_role, _necessity_public_for_third(s.get("created_at"))
+                           if viewer_role == "third" else True)
         item = {"kind": "snapshot", "at": s.get("created_at"),
                 "snapshot_id": s.get("snapshot_id"),
                 "schema_version": s.get("schema_version", "")}
-        if viewer_role == "third" and hidden:
+        if c is None:
             item["hidden"] = True            # 存在の事実のみ・中身は出さない
-        elif viewer_role in ("owner", "partner"):
-            item["will_text"] = s.get("will_text", "")
-            item["state"] = s.get("state") or {}
-            item["necessity_text"] = nec.get("necessity_text", "")
-            item["vulnerable_hidden"] = hidden   # 本人UIのトグル表示用
-            if viewer_role == "owner":           # 根拠・数値は本人のみ
-                item["evidence_span"] = nec.get("evidence_span", "")
-                item["numbers"] = {k: nec.get(k) for k in _NEC_NUM_KEYS}
-        else:                                # 第三者・非hidden: necessity_text のみ（閾値後だけ）
-            if _necessity_public_for_third(s.get("created_at")):
-                item["necessity_text"] = nec.get("necessity_text", "")
+        else:
+            item.update({k: v for k, v in c.items() if k != "numbers"})
+            if viewer_role == "owner":
+                item["numbers"] = c["numbers"]
+            if viewer_role in ("owner", "partner"):
+                item["vulnerable_hidden"] = bool(s.get("vulnerable_hidden"))
         items.append(item)
 
-    # 接続の履歴事実（全層公開・理由なし）。既存の snapshots キー無し vessel でも壊れない。
+    # 接続の履歴事実（全層公開・理由なし）。表示は表示名（other は URL 用の識別子）。
     for v in vessels:
         join = (v.get("joins") or [{}])[0]
         founder, joiner = v.get("founder"), join.get("joiner")
@@ -1411,15 +1421,22 @@ def api_timeline(user_id):
         est = join.get("established_at")
         if est:
             items.append({"kind": "connection", "event": "established", "at": est,
-                          "other": other, "vessel_id": v.get("vessel_id")})
+                          "other": other, "other_name": names.get(other) or UNNAMED_LABEL,
+                          "vessel_id": v.get("vessel_id")})
         ts = join.get("terminal_state")   # 離脱・解消は「事実」として（理由は持たない）
         if ts and ts not in ("active", None) and join.get("closed_at"):
             items.append({"kind": "connection", "event": "ended", "at": join.get("closed_at"),
-                          "other": other, "vessel_id": v.get("vessel_id")})
+                          "other": other, "other_name": names.get(other) or UNNAMED_LABEL,
+                          "vessel_id": v.get("vessel_id")})
 
     items.sort(key=lambda x: x.get("at") or "")
+    tree = _traj.build(user_id, viewer_role, snaps, vessels, names=names,
+                       necessity_public_for=(_necessity_public_for_third if viewer_role == "third"
+                                             else (lambda _at: True)),
+                       other_snaps_of=_snaps_of, db_path=DB)
+    _mark_noindex()     # 軌跡は公開だが検索の対象にしない（切り取られた引用を招かない・50 v3 §3-5）
     return jsonify({"user_id": user_id, "is_owner": is_owner,
-                    "viewer_role": viewer_role, "items": items})
+                    "viewer_role": viewer_role, "items": items, **tree})
 
 
 @app.post("/api/snapshot/<snapshot_id>/visibility")
@@ -1715,6 +1732,14 @@ def communities():
 @app.get("/community/<community_id>")
 def community_page(community_id):
     return render_template("community.html")
+
+
+@app.get("/trajectory/<user_id>")
+def trajectory_page(user_id):
+    """軌跡のページ（指示書50 v3 §3-5）。過去版は単独ページにせず #vN のアンカーで指す。
+    公開（誰でも読める）だが検索の対象にしない（X-Robots-Tag: noindex）。"""
+    _mark_noindex()
+    return render_template("trajectory.html", user_id=user_id)
 
 
 @app.get("/talk/<talk_id>")

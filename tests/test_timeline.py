@@ -2,7 +2,7 @@
 指示書12改訂: 接続成立時のスナップショット結合＋軌跡API の3層公開範囲。
 
 - approve の establish_hook は成立の瞬間だけ vessel_json に snapshots を書く（理由フィールドなし）。
-- /api/timeline: 本人=全部 / 当事者の相手=中身は見えるが根拠・数値なし / 第三者=necessity_text のみ・
+- /api/timeline: 本人=全部 / 当事者の相手=中身は見えるが根拠・数値なし / 第三者=本文（指示書50 v3 で F5 撤回）・
   vulnerable_hidden の時点は中身を出さない。接続の事実（成立・終了）は全層に・理由なし。
 """
 import os, sys, tempfile
@@ -122,8 +122,11 @@ def test_thirdparty_necessity_only_and_hidden_time_is_masked():
         d = _get(None)   # 未ログイン＝第三者
         assert d["viewer_role"] == "third"
         s1 = next(i for i in d["items"] if i.get("snapshot_id") == "s1")
-        assert s1["necessity_text"] == "翻訳できる開発者"   # 非伏せは necessity_text のみ
-        assert "will_text" not in s1 and "evidence_span" not in s1 and "numbers" not in s1
+        assert s1["necessity_text"] == "翻訳できる開発者"
+        # 指示書50 v3 §1（F5 撤回）: 第三者にも本文（意志・現状）は出る。根拠・数値・raw は出ない
+        assert s1["will_text"] == "つなぎたい"
+        assert "evidence_span" not in s1 and "numbers" not in s1
+        assert "生テキスト" not in (s1.get("supporting") or {})
         s2 = next(i for i in d["items"] if i.get("snapshot_id") == "s2")
         assert s2.get("hidden") is True                     # 伏せ時点は中身なし（事実は残る）
         assert "necessity_text" not in s2 and "will_text" not in s2

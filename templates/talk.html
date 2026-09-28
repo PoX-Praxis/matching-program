@@ -134,6 +134,23 @@
       <div style="margin-top:8px"><button class="btn ghost" onclick="confirmDecline(this)">見送りを確定する</button></div>
     </div>
     {% endif %}
+
+  {% if view and view.leave_state %}
+  <!-- 指示書51: プロジェクトからの離脱（当事者・実行中のみ。本人の行為だけ＝除名は無い）-->
+  <div class="sec" id="leaveSec">
+    <p class="public-note">離脱しても、実績と持ち分は残ります。あなたの発言も残り、参加者一覧から外れます。離脱した後も、改めて参加を申し出られます。</p>
+    {% if view.leave_state == "can" %}
+    <button class="btn ghost" id="leaveBtn" onclick="askLeave()">このプロジェクトから離脱する</button>
+    <span id="leaveConfirm" style="display:none">
+      <span class="muted">離脱しますか？</span>
+      <button class="btn danger" onclick="leaveProject(this)">離脱する</button>
+      <button class="btn ghost" onclick="cancelLeave()">やめる</button>
+    </span>
+    {% else %}
+    <p class="muted" id="leaveLast">あなたは最後の当事者のため、離脱できません（誰も何も合意できなくなるため）。</p>
+    {% endif %}
+  </div>
+  {% endif %}
   </div>
   {% endif %}
   <div id="notice"></div>
@@ -260,6 +277,21 @@ async function confirmDecline(btn){
   if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
   n.className = "ok"; n.textContent = "見送りを確定しました。";
   reload();
+}
+
+function askLeave(){ document.getElementById("leaveBtn").style.display = "none";
+  document.getElementById("leaveConfirm").style.display = "inline"; }
+function cancelLeave(){ document.getElementById("leaveBtn").style.display = "inline-flex";
+  document.getElementById("leaveConfirm").style.display = "none"; }
+async function leaveProject(btn){
+  const n = document.getElementById("notice");
+  btn.disabled = true;
+  const res = await fetch(`/api/projects/${encodeURIComponent((talk.target||{}).intent_id)}/leave`, {method:"POST"});
+  btn.disabled = false;
+  if (PoX.handle(res, {on403:m=>{n.className="err";n.textContent=m;}})) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ n.className="err"; n.textContent = d.detail || d.error || ("エラー " + res.status); return; }
+  location.reload();
 }
 
 async function submitPost(btn){

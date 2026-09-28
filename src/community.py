@@ -137,7 +137,13 @@ def approve_member(community_id: str, member_id: str, db_path: str = "pox.db") -
 
 
 def leave_community(community_id: str, member_id: str, db_path: str = "pox.db") -> dict:
-    """自主離脱（member.left）。追い出し（他者による除去）は実装しない（§2-1）。"""
+    """自主離脱（member.left）。追い出し（他者による除去）は実装しない（§2-1・指示書51 §1）。
+
+    離脱できない場合は status で理由を返す（API は 409）:
+      not_member      … メンバーでない／既に離脱済み（二重離脱）
+      last_member     … 最後の 1 人（分母が 0 になり、誰も何も合意できなくなるため）
+      founder_bootstrap … 創設者で、コミュニティに初回の完了がまだ無い（ブートストラップ期）
+    """
     with _connect(db_path) as con:
         cur = con.execute(
             "SELECT status FROM community_members WHERE community_id=%s AND member_id=%s",
@@ -145,6 +151,16 @@ def leave_community(community_id: str, member_id: str, db_path: str = "pox.db") 
         ).fetchone()
         if not cur or cur[0] != "active":
             return {"community_id": community_id, "member_id": member_id, "status": "not_member"}
+        n_active = con.execute(
+            "SELECT COUNT(*) FROM community_members WHERE community_id=%s AND status='active'",
+            (community_id,)).fetchone()[0]
+    if n_active <= 1:
+        return {"community_id": community_id, "member_id": member_id, "status": "last_member"}
+    if is_founder(community_id, member_id, db_path):
+        import governance as gov
+        if not gov.community_has_completed(community_id, db_path=db_path):
+            return {"community_id": community_id, "member_id": member_id, "status": "founder_bootstrap"}
+    with _connect(db_path) as con:
         before = [r[0] for r in con.execute(
             "SELECT member_id FROM community_members WHERE community_id=%s AND status='active'",
             (community_id,)).fetchall()]
@@ -212,6 +228,27 @@ def is_founder(community_id: str, user_id: str, db_path: str = "pox.db") -> bool
     return row is not None
 
 
+def founder_has_left(community_id: str, user_id: str, db_path: str = "pox.db") -> bool:
+    """創設者が離脱したか（台帳の member.joined / member.left の最後が left か）。"""
+    import ledger_events as le
+    left = False
+    for e in le.get_events(db_path=db_path):
+        p = e["payload"]
+        if p.get("ctx") != community_id or p.get("subject_id") != user_id:
+            continue
+        if e["type"] == "member.left":
+            left = True
+        elif e["type"] == "member.joined":
+            left = False
+    return left
+
+
+def has_founder_rights(community_id: str, user_id: str, db_path: str = "pox.db") -> bool:
+    """創設者としての**権限**（議決・操作）を持つか。在籍している間だけ有効（指示書51 (c)）。
+    「作成者」という**事実の表示**は communities.founder のまま残す（is_founder は事実の判定）。"""
+    return is_founder(community_id, user_id, db_path) and not founder_has_left(community_id, user_id, db_path)
+
+
 def get_my_communities(user_id: str, db_path: str = "pox.db") -> list:
     with _connect(db_path) as con:
         rows = con.execute(
@@ -241,6 +278,9 @@ def update_community(community_id: str, name: str, description: str, requester_i
         row = con.execute("SELECT founder FROM communities WHERE id=%s", (community_id,)).fetchone()
         if row is None or row[0] != requester_id:
             return None
+    if not has_founder_rights(community_id, requester_id, db_path):   # 離脱後は編集できない（51 (c)）
+        return None
+    with _connect(db_path) as con:
         con.execute(
             "UPDATE communities SET name=%s, description=%s WHERE id=%s",
             (name.strip(), (description or "").strip(), community_id),

@@ -114,7 +114,8 @@ function tsDate(t){ return t ? new Date(t).toLocaleDateString("ja-JP") : ""; }
 function kindLabel(k){ return {proposal:"提議", project:"プロジェクト", admission:"加入", chat:"チャット"}[k] || k; }
 function openModal(id){ document.getElementById(id).classList.add("open"); }
 function closeModal(id){ document.getElementById(id).classList.remove("open"); }
-function isMember(){ return !!sessionId && (data.founder === sessionId || (data.members||[]).some(m => m.member_id === sessionId)); }
+// メンバーかどうかはサーバーの判定（viewer_role）に従う。創設者でも離脱後はメンバーではない（指示書51 (c)）。
+function isMember(){ return !!sessionId && data.viewer_role === "member"; }
 
 async function init(){
   const res = await fetch(`/api/community/${encodeURIComponent(communityId)}`);
@@ -146,12 +147,20 @@ function renderJoin(){
     el.innerHTML = `<p class="muted">参加申請にはログインが必要です。<a href="/login?next=${encodeURIComponent(location.pathname)}">ログイン →</a></p>`;
   } else if (isMember()){
     const pending = data.pending || [];   // メンバーにのみ返る（加入はメンバー限定審議）
-    el.innerHTML = pending.length
+    // 指示書51: コミュニティからの離脱（本人の行為だけ。除名は無い）
+    const leave = `<div class="card" id="leaveCommunity" style="margin-top:10px">
+        <div class="muted">離脱しても、実績と持ち分は残ります。あなたの発言も残ります。</div>
+        <button class="btn sm ghost" id="leaveBtn" onclick="askLeave()">このコミュニティから離脱する</button>
+        <span id="leaveConfirm" style="display:none"><span class="muted">離脱しますか？</span>
+          <button class="btn sm" onclick="leaveCommunity(this)">離脱する</button>
+          <button class="btn sm ghost" onclick="cancelLeave()">やめる</button></span>
+        <div id="leaveErr" class="err" style="font-size:13px"></div></div>`;
+    el.innerHTML = leave + (pending.length
       ? `<div class="card"><b>参加申請</b>（加入は既存メンバーの合意で成立します）
          ${pending.map(p => `<div class="row-between" style="margin-top:6px">
             <span><a href="/profile/${encodeURIComponent(p.member_id)}">${esc(p.display_name || "表示名未設定のアカウント")}</a></span>
             <button class="btn sm" onclick="openAdmission('${esc(p.member_id)}')">加入トークを立ち上げる</button></div>`).join("")}</div>`
-      : "";
+      : "");
   } else {
     // 本人面（指示書45 A-2）: 自分の申請の結果と要約だけ。審議の内容は表示しない。
     const mine = data.my_application;
@@ -289,6 +298,21 @@ async function submitLaunch(btn){
 }
 
 /* 達成の提案は当事者（参加者）のみ・実行中プロジェクトの詳細（talk.html）で行う（指示書48 §1-1 / 111）。 */
+
+function askLeave(){ document.getElementById("leaveBtn").style.display = "none";
+  document.getElementById("leaveConfirm").style.display = "inline"; }
+function cancelLeave(){ document.getElementById("leaveBtn").style.display = "inline-flex";
+  document.getElementById("leaveConfirm").style.display = "none"; }
+async function leaveCommunity(btn){
+  btn.disabled = true;
+  const res = await fetch(`/api/community/${encodeURIComponent(communityId)}/leave`, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({member_id: sessionId}) });
+  btn.disabled = false;
+  if (PoX.handle(res)) return;
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok){ document.getElementById("leaveErr").textContent = d.detail || d.error || ("エラー " + res.status); return; }
+  init();
+}
 
 async function applyJoin(btn){
   if (!sessionId){ PoX.loginRedirect(); return; }

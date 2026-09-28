@@ -17,7 +17,7 @@
 | **既存** | 指示書41〜44 の実装時からあるテスト |
 | **未実装** | 実装が無いのでテストも無い（理由を記載） |
 
-テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake, `dorm`=test_dormancy, `hyg`=test_ledger_hygiene, `red`=test_redaction, `traj`=test_trajectory
+テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake, `dorm`=test_dormancy, `hyg`=test_ledger_hygiene, `red`=test_redaction, `traj`=test_trajectory, `leave`=test_leave
 
 ## 1. 台帳・合意
 
@@ -207,3 +207,23 @@
 | 142 | `traj::test_t142_partially_redacted_marker` |
 | 143 | `traj::test_t143_only_standing_necessity` |
 | 144 | `traj::test_t144_view_overrides_no_version` |
+
+## 離脱（指示書51・145〜156）
+
+| 項目 | テスト |
+|---|---|
+| 145 | `leave::test_t145_community_leave_writes_member_left` |
+| 146 | `leave::test_t146_project_leave_writes_event_with_joined_ref` |
+| 147 | `leave::test_t147_left_participant_not_in_later_denominator` |
+| 148 | `leave::test_t148_past_denominator_not_retroactive` |
+| 149・150 | `leave::test_t149_t150_posts_remain_and_removed_from_list` |
+| 151 | `leave::test_t151_after_leave_post_forbidden` |
+| 152 | `leave::test_t152_double_leave_409` |
+| 153 | `leave::test_t153_no_expulsion` |
+| 154 | `leave::test_t154_rights_remain_after_leave` |
+| 155 | `leave::test_t155_only_one_new_event_type` |
+| 156 | `leave::test_t156_visibility_unchanged` |
+| (a) | `leave::test_t051a_launcher_can_leave_but_not_last_one` |
+| (c) | `leave::test_t051c_founder_bootstrap_cannot_leave`, `leave::test_t051c_founder_rights_end_but_fact_remains`, `leave::test_t051c_community_edit_requires_session_founder` |
+| §8-1 | `leave::test_t051_reoffer_after_leave_allowed` |
+| 画面 | `leave::test_t051_leave_affordance_rendered` |

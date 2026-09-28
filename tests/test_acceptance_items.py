@@ -325,7 +325,7 @@ def test_t040_public_talk_content_same_for_all_viewers():
     cid = _community()
     _iid, ptk = _talk_launch_project(cid)
     _cli("u_alice").post(f"/api/talks/{ptk}/posts", json={"body": "進捗"})
-    affordances = {"join_offer", "can_propose_complete", "can_post", "can_vote"}
+    affordances = {"join_offer", "can_propose_complete", "can_post", "can_vote", "can_decline", "leave_state"}
     views = [{k: v for k, v in _cli(s).get(f"/api/talks/{ptk}").get_json().items() if k not in affordances}
              for s in (None, "u_ext", "u_alice")]
     assert views[0] == views[1] == views[2]

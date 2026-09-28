@@ -32,7 +32,8 @@ from ledger import approve, load_all_vessels
 from messages import send_message, get_conversation, get_inbox_summary, get_unread_count
 from community import (create_community, get_community, get_all_communities,
                        request_join, approve_member, get_members, is_member,
-                       is_founder, get_pending_requests, update_community)
+                       is_founder, get_pending_requests, update_community,
+                       has_founder_rights)
 from messages import get_community_messages
 
 app = Flask(__name__)
@@ -1926,7 +1927,7 @@ def _is_ctx_member(ctx, viewer):
     """viewer が ctx（コミュニティ）の成立メンバーか（founder 含む）。判定はセッション基準。"""
     if not viewer or not ctx:
         return False
-    return is_member(ctx, viewer, db_path=DB) or is_founder(ctx, viewer, db_path=DB)
+    return is_member(ctx, viewer, db_path=DB) or has_founder_rights(ctx, viewer, db_path=DB)
 
 
 def _intent_visible(intent, is_member_viewer):
@@ -2057,7 +2058,7 @@ def api_approve_member(community_id):
     approver_id = require_self((body.get("approver_id") or "").strip() or None) or ""
     if not member_id or not approver_id:
         return jsonify({"error": "member_id と approver_id が必要です"}), 400
-    if not is_founder(community_id, approver_id, db_path=DB):
+    if not has_founder_rights(community_id, approver_id, db_path=DB):
         return jsonify({"error": "承認権限がありません"}), 403
     result = approve_member(community_id, member_id, db_path=DB)
     return jsonify(result), 200
@@ -2215,7 +2216,7 @@ def _member_of_any_community(sid):
     if not sid:
         return False
     from community import get_all_communities, is_member, is_founder
-    return any(is_member(c["id"], sid, db_path=DB) or is_founder(c["id"], sid, db_path=DB)
+    return any(is_member(c["id"], sid, db_path=DB) or has_founder_rights(c["id"], sid, db_path=DB)
                for c in get_all_communities(db_path=DB))
 
 
@@ -2284,6 +2285,14 @@ def _talk_public_view(talk):
         and _is_participant((talk.get("target") or {}).get("intent_id"), sid))
     # 発言欄・投票の出し分け（指示書48 115）。権限の最終判定は API（403）。
     can_post = bool(sid and not closed and _can_participate_talk(talk, sid))
+    # 離脱の導線（当事者・実行中のみ）。最後の 1 人は出すが押せない（理由を表示・51 (a)）
+    leave_state = None
+    if talk["kind"] == talks.PROJECT and not closed and sid:
+        _iid = (talk.get("target") or {}).get("intent_id")
+        if _is_participant(_iid, sid):
+            import governance as _gov
+            leave_state = ("last" if _gov.participants_at(_iid, 10**18, db_path=DB) == {sid}
+                           else "can")
     can_vote = bool(can_post and talk["kind"] in talks.DECISION_KINDS
                     and not _is_join_offerer_only(talk, sid))
     # 加入の見送りの確定（メンバーのみ・反対が表明されているときだけ・45 A-1）
@@ -2299,7 +2308,8 @@ def _talk_public_view(talk):
             "can_propose_complete": can_propose_complete,   # 当事者の達成提案可否（§48 111）
             "can_post": can_post,                # 発言欄を出すか（§48 115）
             "can_vote": can_vote,
-            "can_decline": can_decline,          # 加入の見送りを確定できるか（45 A-1）                # 賛成/反対を出すか（分母外の申し出者には出さない・108-r）
+            "can_decline": can_decline,
+            "leave_state": leave_state,          # 離脱の導線（None／"can"／"last"・指示書51）          # 加入の見送りを確定できるか（45 A-1）                # 賛成/反対を出すか（分母外の申し出者には出さない・108-r）
             "denominator": denominator,          # 参加・達成の分母（基準点の参加者頭数・§47 §4）
             "created_by_name": names.get(talk["created_by"], talk["created_by"]),
             "posts": [{"post_id": p["post_id"], "author": p["author"],
@@ -2386,7 +2396,7 @@ def api_project_join_options(intent_id):
     out = []
     for c in get_all_communities(db_path=DB):
         cid = c["id"]
-        if not (is_member(cid, sid, db_path=DB) or is_founder(cid, sid, db_path=DB)):
+        if not (is_member(cid, sid, db_path=DB) or has_founder_rights(cid, sid, db_path=DB)):
             continue
         consent = None
         for e in le.get_events(type_="purpose.agreed", db_path=DB):
@@ -2573,7 +2583,49 @@ def api_leave_community(community_id):
     if not member_id:
         return jsonify({"error": "member_id が必要です"}), 400
     from community import leave_community
-    return jsonify(leave_community(community_id, member_id, db_path=DB)), 200
+    r = leave_community(community_id, member_id, db_path=DB)
+    reasons = {
+        "not_member": "このコミュニティのメンバーではありません（既に離脱済みの場合を含む）。",
+        "last_member": "最後のメンバーは離脱できません（誰も何も合意できなくなるため）。",
+        "founder_bootstrap": "コミュニティで最初のプロジェクトが完了するまでは、創設者は離脱できません。",
+    }
+    if r["status"] in reasons:
+        return jsonify({"error": r["status"], "detail": reasons[r["status"]]}), 409
+    return jsonify(r), 200
+
+
+@app.post("/api/projects/<intent_id>/leave")
+@login_required
+def api_project_leave(intent_id):
+    """プロジェクトからの離脱（指示書51）。本人のみ（除名は作らない）。個人の離脱だけを扱う
+    （コミュニティとしての参加の離脱は未決・51 (b)）。発言は残り、当事者の集合から外れるだけ。
+    実績・持ち分・将来の発行の権利は本人に帰属したまま（41 §7-1）。
+
+      401 未ログイン／403 当事者でない／409 既に離脱済み・完了済み・最後の 1 人／404 不明なプロジェクト
+    """
+    import governance as gov
+    import talks
+    sid = current_subject_id()
+    ctx = gov.intent_ctx(intent_id, db_path=DB)
+    if ctx is None:
+        return jsonify({"error": "not_found"}), 404
+    if gov.has_left_project(intent_id, sid, db_path=DB):
+        return jsonify({"error": "already_left", "detail": "このプロジェクトからは既に離脱しています。"}), 409
+    if not _is_participant(intent_id, sid):
+        return jsonify({"error": "このプロジェクトの当事者ではありません"}), 403
+    proj = next((t for t in talks.list_talks(ctx, db_path=DB)
+                 if t["kind"] == talks.PROJECT and (t["target"] or {}).get("intent_id") == intent_id), None)
+    if proj is not None and talks.is_closed(proj, db_path=DB):
+        return jsonify({"error": "completed",
+                        "detail": "完了したプロジェクトからは離脱できません（離脱は実行中のみ）。"}), 409
+    if gov.participants_at(intent_id, 10**18, db_path=DB) == {sid}:
+        return jsonify({"error": "last_participant",
+                        "detail": "最後の当事者は離脱できません（誰も何も合意できなくなるため）。"}), 409
+    ref = gov.participation_ref(intent_id, sid, db_path=DB)
+    ev = gov.publish_participant_left(intent_id, sid, participant_kind="individual",
+                                      joined_ref=ref, db_path=DB)
+    return jsonify({"intent_id": intent_id, "status": "left", "event_hash": ev["event_hash"],
+                    "joined_ref": ref}), 200
 
 
 @app.post("/api/community/<community_id>/message")
@@ -2589,18 +2641,21 @@ def api_community_message(community_id):
     attachment_url = body.get("attachment_url")
     if not from_id or (not msg_body and not attachment_url):
         return jsonify({"error": "from_id と body か attachment_url が必要です"}), 400
-    if not is_member(community_id, from_id, db_path=DB) and not is_founder(community_id, from_id, db_path=DB):
+    if not is_member(community_id, from_id, db_path=DB) and not has_founder_rights(community_id, from_id, db_path=DB):
         return jsonify({"error": "メンバーではありません"}), 403
     msg = send_message(from_id, community_id, msg_body, attachment_url=attachment_url, db_path=DB)
     return jsonify(msg), 201
 
 
 @app.patch("/api/community/<community_id>")
+@login_required
 def api_community_update(community_id):
+    """コミュニティ名・説明の編集。創設者の権限（在籍中のみ・指示書51 (c)）。
+    requester_id はセッション本人と一致必須（なりすまし防止。以前はログイン不要で body の自己申告を信じていた）。"""
     body = request.get_json(force=True, silent=True)
     if body is None:
         return jsonify({"error": "JSON が読めません"}), 400
-    requester_id = body.get("requester_id")
+    requester_id = require_self((body.get("requester_id") or "").strip() or None)
     name = (body.get("name") or "").strip()
     if not requester_id or not name:
         return jsonify({"error": "requester_id と name が必要です"}), 400

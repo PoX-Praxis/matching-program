@@ -16,6 +16,7 @@
 本文は台帳に載せない（ハッシュのみ・§10 禁則）。
 """
 from canon import sha256_hex
+from datetime import datetime, timezone
 import ledger_events as le
 from member_ledger import members_hash
 from agreement import evaluate_agreement
@@ -54,18 +55,70 @@ def members_at(ctx: str, basis_seq: int, *, db_path: str = "pox.db") -> set:
 
 
 def participants_at(intent_id: str, basis_seq: int, *, db_path: str = "pox.db") -> set:
-    """basis_seq 時点のプロジェクト参加者集合（頭数の分母・§5-2）。立ち上げ者＋参加者。"""
+    """basis_seq 時点のプロジェクトの当事者集合（頭数の分母・§5-2・指示書51 §4）。
+
+    seq の順に: 立ち上げ（代表）で加え、承認された参加で加え、離脱（intent.participant.left）で外す。
+    **seq ≤ basis_seq の事実だけ**を見る（壁時計を使わない）。基準点より後の離脱は、その基準点の
+    分母に遡及しない。離脱後に改めて参加が承認されれば再び加わる。
+    """
     parts: set = set()
     for e in le.get_events(db_path=db_path):
         if e["seq"] > basis_seq:
             break
         p = e["payload"]
-        if e["type"] == "intent.launched" and p.get("intent_id") == intent_id:
+        if p.get("intent_id") != intent_id:
+            continue
+        if e["type"] == "intent.launched":
             parts.add(p.get("launcher"))
-        elif e["type"] == "intent.participant.joined" and p.get("intent_id") == intent_id:
+        elif e["type"] == "intent.participant.joined":
             parts.add(p.get("participant"))
+        elif e["type"] == "intent.participant.left":
+            parts.discard(p.get("participant"))
     parts.discard(None)
     return parts
+
+
+def participation_ref(intent_id: str, participant: str, *, db_path: str = "pox.db"):
+    """participant の現在の参加の根拠イベント（直近の joined、代表なら intent.launched）。
+    離脱の joined_ref に使う。現在参加していなければ None。"""
+    ref = None
+    for e in le.get_events(db_path=db_path):
+        p = e["payload"]
+        if p.get("intent_id") != intent_id:
+            continue
+        if e["type"] == "intent.launched" and p.get("launcher") == participant:
+            ref = e["event_hash"]
+        elif e["type"] == "intent.participant.joined" and p.get("participant") == participant:
+            ref = e["event_hash"]
+        elif e["type"] == "intent.participant.left" and p.get("participant") == participant:
+            ref = None
+    return ref
+
+
+def has_left_project(intent_id: str, participant: str, *, db_path: str = "pox.db") -> bool:
+    """participant に離脱の記録があり、その後に参加し直していないか（二重離脱の判定）。"""
+    left = False
+    for e in le.get_events(db_path=db_path):
+        p = e["payload"]
+        if p.get("intent_id") != intent_id or p.get("participant", p.get("launcher")) != participant:
+            continue
+        if e["type"] == "intent.participant.left":
+            left = True
+        elif e["type"] in ("intent.participant.joined", "intent.launched"):
+            left = False
+    return left
+
+
+def community_has_completed(ctx: str, *, db_path: str = "pox.db") -> bool:
+    """ctx のプロジェクトに intent.completed が 1 件でもあるか（ブートストラップ期の判定）。
+    新しい経路は intent.launched から ctx を解決し、旧経路は payload の ctx を見る。"""
+    launched = {e["payload"].get("intent_id") for e in le.get_events(type_="intent.launched", db_path=db_path)
+                if e["payload"].get("ctx") == ctx}
+    for e in le.get_events(type_="intent.completed", db_path=db_path):
+        p = e["payload"]
+        if p.get("intent_id") in launched or p.get("ctx") == ctx:
+            return True
+    return False
 
 
 def _anchors_after(basis_seq: int, db_path: str) -> list:
@@ -221,6 +274,27 @@ def publish_participant_joined(intent_id, participant, *, participant_kind,
         **_common_items(approvals, basis_seq, ruleset_version, anchor_range_, discussion_hash_),
     }
     return le.append_event(actor or participant, "intent.participant.joined", payload, db_path=db_path)
+
+
+def publish_participant_left(intent_id, participant, *, participant_kind, joined_ref,
+                             actor=None, db_path="pox.db"):
+    """プロジェクトからの離脱（指示書51 §3）。intent.participant.left（新設・1 型のみ）。
+
+    理由・経緯は入れない（人への判断を台帳に残さない）。実績・持ち分・将来の発行の権利は
+    本人に帰属したまま（41 §7-1）で、当事者の集合から外れるだけ。分母への効き方は participants_at。
+    joined_ref: 対応する intent.participant.joined（代表の場合は intent.launched）の event_hash。
+    """
+    if participant_kind not in ("individual", "community"):
+        raise ValueError("participant_kind は 'individual' か 'community'")
+    if not joined_ref:
+        raise ValueError("joined_ref が必要です")
+    at = datetime.now(timezone.utc)
+    payload = {
+        "intent_id": intent_id, "participant": participant,
+        "participant_kind": participant_kind, "joined_ref": joined_ref,
+        "recorded_at": at.strftime("%Y-%m-%dT%H:%M:%S.") + f"{at.microsecond // 1000:03d}Z",
+    }
+    return le.append_event(actor or participant, "intent.participant.left", payload, db_path=db_path)
 
 
 def publish_intent_completed(intent_id, result_hash_, *, approvals, basis_seq,

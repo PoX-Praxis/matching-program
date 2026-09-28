@@ -98,6 +98,7 @@ redaction.recorded {
 | `profile.structured` / `visibility.changed` / `necessity.published` / `necessity.retired` | 使用中 |
 | `connection.established` / `connection.closed` / `anchor.published` | 使用中 |
 | `redaction.recorded` | 使用中（45B で新設） |
+| `intent.participant.left` | 使用中（指示書51 で新設）。プロジェクトからの離脱。`member.left`（コミュニティ所属の離脱）とは目的が別 |
 | `content.removed` | **予約済み・不採用**。指示書17 §5-3 で定義されたが実装されなかった。**実装しない**。削除の記録は `redaction.recorded` が担う（同じ目的の型を 2 つ置かない）。指示書17 の本文が出てきた場合も再利用とはせず、「17 §5-3 の要求を `redaction.recorded` が満たしているか」の確認として扱う |
 
 **指示書17 §5-3 の `content.removed` は実装しない。削除の記録は `redaction.recorded` が担う。**

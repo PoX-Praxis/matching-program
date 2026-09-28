@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """削除の検証の legacy 境界を決める監査（指示書45C §1-2）。読み取りのみ（台帳・DB に書かない）。
 
+HTTP からも同じ処理を実行できる: GET /ledger/audit/legacy-boundary（X-Anchor-Token ヘッダ必須）。
+
 使い方（本番。DATABASE_URL が設定された環境で）:
   python scripts/audit_legacy_boundary.py                         # 段 1: #101 の時刻を境界候補にする
   python scripts/audit_legacy_boundary.py --boundary-at <#113 のデプロイ完了時刻 ISO8601Z>   # 段 2
@@ -15,6 +17,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import redaction  # noqa: E402
 
 
+def run_audit(boundary_at=None, boundary_seq=None, *, db_path="pox.db") -> dict:
+    """監査の本体（CLI と GET /ledger/audit/legacy-boundary の共通）。読み取りのみ。"""
+    boundary_at = boundary_at or redaction.BOUNDARY_CANDIDATE_101_AT
+    seq = boundary_seq if boundary_seq is not None else redaction.seq_before(boundary_at, db_path=db_path)
+    r = redaction.audit_after_boundary(seq, db_path=db_path)
+    r["boundary_at"] = None if boundary_seq is not None else boundary_at
+    r["verdict"] = ("境界として採用できます（不一致 0 件）" if not r["mismatches"]
+                    else "不一致があります。#113 のデプロイ完了時刻で再実行してください")
+    return r
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--boundary-at", default=redaction.BOUNDARY_CANDIDATE_101_AT,
@@ -22,11 +35,7 @@ def main():
     ap.add_argument("--boundary-seq", type=int, default=None, help="時刻の代わりに seq で与える")
     ap.add_argument("--db", default=os.environ.get("POX_DB", "pox.db"))
     a = ap.parse_args()
-    seq = a.boundary_seq if a.boundary_seq is not None else redaction.seq_before(a.boundary_at, db_path=a.db)
-    r = redaction.audit_after_boundary(seq, db_path=a.db)
-    r["boundary_at"] = None if a.boundary_seq is not None else a.boundary_at
-    r["verdict"] = ("境界として採用できます（不一致 0 件）" if not r["mismatches"]
-                    else "不一致があります。#113 のデプロイ完了時刻で再実行してください")
+    r = run_audit(a.boundary_at, a.boundary_seq, db_path=a.db)
     print(json.dumps(r, ensure_ascii=False, indent=2))
     return 0 if not r["mismatches"] else 1
 

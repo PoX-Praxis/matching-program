@@ -363,6 +363,48 @@ def ledger_anchor():
     return jsonify(anchor.run_daily(db_path=DB)), 200
 
 
+@app.get("/ledger/audit/legacy-boundary")
+def ledger_audit_legacy_boundary():
+    """削除の検証の legacy 境界を決める監査（scripts/audit_legacy_boundary.py と同じ処理）。
+
+    Render の Shell が使えないため HTTP から実行できるようにしたもの。読み取りのみ（DB に書かない）。
+    認証は /ledger/anchor と同じ: X-Anchor-Token ヘッダが POX_ANCHOR_TOKEN と一致しなければ 404。
+    ?boundary_at=<UTC ISO8601>（省略時は #101 の main 反映時刻）。
+    返すのは件数・推奨 seq・境界時刻と、不一致の合意の id（event_hash）と seq まで。本文は返さない。
+    """
+    if not (_debug_enabled() or _anchor_token_ok()):
+        abort(404)
+    _root = os.path.dirname(os.path.abspath(__file__))
+    if _root not in sys.path:
+        sys.path.insert(0, _root)          # scripts/ をリポジトリ直下から読む（起動ディレクトリに依らない）
+    from scripts.audit_legacy_boundary import run_audit
+    r = run_audit(request.args.get("boundary_at") or None, db_path=DB)
+
+    def ids(rows):
+        return [{"event_hash": m.get("event_hash") or _agreement_hash_at(m["seq"]), "seq": m["seq"]}
+                for m in rows]
+    return jsonify({
+        "boundary_at": r["boundary_at"],
+        "boundary_seq": r["boundary_seq"],
+        "checked": r["checked"],
+        "mismatch_count": len(r["mismatches"]),
+        "recommended_seq": r["boundary_seq"] if not r["mismatches"] else None,
+        "mismatches": ids(r["mismatches"]),
+        "unresolved_count": len(r["unresolved"]),
+        "unresolved": ids(r["unresolved"]),
+        "verdict": r["verdict"],
+    }), 200
+
+
+def _agreement_hash_at(seq):
+    """seq の台帳イベントの event_hash（監査の不一致行は talk_id を持つため、id は台帳から引く）。"""
+    import ledger_events as le
+    for e in le.get_events(db_path=DB):
+        if e["seq"] == seq:
+            return e["event_hash"]
+    return None
+
+
 @app.post("/seekers")
 def post_seeker():
     """【閉鎖】旧 v3 登録の入口（指示書18 作業C）。

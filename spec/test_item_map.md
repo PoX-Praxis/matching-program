@@ -134,7 +134,8 @@
 | 93-a | `red::test_t093a_legacy_agreement_not_flagged` | 45B→45C で境界を seq に |
 | 93-b | `red::test_t093b_constant_placeholder_reproduces_result_hash` | 45C |
 | 93-c | `red::test_t093c_boundary_unset_fails_fast` | 45C |
-| （監査） | `red::test_t045c_audit_lists_mismatches_after_boundary` | 45C |
+| 93-d（監査） | `red::test_t045c_audit_lists_mismatches_after_boundary` | 45C |
+| （伏せ字の投稿禁止） | `red::test_t093d_placeholder_cannot_be_posted` | 45C |
 | 94 | `red::test_t094_mismatch_is_detected_as_tampering` | 45B |
 | 95 | `red::test_t095_redactions_chain` | 45B |
 | 96 | `red::test_t096_redacted_text_not_in_ledger` | 45B |

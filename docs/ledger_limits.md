@@ -58,6 +58,7 @@ redaction.recorded {
    `UPDATE talk_posts SET body = '【非表示】' WHERE post_id IN (...);`
 3. `redaction.record_redaction(talk_id, target_ref, redacted_post_ids=[...], reason_class=..., decided_by=<運用者のアカウント>)` を呼ぶ。本文が定数そのものでない発言・存在しない発言が含まれていれば**記録を拒否する**（同じ入力から必ず同じ `result_hash` が出るようにするため）。
 - `scope_digest` は発言 id の**集合**の正準化ハッシュで、**順序に依存しない**。
+- 伏せ字の定数そのもの（前後の空白を除いて `【非表示】` だけ）の発言は**投稿できない**（400）。削除済みの発言と区別できなくなるため。
 
 ## legacy の合意と境界（45B §3・45C §1）
 

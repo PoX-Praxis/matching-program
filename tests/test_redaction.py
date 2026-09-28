@@ -264,3 +264,14 @@ def test_t045c_audit_lists_mismatches_after_boundary():
 def test_t045b_agreed_talk_rejects_append():
     tk, ref, pids = _agreed_proposal()
     assert _cli("u_alice").post(f"/api/talks/{tk}/posts", json={"body": "追記"}).status_code == 409
+
+
+# ── すり合わせ §3-6: 伏せ字の定数そのものは発言として投稿できない ──────────────────
+def test_t093d_placeholder_cannot_be_posted():
+    tk, ref, pids = _agreed_proposal()
+    cid = _cli("u_alice").get(f"/api/talks/{tk}").get_json()["ctx"]
+    open_tk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                                   json={"kind": "proposal", "title": "Q", "target": {}}).get_json()["talk_id"]
+    for body in ("【非表示】", "  【非表示】\n"):
+        assert _cli("u_alice").post(f"/api/talks/{open_tk}/posts", json={"body": body}).status_code == 400
+    assert _cli("u_alice").post(f"/api/talks/{open_tk}/posts", json={"body": "【非表示】について"}).status_code == 201

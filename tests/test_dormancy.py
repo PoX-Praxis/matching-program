@@ -120,15 +120,42 @@ def test_t049_agreement_ignores_clock(monkeypatch):
     assert r1 == r2
 
 
-# 休眠の対象外: 加入・参加のトークは長く無活動でも休眠にならない（49 追補 §1-4）
-def test_t049_non_proposal_decision_talks_never_dormant(monkeypatch):
+# 35-d: 加入・参加・達成のトークに休眠が表示されない（#109 で対象を狭めたことを固定する）
+def test_t035d_no_dormancy_on_admission_join_complete(monkeypatch):
     cid, _tk = _open_proposal(monkeypatch)
     _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
     atk = _cli("u_alice").post(f"/api/community/{cid}/talks",
                                json={"kind": "admission", "title": "a",
                                      "target": {"candidate": "u_carol"}}).get_json()["talk_id"]
+    # 合意済みの提議からプロジェクトを立ち上げ、参加と達成の審議中トークを作る（分母2で未成立のまま）
+    ptk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                               json={"kind": "proposal", "title": "PJの目的", "target": {}}).get_json()["talk_id"]
+    _cli("u_alice").post(f"/api/talks/{ptk}/vote", json={"stance": "approve"})
+    _cli("u_bob").post(f"/api/talks/{ptk}/vote", json={"stance": "approve"})
+    purpose = _cli().get(f"/api/talks/{ptk}").get_json()["result"]["purpose_event_hash"]
+    iid = _cli("u_alice").post(f"/api/community/{cid}/projects/launch",
+                               json={"title": "PJ", "purpose_ref": purpose}).get_json()["intent_id"]
+    jtk = _cli("u_bob").post(f"/api/community/{cid}/talks",
+                             json={"kind": "project_join", "title": "j",
+                                   "target": {"intent_id": iid, "participant": "u_bob"}}).get_json()["talk_id"]
+    ctk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                               json={"kind": "project_complete", "title": "c",
+                                     "target": {"intent_id": iid, "result": "r"}}).get_json()["talk_id"]
     _at(monkeypatch, T0 + timedelta(days=365))
-    assert _cli("u_alice").get(f"/api/talks/{atk}").get_json()["display_status"] == "審議中"
+    for tk in (atk, jtk, ctk):
+        st = _cli("u_alice").get(f"/api/talks/{tk}").get_json()["display_status"]
+        assert st != "休眠", (tk, st)
+    rows = _cli("u_alice").get(f"/api/community/{cid}/talks").get_json()["talks"]
+    assert not [t for t in rows if t["kind"] != "proposal" and t["display_status"] == "休眠"]
+
+
+# 票の変更（賛成→反対）も活動に数える（49 追補 §1-1・45C §4-3）
+def test_t049_vote_change_counts_as_activity(monkeypatch):
+    cid, tk = _open_proposal(monkeypatch)                    # u_alice は賛成済み
+    _at(monkeypatch, T0 + timedelta(days=90))
+    assert _status(tk) == "休眠"
+    _cli("u_alice").post(f"/api/talks/{tk}/vote", json={"stance": "dissent"})
+    assert _status(tk) == "審議中"
 
 
 # 休眠の対象外: プロジェクトとチャットは休眠にならない（プロジェクトは 実行中／完了）

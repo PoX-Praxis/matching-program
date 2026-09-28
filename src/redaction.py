@@ -19,6 +19,7 @@
 `content.removed`（指示書17 §5-3）は**実装しない**。削除の記録はこの型だけが担う
 （同じ目的の型を台帳に 2 つ置かない・45B §0）。
 """
+import os
 from datetime import datetime, timezone
 
 import ledger_events as le
@@ -31,14 +32,33 @@ HASH_KIND_DISCUSSION = "discussion"      # v1 で記録するのは発言（disc
 CANON_VERSION = "v1"                     # discussion_hash v1（docs/ledger_limits.md で凍結）
 REASON_CLASSES = ("legal", "subject_request")
 
-# legacy の境界（45B §3）: 合意済みトークへの追記を止めた PR #101 が main に入った時刻（UTC）。
-# これより前に記録された合意は、合意後の追記が止められていなかったため、再計算が一致しなくても
-# 改ざんとは判定しない（台帳の保存値を正とする）。本番台帳の境界 seq は運用側で確定し
-# LEGACY_BOUNDARY_SEQ に設定する（設定されていれば seq で判定し、無ければ時刻で判定する）。
-LEGACY_BOUNDARY_AT = "2026-09-23T08:49:23.000Z"
-LEGACY_BOUNDARY_SEQ = None
-# 監査の起点（境界の候補）: #101 が main に入った時刻。
-BOUNDARY_CANDIDATE_101_AT = LEGACY_BOUNDARY_AT
+# 伏せ字（45C §2）。削除する発言の本文を**この文字列そのもの**（前後の空白・改行なし）に
+# 置き換える。行は消さない（消すと並びと投稿者が失われ、再計算できない）。粒度は発言単位。
+REDACTED_BODY = "【非表示】"
+
+# legacy の境界（45B §3・45C §1）。境界 seq **以下**の合意は、合意後の追記が止められていなかった
+# （#101 以前）か並び順が挿入順に確定していなかった（#113 以前）ため、再計算が一致しなくても
+# 改ざんとは判定しない（台帳の保存値を正とする）。値は環境変数 POX_LEGACY_BOUNDARY_SEQ で与える。
+# **未設定・不正ならフォールバックしない**（legacy なし／全件 legacy のどちらにも倒さず例外。45C §1-1）。
+LEGACY_BOUNDARY_ENV = "POX_LEGACY_BOUNDARY_SEQ"
+# 監査の起点（境界の候補）: #101 が main に入った時刻。seq は docs/ledger_limits.md の監査で確定する。
+BOUNDARY_CANDIDATE_101_AT = "2026-09-23T08:49:23.000Z"
+
+
+class BoundaryNotConfigured(RuntimeError):
+    pass
+
+
+def legacy_boundary_seq() -> int:
+    """POX_LEGACY_BOUNDARY_SEQ（0 以上の整数）を返す。未設定・不正なら例外（フォールバックしない）。"""
+    raw = (os.environ.get(LEGACY_BOUNDARY_ENV) or "").strip()
+    if not raw.isdigit():
+        raise BoundaryNotConfigured(
+            f"{LEGACY_BOUNDARY_ENV} が未設定または不正です（値: {raw!r}）。"
+            "削除の検証（redaction）の legacy 境界であり、未設定のまま動かすと改ざん検出が"
+            "誤検出または空振りします。docs/ledger_limits.md「legacy の合意」の監査手順で"
+            "境界 seq を確定し、環境変数に設定してください。")
+    return int(raw)
 
 
 def _now_ms() -> str:
@@ -69,13 +89,10 @@ def redactions_for(target_ref, *, db_path="pox.db"):
 
 
 def is_legacy(agreement_event, *, boundary_seq=None) -> bool:
-    """境界より前に記録された合意か（45B §3）。台帳には何も書かず、境界の定数で判定する。
-    boundary_seq を渡すとその seq 以下を legacy とする（監査で境界候補を試すため）。"""
-    if boundary_seq is not None:
-        return agreement_event["seq"] <= boundary_seq
-    if LEGACY_BOUNDARY_SEQ is not None:
-        return agreement_event["seq"] <= LEGACY_BOUNDARY_SEQ
-    return agreement_event["at"] < LEGACY_BOUNDARY_AT
+    """境界 seq 以下で記録された合意か。台帳には何も書かず、境界の設定値で判定する。
+    boundary_seq を省略すると POX_LEGACY_BOUNDARY_SEQ を読む（未設定なら例外）。"""
+    b = legacy_boundary_seq() if boundary_seq is None else boundary_seq
+    return agreement_event["seq"] <= b
 
 
 def current_discussion_hash(talk_id, *, db_path="pox.db") -> str:
@@ -103,6 +120,13 @@ def record_redaction(talk_id, target_ref, *, redacted_post_ids, reason_class, de
     target = _target_event(target_ref, db_path)
     if target["payload"].get("talk_id") not in (None, talk_id):
         raise ValueError("target_ref の合意は別のトークのものです")
+    # 伏せ字の手順どおりか（発言単位で、本文が定数そのものに置き換わっているか）を確かめる。
+    bodies = {p["post_id"]: p["body"] for p in talks.get_posts(talk_id, db_path=db_path)}
+    for pid in redacted_post_ids:
+        if pid not in bodies:
+            raise ValueError(f"発言 {pid} がありません（行を消さず本文を伏せ字に置き換えてください）")
+        if bodies[pid] != REDACTED_BODY:
+            raise ValueError(f"発言 {pid} の本文が伏せ字の定数 {REDACTED_BODY!r} ではありません")
     chain = redactions_for(target_ref, db_path=db_path)
     prev_hash = chain[-1]["payload"]["result_hash"] if chain else target["payload"]["discussion_hash"]
     payload = {
@@ -130,6 +154,8 @@ def verify_discussion(talk_id, target_ref, *, boundary_seq=None, db_path="pox.db
       tampered          … 一致しない、または削除記録の連鎖が切れている（改ざん・記録の剥奪）
       legacy_unverified … 境界より前の合意で一致しない（保存値を正とし、改ざんと判定しない）
     """
+    # 境界は照合の前に必ず解決する（未設定なら結果に関わらず例外。静かに無効化しない・45C §1-1）
+    boundary_seq = legacy_boundary_seq() if boundary_seq is None else boundary_seq
     target = _target_event(target_ref, db_path)
     stored = target["payload"]["discussion_hash"]
     chain = [e for e in redactions_for(target_ref, db_path=db_path)

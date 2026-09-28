@@ -265,3 +265,36 @@ def test_t121_decline_and_reapply_not_in_ledger():
     guest = _cli().get(f"/api/community/{cid}").get_json()
     assert "my_application" not in guest and "pending" not in guest
     assert "見送り" not in str(guest)
+
+
+# ── 45C §3: 再申請では前回の審議を引き継がない（119-a）／導線の出し分け（119-b）─────────
+def test_t119a_reapply_starts_fresh_review():
+    cid = _community_with_two_members()
+    old_tk, _ = _decline(cid)                              # 前回: u_bob が反対し、見送りを確定
+    _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    # 前回の加入トークは決定済みのまま（再利用されない・票も発言も持ち越さない）
+    assert _cli("u_bob").post(f"/api/talks/{old_tk}/vote", json={"stance": "dissent"}).status_code == 409
+    new_tk = _cli("u_alice").post(f"/api/community/{cid}/talks",
+                                  json={"kind": "admission", "title": "再申請",
+                                        "target": {"candidate": "u_carol"}}).get_json()["talk_id"]
+    d = _cli("u_alice").get(f"/api/talks/{new_tk}").get_json()
+    assert d["approvals"] == [] and d["dissents"] == [] and d["posts"] == []
+    assert d["can_decline"] is False
+    # 前回の反対が残っていないので、新しい審議では見送りを確定できない（409）
+    assert _cli("u_alice").post(f"/api/talks/{new_tk}/decline", json={}).status_code == 409
+
+
+def test_t119b_no_reapply_affordance_for_member_or_pending():
+    cid = _community_with_two_members()
+    _cli("u_carol").post(f"/api/community/{cid}/join", json={"member_id": "u_carol"})
+    pending = _cli("u_carol").get(f"/api/community/{cid}").get_json()["my_application"]
+    assert pending["status"] == "審議中" and pending["can_reapply"] is False and "message" not in pending
+    member = _cli("u_bob").get(f"/api/community/{cid}").get_json()
+    assert "my_application" not in member                 # 承認済みメンバーには本人面自体が無い
+    assert _cli("u_bob").get("/api/my/applications").get_json()["applications"][0]["can_reapply"] is False
+    # 画面: 再申請ボタンは見送り（can_reapply）のときだけ描く
+    html = open(os.path.join(ROOT, "templates", "community.html"), encoding="utf-8").read()
+    branch = html[html.index('mine.status === "見送り"'):html.index('mine.status === "審議中"')]
+    assert 'id="reapplyBtn"' in branch and "mine.can_reapply" in branch
+    rest = html[html.index('mine.status === "審議中"'):html.index("function renderDeclaration")]
+    assert 'id="reapplyBtn"' not in rest and "もう一度参加を申請する" not in rest

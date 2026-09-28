@@ -93,6 +93,15 @@ if _PROD and not os.environ.get("POX_EMAIL_SALT"):
         "全アカウント喪失につながるため許可しません。Render の環境変数に設定してください"
         "（開発時のみ POX_DEBUG=1 で既定ソルトにフォールバックします）。"
     )
+# POX_LEGACY_BOUNDARY_SEQ は削除の検証（redaction）の legacy 境界。未設定のまま動かすと
+# 改ざん検出が誤検出（legacy なし）か空振り（全件 legacy）になるため、本番では起動を止める
+# （指示書45C §1-1。フォールバックしない）。値は docs/ledger_limits.md の監査で確定する。
+if _PROD:
+    try:
+        import redaction as _redaction
+        _redaction.legacy_boundary_seq()
+    except _redaction.BoundaryNotConfigured as _e:
+        raise SystemExit(f"[FATAL] {_e} Render の環境変数に設定してください。")
 # メール送信設定の漏れは起動を止めないが、本番で未設定なら開発モード（メール不送）に
 # なるため警告する。判定は現在のバックエンド（resend_api / smtp）に応じる。
 if _PROD and not mailer.is_configured():
@@ -2428,6 +2437,10 @@ def api_talk_post(talk_id):
     text = (body.get("body") or "").strip()
     if not text:
         return jsonify({"error": "body が必要です"}), 400
+    import redaction
+    if text == redaction.REDACTED_BODY:
+        # 伏せ字の定数は削除の記録にだけ使う（投稿に使えると削除済みと区別できない・すり合わせ §3-6）
+        return jsonify({"error": f"「{redaction.REDACTED_BODY}」だけの発言は投稿できません"}), 400
     if not _can_participate_talk(talk, sid):
         return jsonify({"error": "このトークに投稿する権限がありません"}), 403
     # closure 済みトークへの追記は拒否（指示書43 §1-4・44 §2）。休眠・審議中は拒否しない。

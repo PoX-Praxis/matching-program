@@ -17,7 +17,7 @@
 | **既存** | 指示書41〜44 の実装時からあるテスト |
 | **未実装** | 実装が無いのでテストも無い（理由を記載） |
 
-テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake, `dorm`=test_dormancy, `hyg`=test_ledger_hygiene, `red`=test_redaction
+テストファイル略記: `acc`=test_acceptance_items, `rights`=test_action_rights, `part`=test_project_participation, `gov`=test_governance_ledger, `flow`=test_talks_flow, `clo`=test_talk_closure, `hier`=test_talk_hierarchy, `http`=test_intent_flow_http, `mem`=test_member_ledger, `agr`=test_agreement, `vis`=test_community_visibility, `intake`=test_community_intake, `dorm`=test_dormancy, `hyg`=test_ledger_hygiene, `red`=test_redaction, `traj`=test_trajectory
 
 ## 1. 台帳・合意
 
@@ -181,3 +181,29 @@
 | 117 | `rights::test_t117_member_not_participant_cannot_post_403` | 48 |
 
 103〜106 は人の確認項目（103: 収束案と票の表示、104: 出自リンク、105: 締め切りバナー、106: 名前の変更不可）で、自動テストの対象外。
+
+## 軌跡（指示書50 v3・122〜144）
+
+| 項目 | テスト |
+|---|---|
+| 122 | `traj::test_t122_version_tree` |
+| 123 | `traj::test_t123_third_party_sees_text` |
+| 124・125 | `traj::test_t124_t125_evidence_numbers_raw_owner_only` |
+| 126 | `traj::test_t126_connection_shows_both_versions` |
+| 127・128 | `traj::test_t127_t128_hidden_version` |
+| 129 | `traj::test_t129_setbacks_not_on_trajectory` |
+| 129-a | `traj::test_t129a_pending_admission_not_a_branch` |
+| 130 | `traj::test_t130_no_ledger_events` |
+| 131 | `traj::test_t131_append_only_and_visibility_history` |
+| 132 | `traj::test_t132_decoration_does_not_create_version_and_gaps_visible` |
+| 133 | `traj::test_t133_current_version_shown_above` |
+| 134 | `traj::test_t134_anchor_page_noindex` |
+| 135 | `traj::test_t135_no_cross_listing_routes` |
+| 136 | `traj::test_t136_connection_other_display_name` |
+| 137 | `traj::test_t137_causality_note` |
+| 138 | `traj::test_t138_hidden_default_off` |
+| 139 | `traj::test_t139_all_kinds_present` |
+| 140・141 | `traj::test_t140_t141_no_magnitude_styling_or_time_scale` |
+| 142 | `traj::test_t142_partially_redacted_marker` |
+| 143 | `traj::test_t143_only_standing_necessity` |
+| 144 | `traj::test_t144_view_overrides_no_version` |

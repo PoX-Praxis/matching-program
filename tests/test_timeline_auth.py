@@ -56,7 +56,8 @@ def test_viewer_query_does_not_grant_owner():
     it = _snapshot_item(data)
     assert "evidence_span" not in it
     assert "numbers" not in it
-    assert "will_text" not in it        # 現状・意志も第三者には出ない
+    # 指示書50 v3 §1（F5 撤回）: 第三者にも本文は出る。本人の特権（根拠・数値）は偽装で得られない
+    assert "will_text" in it
 
 
 def test_logged_in_other_with_viewer_spoof_is_not_owner():

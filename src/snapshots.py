@@ -131,15 +131,42 @@ def get_snapshots(user_id, db_path="pox.db"):
     return out
 
 
+_VIS_LOG_DDL = """CREATE TABLE IF NOT EXISTS snapshot_visibility_log (
+    snapshot_id TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    hidden      INTEGER NOT NULL,
+    changed_at  TEXT NOT NULL
+)"""
+
+
 def set_snapshot_hidden(snapshot_id, user_id, hidden, db_path="pox.db") -> bool:
     """
     本人が「この時点の中身を第三者に非公開」を切り替える（指示書12改訂 §4-4）。
     所有者一致（user_id）のときだけ更新。戻り値: 更新できたか。
     消すのではなく第三者表示を止めるだけ（記録・当事者相手への表示は残る）。
+    変更は snapshot_visibility_log に**追記型の履歴**として残す（指示書50 v3 §2-2。表示はしない）。
     """
     with _connect(db_path) as con:
+        if not is_postgres():
+            con.execute(_VIS_LOG_DDL)
         cur = con.execute(
             "UPDATE user_snapshots SET vulnerable_hidden=%s WHERE snapshot_id=%s AND user_id=%s",
             (1 if hidden else 0, snapshot_id, user_id),
         )
-        return bool(getattr(cur, "rowcount", 0))
+        ok = bool(getattr(cur, "rowcount", 0))
+        if ok:
+            con.execute(
+                "INSERT INTO snapshot_visibility_log (snapshot_id, user_id, hidden, changed_at) "
+                "VALUES (%s,%s,%s,%s)", (snapshot_id, user_id, 1 if hidden else 0, _now()))
+        return ok
+
+
+def get_visibility_log(snapshot_id, db_path="pox.db") -> list:
+    """伏せの変更履歴（古い順）。表示はしない（監査・テスト用）。"""
+    with _connect(db_path) as con:
+        if not is_postgres():
+            con.execute(_VIS_LOG_DDL)
+        rows = con.execute(
+            "SELECT hidden, changed_at FROM snapshot_visibility_log WHERE snapshot_id=%s "
+            "ORDER BY changed_at ASC", (snapshot_id,)).fetchall()
+    return [{"hidden": bool(r[0]), "changed_at": r[1]} for r in rows]

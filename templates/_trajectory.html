@@ -1,0 +1,103 @@
+{#- 軌跡（版ごとのツリー・指示書50 v3）の共通描画。mypage（本人）・profile（相手/第三者）・
+    /trajectory/<id> が include する。可視性の絞り込みはサーバー（/api/timeline）が閲覧者の役割で行う。
+    - 色は種別の識別だけ（ラベル併記）。変化の大小で濃淡・太さを変えない（§3-6）。
+    - 時間は等間隔にしない（版で刻み、日付を添える・§3-2）。
+    - 因果の矢印・「なぜ」の欄を作らない。 -#}
+<style>
+  .tj-count { font-size:12.5px; color:#555; margin:4px 0 12px; }
+  .tj-ver { border-left:2px solid #d5dae1; padding:6px 0 10px 14px; margin:0 0 12px; }
+  .tj-ver:target { background:#fffbe6; }
+  .tj-vh { font-size:13px; font-weight:bold; color:#1f3a5f; }
+  .tj-vh .d { font-weight:normal; color:#888; margin-left:8px; font-size:12px; }
+  .tj-vh .src { font-weight:normal; color:#888; margin-left:6px; font-size:11.5px; }
+  .tj-body { font-size:13px; line-height:1.7; margin:6px 0; }
+  .tj-body .k { color:#666; font-size:12px; margin-right:4px; }
+  .tj-muted { color:#888; font-size:12.5px; }
+  .tj-br { list-style:none; margin:6px 0 0; padding:0; }
+  .tj-br li { font-size:12.5px; padding:3px 0 3px 12px; position:relative; }
+  .tj-br li::before { content:"├"; position:absolute; left:0; color:#bbb; }
+  .tj-br li:last-child::before { content:"└"; }
+  .tj-tag { display:inline-block; font-size:11px; font-weight:bold; border-radius:3px; padding:0 6px; margin-right:6px; }
+  .tj-connection, .tj-connection_ended { background:#e8f4ec; color:#1a6a3a; }
+  .tj-joined_project { background:#eef2ff; color:#33417a; }
+  .tj-joined_community { background:#f3eefb; color:#5a3a82; }
+  .tj-completed { background:#fdf3e7; color:#8a5a1a; }
+  .tj-declared { background:#eef4f7; color:#2a5a6e; }
+  .tj-br .d { color:#888; margin-left:6px; font-size:11.5px; }
+  .tj-redacted { color:#8a5a1a; font-size:11.5px; margin-left:6px; }
+  .tj-note { font-size:12px; color:#888; margin-top:10px; }
+</style>
+<script>
+window.PoXTrajectory = (function(){
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const date = at => at ? new Date(at).toLocaleDateString("ja-JP") : "";
+  const NOTE = "並び順は時間順であり、因果ではありません。";
+  const LABEL = {connection:"接続", connection_ended:"接続の終了", joined_project:"参加",
+                 joined_community:"加入", completed:"完了", declared:"宣言"};
+  const STATE = {state_have:"持っているもの", state_can_type:"繰り返し現れる固有の型", state_bound:"縛られているもの", state_unsorted:"その他"};
+  const ver = n => (n == null ? "?" : n);
+
+  function branch(b){
+    let text;
+    const link = (t) => b.url ? `<a href="${esc(b.url)}">${esc(t)}</a>` : esc(t);
+    if (b.kind === "connection")
+      text = `${link(b.other_name)}（自分 第${ver(b.self_version)}版 × ${esc(b.other_name)} 第${ver(b.other_version)}版）`;
+    else if (b.kind === "connection_ended") text = `${link(b.other_name)} との接続が終わりました`;
+    else if (b.kind === "joined_project" || b.kind === "completed") text = `プロジェクト「${link(b.title)}」`;
+    else if (b.kind === "joined_community") text = `コミュニティ「${link(b.title)}」`;
+    else if (b.kind === "declared") text = `提議「${link(b.title)}」を立ち上げ`;
+    else text = esc(b.kind);
+    const red = b.partially_redacted ? `<span class="tj-redacted">一部が伏せられています</span>` : "";
+    return `<li><span class="tj-tag tj-${esc(b.kind)}">${esc(LABEL[b.kind] || b.kind)}</span>${text}<span class="d">${esc(date(b.at))}</span>${red}</li>`;
+  }
+
+  function content(v, opts){
+    if (v.current) return `<div class="tj-body tj-muted">※ 本文は上の「いまの姿」に表示中</div>`;
+    const c = v.content;
+    if (!c) return `<div class="tj-body tj-muted">この時点の内容は第三者には表示されません（日付と出来事は残っています）</div>`;
+    const rows = [];
+    if (c.will_text) rows.push(`<div><span class="k">意志</span>${esc(c.will_text)}</div>`);
+    const st = Object.entries(c.state || {}).filter(([,x]) => x);
+    if (st.length) rows.push(`<div><span class="k">現状</span>${st.map(([k,x]) => `${esc(STATE[k] || k)}: ${esc(x)}`).join(" ／ ")}</div>`);
+    if (c.necessity_text) rows.push(`<div><span class="k">必要としている相手</span>${esc(c.necessity_text)}</div>`);
+    if (opts.owner && c.evidence_span) rows.push(`<div><span class="k">根拠</span>${esc(c.evidence_span)}</div>`);
+    return `<div class="tj-body">${rows.join("") || '<span class="tj-muted">—</span>'}</div>`;
+  }
+
+  function toggle(v, opts){
+    if (!opts.owner || !opts.onToggle) return "";
+    return `<div><label style="font-size:11.5px;color:#666">
+      <input type="checkbox" ${v.vulnerable_hidden ? "checked" : ""} onchange="PoXTrajectory._toggle('${esc(v.snapshot_id)}', this.checked, this)">
+      この時点の内容を第三者に見せない</label></div>`;
+  }
+
+  let _onToggle = null;
+  function render(el, data, opts){
+    opts = opts || {};
+    _onToggle = opts.onToggle || null;
+    const vs = data.versions || [];
+    const before = data.before_first_version || [];
+    let h = vs.length
+      ? `<div class="tj-count">第1版から第${ver(vs[vs.length-1].n)}版まで（${data.change_count}回変わりました）</div>`
+      : `<div class="tj-count">まだ版はありません。</div>`;
+    if (before.length) h += `<section class="tj-ver"><div class="tj-vh">最初の版より前</div><ul class="tj-br">${before.map(branch).join("")}</ul></section>`;
+    h += vs.map(v => `<section class="tj-ver" id="${esc(v.anchor)}">
+        <div class="tj-vh">第${ver(v.n)}版${v.current ? "（現在）" : ""}<span class="d">${esc(date(v.at))}</span><span class="src">${esc(v.source)}</span></div>
+        ${content(v, opts)}${toggle(v, opts)}
+        ${v.branches.length ? `<ul class="tj-br">${v.branches.map(branch).join("")}</ul>` : ""}
+      </section>`).join("");
+    h += `<p class="tj-note">${NOTE}</p>`;
+    el.innerHTML = h;
+    if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) t.scrollIntoView(); }
+  }
+
+  async function load(el, userId, opts){
+    try {
+      const r = await fetch(`/api/timeline/${encodeURIComponent(userId)}`);
+      render(el, await r.json(), opts);
+    } catch (e) { el.innerHTML = `<span class="tj-muted">軌跡を読み込めませんでした。</span><p class="tj-note">${NOTE}</p>`; }
+  }
+
+  return { load, render, NOTE, _toggle: (sid, hidden, cb) => _onToggle && _onToggle(sid, hidden, cb) };
+})();
+</script>

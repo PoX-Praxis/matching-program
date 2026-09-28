@@ -1,0 +1,41 @@
+{% extends "_base.html" %}
+{% block title %}軌跡 — PoX{% endblock %}
+{% block head %}
+<style>
+  a.back { font-size: 13px; color: #555; text-decoration: none; }
+  .muted { color:#888; font-size:13px; }
+</style>
+{% include "_profile_view.html" %}
+{% include "_trajectory.html" %}
+{% endblock %}
+{% block content %}
+{#- 軌跡のページ（指示書50 v3 §3-5）。過去版は単独ページにせず #vN のアンカーで指す。
+    公開（誰でも読める）だが X-Robots-Tag: noindex（サーバーが付ける）。閲覧者の役割で本文の範囲が変わる。 -#}
+<main class="l-prose pv">
+<a href="/profile/{{ user_id|urlencode }}" class="back">← プロフィールへ</a>
+
+<h2 class="pv-h">いまの姿<span class="en">NOW</span></h2>
+<div id="pvRoot"><span class="muted">読み込み中です</span></div>
+
+<h2 class="pv-h" style="margin-top:44px">軌跡<span class="en">TRAJECTORY</span></h2>
+<p class="muted">自分の変化と、接続の記録。</p>
+<div id="timeline"><span class="muted">読み込み中です</span></div>
+</main>
+
+<script>
+const userId = {{ user_id|tojson }};
+(async function(){
+  const res = await fetch(`/api/profile/${encodeURIComponent(userId)}`);
+  const root = document.getElementById("pvRoot");
+  if (res.ok) {
+    const pv = await res.json();
+    PoXProfileView.render(root, pv, { mode: "public" });
+    const nec = document.getElementById("pvNecessity");
+    if (nec) PoXProfileView.renderNecessity(nec, pv, "public");
+  } else {
+    root.innerHTML = '<span class="muted">プロフィールが見つかりません。</span>';
+  }
+  PoXTrajectory.load(document.getElementById("timeline"), userId, { owner: false });
+})();
+</script>
+{% endblock %}

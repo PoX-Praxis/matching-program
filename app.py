@@ -451,16 +451,18 @@ def get_seekers():
 
 
 @app.post("/match")
+@login_required
 def post_match():
     """
-    seeker_id の seeker（非公開）を使ってマッチング。ranking のみ返す。
-    seeker 原文はレスポンスに含まれない。
+    （旧 v3）本人の seeker で照合する。**本人のみ**（指示書55 PR-A: 以前は未認証で body の
+    seeker_id を信じ、誰の照合でも実行できた）。**応答に数値・順位・理由文を入れない**
+    （候補の id を中立の順で返すだけ。スコアは内部でのみ使う）。
     """
     body = request.get_json(force=True, silent=True)
     if body is None:
         abort(400, "JSON が読めません")
 
-    seeker_id = body.get("seeker_id")
+    seeker_id = require_self((body.get("seeker_id") or "").strip() or None)
     want      = body.get("want", "balanced")
 
     target_seeker = get_seeker(seeker_id, db_path=DB)
@@ -479,9 +481,10 @@ def post_match():
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 503
 
-    result["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
-    result["demo_mode"] = demo_mode
-    return jsonify(result)
+    # 数値・順位・理由文（数値を含む）は返さない。候補の id だけを中立の順（id 順）で返す。
+    ids = sorted(r["id"] for r in result.get("ranking", []))
+    return jsonify({"match_run_id": f"run_{uuid.uuid4().hex[:8]}", "demo_mode": demo_mode,
+                    "ranking": [{"id": i} for i in ids]})
 
 
 _IMPL_KEYWORDS = [
@@ -1209,22 +1212,25 @@ def _match_by_necessity(store, necessity_id, *, model_tag, top_k=None, write_led
 
 
 @app.post("/v4/match")
+@login_required
 def post_v4_match():
     """
-    seeker_id を起点に v4 エンジンで照合し ranking を返す（E章）。
-    フル次元総当たり（stage1）→ nested complement → 律速軸/寄与率。ledger_v4 に監査記録。
-    seeker の生テキスト・ベクトルはレスポンスに含めない。
+    本人を起点に v4 エンジンで照合する（E章）。ledger_v4 に監査記録。
+    **本人のみ**（指示書55 PR-A: 以前は未認証で body の seeker_id を信じていた）。
+    **応答に `score`・`attribution`（チャネル別の値）を入れない**。返すのは候補の id と
+    「最も効いた軸」の名前だけで、**並びは中立（id 順）**。数値は内部でのみ使う。
     """
     if not is_postgres():
         return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
     body = request.get_json(force=True, silent=True)
     if not isinstance(body, dict):
         return jsonify({"error": "JSON が読めません"}), 400
-    seeker_id = body.get("seeker_id")
+    seeker_id = require_self((body.get("seeker_id") or "").strip() or None)
     if not seeker_id:
         return jsonify({"error": "seeker_id が必要です"}), 400
     top_k = body.get("top_k")
-    migrate_pool = bool(body.get("migrate_pool"))
+    # 旧 v3 利用者の一括 v4 化は運用の操作なので、開発時（POX_DEBUG=1）だけ受け付ける。
+    migrate_pool = bool(body.get("migrate_pool")) and _debug_enabled()
 
     from db_v4 import match_v4
     from embedding_config import MODEL_TAG
@@ -1245,6 +1251,8 @@ def post_v4_match():
     # §7-5: query 単位を必要像へ。明示 necessity_id か、seeker 本人の生きた必要像があれば
     # 必要像起点で照合し、無い/未ベクトル化なら人起点へフォールバック（個人は同一結果）。
     nec_id = body.get("necessity_id") or _seeker_live_necessity_id(seeker_id, db_path=DB)
+    if body.get("necessity_id") and not _can_use_necessity(body["necessity_id"], seeker_id):
+        return jsonify({"error": "この必要像で照合する権限がありません"}), 403
     out = None
     if nec_id:
         try:
@@ -1262,8 +1270,34 @@ def post_v4_match():
         except Exception as e:
             return jsonify({"error": f"照合失敗: {e}"}), 500
 
-    out["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
-    return jsonify(out)
+    return jsonify(_public_match_response(out))
+
+
+def _public_match_response(out):
+    """照合結果の外向きの形（指示書55 PR-A）。score・attribution・順位を出さない。
+    候補の id と最も効いた軸（a/b/c の名前）だけを、中立の順（id 順）で返す。"""
+    from matcher_v4 import effective_axis
+    results = [{"candidate_id": r["candidate_id"], "axis": effective_axis(r["attribution"])}
+               for r in out.get("results", [])]
+    results.sort(key=lambda r: str(r["candidate_id"]))
+    pub = {k: out[k] for k in ("seeker_id", "necessity_id", "query_unit", "model_tag", "pool_size")
+           if k in out}
+    pub["results"] = results
+    pub["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
+    return pub
+
+
+def _can_use_necessity(necessity_id, sid):
+    """sid がこの必要像で照合してよいか（本人の必要像、または所属コミュニティの目的別必要像）。"""
+    try:
+        from necessities import get_necessity
+        nec = get_necessity(necessity_id, db_path=DB)
+    except Exception:  # noqa: BLE001
+        return False
+    if not nec:
+        return False
+    owner = nec.get("owner_ref")
+    return owner == sid or _is_ctx_member(owner, sid)
 
 
 @app.post("/approve")
@@ -1638,8 +1672,11 @@ def _edit_core_v4(profile_id, fields):
 
 
 @app.post("/api/profile/<user_id>/core")
+@login_required
 def api_profile_core(user_id):
-    """「中身を編集」。v4（意志/現状4スロット）対応。profile_view を再生成する。"""
+    """「中身を編集」。v4（意志/現状4スロット）対応。profile_view を再生成する。
+    **本人のみ**（指示書55 PR-A: 以前は未認証で誰のプロフィールでも書き換えられた）。"""
+    user_id = require_self(user_id)
     body = request.get_json(force=True, silent=True) or {}
     fields = {}
     if "意志" in body:
@@ -1667,8 +1704,11 @@ def api_profile_core(user_id):
 
 
 @app.put("/api/profile/<user_id>/overrides")
+@login_required
 def api_profile_overrides(user_id):
-    """「見せ方を編集」の保存。view_overrides のみ更新（再生成なし §5.1）。"""
+    """「見せ方を編集」の保存。view_overrides のみ更新（再生成なし §5.1）。
+    **本人のみ**（指示書55 PR-A: 以前は未認証で誰の見せ方でも書き換えられた）。"""
+    user_id = require_self(user_id)
     body = request.get_json(force=True, silent=True) or {}
     overrides = body.get("overrides", body)
     if not save_view_overrides(user_id, overrides, db_path=DB):

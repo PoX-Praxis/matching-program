@@ -107,6 +107,19 @@ def attribution(seeker_vecs, candidate_vecs, gamma,
     }
 
 
+def effective_axis(attr):
+    """最も効いた軸（指示書55 §1-2）。**律速軸（最も足を引っ張る軸）の逆**。
+
+    有効なチャネル（a・b、c は γ が効いているときだけ）のうち、類似度（guard 後の値）が
+    最も高いものを返す。重み付き log 寄与の最大で選ぶと、重みの小さい c が常に 0 に近く
+    「最大」になってしまうため、重みを掛けない類似度で比べる。数値は外に出さない（名前だけ）。
+    """
+    cands = {"a": attr["ga"], "b": attr["gb"]}
+    if attr.get("c_log_contrib", 0.0) != 0.0:
+        cands["c"] = attr["gc"]
+    return max(cands, key=lambda k: cands[k])
+
+
 # ── E-1: shortlist（256-dim 近傍 / Step 6 で DB HNSW に置換）────────────────
 def shortlist(seeker_q256, candidates_256, k=SHORTLIST_K):
     """

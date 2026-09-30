@@ -385,6 +385,24 @@ def ledger_anchor():
     return jsonify(anchor.run_daily(db_path=DB)), 200
 
 
+@app.post("/ledger/admin/purge-accounts")
+def ledger_admin_purge_accounts():
+    """アカウント整理（指示書55-3 §2。scripts/purge_accounts.py と同じ）。**対象は固定の 4 id のみ**。
+
+    認証は X-Anchor-Token（一致しなければ 404）。**既定は dry-run**（消える行数と、消せない理由を返す）。
+    body {"apply": true} のときだけ削除する（1 トランザクション）。実行時に台帳参照を再確認し、0 でない id は
+    消さない。**実行前に pg_dump を取る**（docs/account_purge.md）。**使用後はルートを閉じる**。
+    """
+    if not (_debug_enabled() or _anchor_token_ok()):
+        abort(404)
+    _root = os.path.dirname(os.path.abspath(__file__))
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+    from scripts.purge_accounts import run_purge
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(run_purge(apply=body.get("apply") is True, db_path=DB)), 200
+
+
 @app.get("/ledger/audit/legacy-boundary")
 def ledger_audit_legacy_boundary():
     """削除の検証の legacy 境界を決める監査（scripts/audit_legacy_boundary.py と同じ処理）。

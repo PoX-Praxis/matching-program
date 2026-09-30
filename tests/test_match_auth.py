@@ -143,6 +143,7 @@ def test_t194_t161_profile_edit_self_only(monkeypatch, method, path, body):
 ALLOWED_UNAUTH_WRITES = {
     "/auth/request", "/auth/logout",                       # ログインそのもの
     "/ledger/anchor",                                      # X-Anchor-Token（外部スケジューラ）
+    "/ledger/admin/purge-accounts",                        # X-Anchor-Token（一回限りのアカウント整理・使用後に閉じる）
     "/seekers",                                            # 410（閉鎖済みの旧登録）
     "/api/community/<community_id>/intent/propose", "/api/community/<community_id>/declare",
     "/api/intent/<intent_id>/agree", "/api/intent/<intent_id>/complete",

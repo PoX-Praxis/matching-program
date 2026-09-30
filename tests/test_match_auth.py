@@ -13,7 +13,6 @@ import pytest
 import app as appmod
 import necessities as N
 from db_v4 import MemoryStore
-from embedding_service import build_vectors
 from embedding_config import MODEL_TAG
 from matcher_v4 import attribution, effective_axis
 from necessity_gen import compute_gamma
@@ -25,6 +24,14 @@ def _cli(sid=None):
         with c.session_transaction() as s:
             s["subject_id"] = sid
     return c
+
+
+# 合成ベクトル（2 次元）。照合の数式は次元に依存しない。me と c1 は噛み合い、c2 は逆向き。
+V = {"me": [1.0, 0.0], "c1": [1.0, 0.0], "c2": [-1.0, 0.0]}
+
+
+def _vecs(x):
+    return {k: list(x) for k in ("will_symmetric", "will_passage", "state_passage", "necessity_query")}
 
 
 @pytest.fixture
@@ -44,9 +51,11 @@ def v4(monkeypatch):
         store.save_necessity(pid, MODEL_TAG, {"necessity_text": nec, "gate_s": 0.6, "gate_u": 0.3,
                                               "p_sharpness": 0.0, "alpha": 1.0, "beta": 1.0,
                                               "gamma": gamma, "evidence_span": ""})
-        store.save_vectors(pid, MODEL_TAG, build_vectors({"will_text": will, "state_have": have}, nec))
+        store.save_vectors(pid, MODEL_TAG, _vecs(V[pid]))
     monkeypatch.setattr(appmod, "is_postgres", lambda: True)
     monkeypatch.setattr(appmod, "_v4_store", lambda: store)
+    monkeypatch.setattr(appmod, "_matching_available", lambda: True)      # 実バックエンド相当
+    monkeypatch.setattr(appmod, "_linked_ids", lambda ids: set(ids))       # 全員が本人と紐づく
     import migrate_v4
     monkeypatch.setattr(migrate_v4, "ensure_migrated", lambda *a, **k: None)
     return store
@@ -80,8 +89,9 @@ def test_t162_no_numbers_in_response(v4):
     for k in ("score", "attribution", "a_sim", "b_sim", "c_sim", "final", "limiting_axis",
               "log_contrib", "rank", "gamma", "alpha", "beta"):
         assert k not in blob, k
-    assert [set(r) for r in d["results"]] == [{"candidate_id", "axis"}] * 2
-    assert [r["candidate_id"] for r in d["results"]] == sorted(r["candidate_id"] for r in d["results"])
+    assert [r["candidate_id"] for r in d["results"]] == ["c1"]                # c2 は入口の閾値未満
+    assert set(d["results"][0]) == {"candidate_id", "name", "one_liner", "axis", "reasons"}
+    assert "pool_size" not in d                                                 # 件数も出さない（170）
 
 
 def test_t162_legacy_match_returns_ids_only(monkeypatch):
@@ -113,7 +123,7 @@ def test_t165_effective_axis_is_strongest_not_limiting():
 def test_t165_ui_no_longer_uses_limiting_axis_or_score():
     html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
     assert "limiting_axis" not in html and "総合" not in html and "sortMode" not in html   # 163・164 の先取り
-    assert "AXIS[r.axis]" in html
+    assert "AXIS[r.axis]" in html and "意志が近い" in html and "足りないところを埋める" in html
 
 
 # ── 同型の一巡: プロフィールの編集は本人のみ（以前は未認証で書き換えられた）─────────────
@@ -121,7 +131,7 @@ def test_t165_ui_no_longer_uses_limiting_axis_or_score():
     ("post", "/api/profile/u_a/core", {"意志": "乗っ取り"}),
     ("put", "/api/profile/u_a/overrides", {"overrides": {"x": 1}}),
 ])
-def test_t161_profile_edit_self_only(monkeypatch, method, path, body):
+def test_t194_t161_profile_edit_self_only(monkeypatch, method, path, body):
     monkeypatch.delenv("POX_DEBUG", raising=False)
     appmod.DB = os.path.join(tempfile.mkdtemp(), "t.db")
     assert getattr(_cli(), method)(path, json=body).status_code == 401
@@ -140,7 +150,7 @@ ALLOWED_UNAUTH_WRITES = {
 }
 
 
-def test_no_unexpected_unauthenticated_write_routes():
+def test_t193_no_unexpected_unauthenticated_write_routes():
     bad = []
     for r in appmod.app.url_map.iter_rules():
         if not ({"POST", "PUT", "PATCH", "DELETE"} & set(r.methods)):

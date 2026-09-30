@@ -11,7 +11,9 @@ schema_v4 の vector 列サイズもここを参照する（列サイズと embe
 import os
 
 # ── モデル・次元（A-3 / H-3）──────────────────────────────────────────────
-MODEL_TAG = os.environ.get("POX_EMBED_MODEL_TAG", "qwen3-embedding-0.6b-d1024")
+# REQUESTED_MODEL_TAG は「どのモデルの次元・prefix で作るか」。実際に行へ付けるタグ（MODEL_TAG）は
+# バックエンドの解決後に決める（下の「タグの規則」。stub は実タグと分離する）。
+REQUESTED_MODEL_TAG = os.environ.get("POX_EMBED_MODEL_TAG", "qwen3-embedding-0.6b-d1024")
 
 # モデルごとの出力次元（FULL_DIM）。3モデルすべて実機確認済み。
 MODEL_DIMS = {
@@ -25,10 +27,10 @@ _dim_override = os.environ.get("POX_EMBED_FULL_DIM")
 if _dim_override:
     FULL_DIM = int(_dim_override)
 else:
-    FULL_DIM = MODEL_DIMS.get(MODEL_TAG)
+    FULL_DIM = MODEL_DIMS.get(REQUESTED_MODEL_TAG)
     if FULL_DIM is None:
         raise ValueError(
-            f"MODEL_TAG={MODEL_TAG!r} の FULL_DIM が未確定です。"
+            f"MODEL_TAG={REQUESTED_MODEL_TAG!r} の FULL_DIM が未確定です。"
             "実機で次元を確認し MODEL_DIMS に追記するか、"
             "POX_EMBED_FULL_DIM 環境変数で指定してください。"
         )
@@ -76,10 +78,29 @@ _PREFIX_BY_MODEL = {
     },
 }
 
-PREFIX = _PREFIX_BY_MODEL.get(MODEL_TAG, _PREFIX_BY_MODEL["qwen3-embedding-0.6b-d1024"])
+PREFIX = _PREFIX_BY_MODEL.get(REQUESTED_MODEL_TAG, _PREFIX_BY_MODEL["qwen3-embedding-0.6b-d1024"])
 
 # ── バックエンド選択（stub | qwen3 | embgemma | nomic）────────────────────
+# 解決は「環境変数 → コードの既定」の 2 段だけ。backend と model_tag は別の環境変数。
 BACKEND = os.environ.get("POX_EMBED_BACKEND", "stub")
+BACKEND_ENV_SET = "POX_EMBED_BACKEND" in os.environ
+MODEL_TAG_ENV_SET = "POX_EMBED_MODEL_TAG" in os.environ
+
+# ── タグの規則（指示書55-2 B-1-4）─────────────────────────────────────────
+# 照合は同じ model_tag の行どうしでしか行わない。stub（意味を持たない擬似ベクトル）が実モデルの
+# タグで保存されると、実物と同じ母集団に混ざって後から区別できない。そこで:
+#   - stub のタグは常に "stub-d<次元>"（実タグと必ず分離される＝混在が起きえない）
+#   - 実バックエンドのタグは "<backend>-" で始まること（既存の nomic-emb-v2 等は元々この形で、
+#     改名しない）。backend とタグが食い違う設定（例: backend=nomic・tag=qwen3-…）は起動時に止める。
+if BACKEND == "stub":
+    MODEL_TAG = f"stub-d{FULL_DIM}"
+else:
+    MODEL_TAG = REQUESTED_MODEL_TAG
+    if not MODEL_TAG.startswith(f"{BACKEND}-"):
+        raise ValueError(
+            f"POX_EMBED_BACKEND={BACKEND!r} と POX_EMBED_MODEL_TAG={MODEL_TAG!r} が食い違っています"
+            f"（タグは '{BACKEND}-' で始まる必要があります）。"
+        )
 
 # 各バックエンドの推論サービス URL（常駐 FastAPI 等）。確定後に設定。
 QWEN3_ENDPOINT   = os.environ.get("POX_QWEN3_ENDPOINT",   "")

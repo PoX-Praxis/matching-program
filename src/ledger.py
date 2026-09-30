@@ -337,3 +337,28 @@ def load_all_vessels(db_path: str = "pox.db") -> list[dict]:
         if vid not in merged:
             merged[vid] = v
     return [merged[k] for k in sorted(merged)]
+
+
+def engaged_counterparts(subject_id: str, db_path: str = "pox.db") -> set:
+    """subject_id と「既に接続済み（終了していない）」または「申し出中（どちら向きでも pending）」の相手。
+
+    「照合の結果」は**まだ出会っていない相手**の面なので、これらを外すのに使う（指示書55 §4-1）。
+    登録者一覧からは外さない。
+    """
+    out = set()
+    for v in _derive_from_events(db_path=db_path).values():
+        j = v["joins"][0]
+        if j["closed_at"] is None:
+            ids = {a["from"] for a in j["approvals"]} | {a["to"] for a in j["approvals"]}
+            if subject_id in ids:
+                out |= ids
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT from_subject, to_subject FROM connection_requests "
+            "WHERE status='pending' AND (from_subject=%s OR to_subject=%s)",
+            (subject_id, subject_id),
+        ).fetchall()
+    for frm, to in rows:
+        out |= {frm, to}
+    out.discard(subject_id)
+    return out

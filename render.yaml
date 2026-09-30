@@ -38,6 +38,14 @@ services:
         sync: false          # 手入力。一度決めたら二度と変えない（変更＝全アカウント喪失）。
       - key: POX_LEGACY_BOUNDARY_SEQ
         sync: false          # 手入力。削除の検証の legacy 境界 seq（指示書45C）。未設定だと起動しない。
+      ## 埋め込み（指示書55-2 / docs/matching.md）。値はダッシュボードで設定済み（nomic）。
+      ##   POX_EMBED_BACKEND が未設定（＝stub）だと本番は起動しない。
+      - key: POX_EMBED_BACKEND
+        sync: false          # 手入力（本番は nomic）
+      - key: POX_EMBED_MODEL_TAG
+        sync: false          # 手入力（本番は nomic-emb-v2。backend と食い違うと起動しない）
+      - key: POX_NOMIC_ENDPOINT
+        sync: false          # 手入力（自宅 PC のトンネル URL。リポジトリに書かない）
                              # 値は docs/ledger_limits.md の監査（scripts/audit_legacy_boundary.py）で確定する。
       ## メール送信（マジックリンク）。POX_MAIL_BACKEND で方式を切替。
       ## Render がアウトバウンド SMTP を塞いでおり TCP が TimeoutError になるため、

@@ -19,6 +19,7 @@ import math
 from embedding_service import cosine, guard
 from match_config import (
     GAMMA_EPS, P_SHARPNESS_DEFAULT, ALPHA_DEFAULT, BETA_DEFAULT, SHORTLIST_K,
+    MATCH_ENTRY_THRESHOLD,
 )
 
 
@@ -120,6 +121,56 @@ def effective_axis(attr):
     return max(cands, key=lambda k: cands[k])
 
 
+# ── 方向 B（指示書55 §4-3）─────────────────────────────────────────────────
+def add_direction_b(result, seeker_vecs, candidate_vecs, gamma,
+                    p=P_SHARPNESS_DEFAULT, alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT):
+    """方向 B（**相手の必要像 × 自分の現状**）を結果に足す。既存ベクトルだけで計算する。
+
+    方向 A（b: 自分の必要像 × 相手の現状）の b を d に置き換えた同じ式を score_b とする
+    （a・c と自分の α・β・γ・p はそのまま）。どちらかのベクトルが無ければ何もしない。
+    数値は内部でのみ使う（入口の判定と軸の要約。外には出さない）。
+    """
+    mine, theirs = seeker_vecs.get("state_passage"), candidate_vecs.get("necessity_query")
+    if mine is None or theirs is None:
+        return result
+    attr = result["attribution"]
+    d_sim = cosine(theirs, mine)
+    gd = guard(d_sim)
+    attr["d_sim"], attr["gd"] = d_sim, gd
+    complement_b = power_mean([gd, attr["gc"]], [1.0, gamma], p)
+    result["score_b"] = power_mean([attr["ga"], complement_b], [alpha, beta], p)
+    return result
+
+
+def passes_entry(result, threshold=MATCH_ENTRY_THRESHOLD):
+    """「照合の結果」に入れるか（指示書55 §4-1）。**総合が内部閾値以上**。
+
+    総合は自分の α・β に沿う（共鳴型なら意志の近さが、補完型なら補完が効く）。b 単独では切らない。
+    方向 B（相手が自分を必要としている）も同じ式の総合で評価し、どちらかが閾値以上なら入れる。
+    """
+    return max(result["score"], result.get("score_b", 0.0)) >= threshold
+
+
+def public_axis(attr, level=MATCH_ENTRY_THRESHOLD):
+    """利用者に見せる軸（指示書55 §0-4。**2 つに要約**＋相互充足）。数値は返さない。
+
+    - "mutual": 補完が双方向とも効いている（自分の必要像×相手の現状、相手の必要像×自分の現状）
+    - "fill_mine" / "fill_theirs": 足りないところを埋める（どちら向きか）
+    - "will": 意志が近い（a 共鳴と c 意志補完はどちらも意志どうしなので 1 つにまとめる）
+    最も効いた軸（effective_axis と同じく重みを掛けない類似度の最大）で選ぶ。律速軸ではない。
+    """
+    gb, gd = attr["gb"], attr.get("gd")
+    if gd is not None and gb >= level and gd >= level:
+        return "mutual"
+    will = attr["ga"]
+    if attr.get("c_log_contrib", 0.0) != 0.0:
+        will = max(will, attr["gc"])
+    cands = {"will": will, "fill_mine": gb}
+    if gd is not None:
+        cands["fill_theirs"] = gd
+    return max(cands, key=lambda k: cands[k])
+
+
 # ── E-1: shortlist（256-dim 近傍 / Step 6 で DB HNSW に置換）────────────────
 def shortlist(seeker_q256, candidates_256, k=SHORTLIST_K):
     """
@@ -150,7 +201,9 @@ def rank_candidates(seeker_vecs, candidate_vecs_list, gamma,
     for cid, cvecs in candidate_vecs_list:
         sc   = score_candidate(seeker_vecs, cvecs, gamma, p, alpha, beta)
         attr = attribution(seeker_vecs, cvecs, gamma, p, alpha, beta)
-        results.append({"candidate_id": cid, "score": sc, "attribution": attr})
+        r = {"candidate_id": cid, "score": sc, "attribution": attr}
+        add_direction_b(r, seeker_vecs, cvecs, gamma, p, alpha, beta)
+        results.append(r)
     results.sort(key=lambda x: x["score"], reverse=True)
     if top_k is not None:
         results = results[:top_k]

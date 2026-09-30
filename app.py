@@ -23,7 +23,7 @@ from ledger_events import append_event
 from canon import sha256_hex
 from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 get_seeker, list_candidate_pool, get_profile_edit_data,
-                save_view_overrides, update_seeker_core, list_public_seeker_index,
+                save_view_overrides, update_seeker_core, list_directory_ids,
                 record_policy_consent, set_profile_visibility, get_profile_visibility,
                 get_view_overrides)
 from profile_view import parse_registration_text, normalize_to_seeker
@@ -103,6 +103,20 @@ if _PROD:
         _redaction.legacy_boundary_seq()
     except _redaction.BoundaryNotConfigured as _e:
         raise SystemExit(f"[FATAL] {_e} Render の環境変数に設定してください。")
+# 埋め込みのバックエンド（指示書55-2 B-1）。stub は意味を持たない擬似ベクトルなので、本番では
+# 起動しない（POX_DEBUG=1 のときだけ許す）。解決結果は起動ログに出す（どのモデルで動いているかを
+# ログで確認できるように。値そのものは設定名とタグだけで、URL や鍵は出さない）。
+import embedding_config as _ec
+if _PROD and _ec.BACKEND == "stub" and os.environ.get("POX_TEST_ALLOW_STUB") != "1":
+    raise SystemExit(
+        "[FATAL] POX_EMBED_BACKEND が stub（未設定時の既定）です。本番では意味の無い擬似ベクトルで"
+        "照合することになるため起動しません。Render の環境変数に実バックエンド（nomic 等）を設定してください"
+        "（開発時のみ POX_DEBUG=1 で stub を使えます）。"
+    )
+print(f"[embedding] backend={_ec.BACKEND} backend_env_set={_ec.BACKEND_ENV_SET} "
+      f"model_tag={_ec.MODEL_TAG} model_tag_env_set={_ec.MODEL_TAG_ENV_SET} dim={_ec.FULL_DIM}")
+if _ec.BACKEND == "stub":
+    print("[embedding] 警告: stub で動いています。照合の結果は出しません（他の画面は動きます）。")
 # メール送信設定の漏れは起動を止めないが、本番で未設定なら開発モード（メール不送）に
 # なるため警告する。判定は現在のバックエンド（resend_api / smtp）に応じる。
 if _PROD and not mailer.is_configured():
@@ -443,27 +457,28 @@ def post_seeker():
 
 @app.get("/seekers")
 def get_seekers():
-    """公開一覧: id・一行紹介・意志抜粋のみ（seeker 原文は返さない。指示書09 §3-2）。
-    公開条件を満たす necessity があれば necessity_excerpt（冒頭）も添える（指示書11 §4-5）。"""
-    rows = list_public_seeker_index(db_path=DB)
-    if is_postgres():
-        # 指示書37 §1-3: 一覧の必要像を3状態で出し分けるため、表示専用のメタ
-        # necessity_state を添える（display のみ・照合/認可/台帳のロジックは不変）。
-        #   public   … 公開閾値を満たす必要像あり → 本文を2行クランプ表示
-        #   preparing… generation_status が preparing / error → 「準備中です」
-        #   hidden   … 公開対象外（閾値未満・再構築前など） → 行を出さない（現状どおり）
-        store = _v4_store()
-        for r in rows:
-            pub = get_public_necessity(r.get("id"))   # 数値なし・日時閾値ゲート済み
-            if pub:
-                t = pub["necessity_text"]
-                # 2行クランプ表示のため少し長めに送る（必要像本文は公開情報）。丸めは CSS 側。
-                r["necessity_excerpt"] = t[:140] + ("…" if len(t) > 140 else "")
-                r["necessity_state"] = "public"
-            else:
-                st = store.get_profile_status(r.get("id")) or {}
-                gs = st.get("generation_status")
-                r["necessity_state"] = "preparing" if gs in ("preparing", "error") else "hidden"
+    """登録者一覧（公開）。**母集団は v4（profiles_v4）**で、本人と紐づいている人だけ（指示書55 §4-4）。
+
+    返すのは id・表示名・一行紹介・意志・公開条件を満たす必要像の本文だけ（seeker 原文・数値は返さない）。
+    - **本文をサーバーで切り詰めない**（以前の 40 文字切断をやめた。見た目の丸めは CSS 側）
+    - **generation_status を返さない**（非本人に生成状態を出さない。指示書27）
+    - ログイン中なら**自分を除く**（照合の結果と同じく、一覧も他の人の面）
+    - 並びは登録順（中立）。件数は出さない（画面側）
+    """
+    me = current_subject_id()
+    ids = [i for i in list_directory_ids(db_path=DB) if i != me]
+    names = _resolve_names(ids, fallback=UNNAMED_LABEL)
+    rows = []
+    for i in ids:
+        pv = get_profile_view(i, db_path=DB) or {}
+        pub = get_public_necessity(i)          # 数値なし・日時閾値ゲート済み
+        rows.append({
+            "id": i,
+            "name": names.get(i) or UNNAMED_LABEL,
+            "one_liner": _text_of(pv.get("headline")),
+            "will": _text_of(pv.get("pursuing")),
+            "necessity": (pub or {}).get("necessity_text") or "",
+        })
     return jsonify(rows)
 
 
@@ -1203,13 +1218,15 @@ def _match_by_necessity(store, necessity_id, *, model_tag, top_k=None, write_led
     if not owner_bundle or "will_passage" not in (owner_bundle.get("vectors") or {}):
         raise LookupError("owner の主体ベクトルがありません")
     owner_wp = owner_bundle["vectors"]["will_passage"]
+    owner_sp = owner_bundle["vectors"].get("state_passage")      # 方向 B（指示書55 §4-3）
 
     cand_ids = store.candidate_ids(owner, model_tag)
     cand_bundles = store.get_bundles(cand_ids, model_tag)
     cand_list = [(cid, b["vectors"]) for cid, b in cand_bundles.items()]
 
     numbers = {k: nec.get(k) for k in ("gate_s", "gate_u", "p_sharpness", "alpha", "beta")}
-    results = rank_for_necessity(numbers, qv, owner_wp, cand_list, top_k=top_k)
+    results = rank_for_necessity(numbers, qv, owner_wp, cand_list, top_k=top_k,
+                                 owner_state_passage=owner_sp)
 
     if write_ledger:
         for r in results:
@@ -1255,6 +1272,15 @@ def post_v4_match():
     store = _v4_store()
     loader = lambda uid: get_seeker(uid, db_path=DB)
 
+    # §7-5: query 単位を必要像へ。明示 necessity_id か、seeker 本人の生きた必要像があれば
+    # 必要像起点で照合し、無い/未ベクトル化なら人起点へフォールバック（個人は同一結果）。
+    nec_id = body.get("necessity_id") or _seeker_live_necessity_id(seeker_id, db_path=DB)
+    if body.get("necessity_id") and not _can_use_necessity(body["necessity_id"], seeker_id):
+        return jsonify({"error": "この必要像で照合する権限がありません"}), 403
+    # stub（意味を持たない擬似ベクトル）の間は照合の結果を出さない（指示書55-2 B-1-2）。
+    if not _matching_available():
+        return jsonify({"status": "unavailable", "results": [],
+                        "reason": "照合の準備中です（埋め込みのモデルが設定されていません）"}), 200
     # F-5 遅延移行: seeker が v3.1 のみなら、ここで一度だけ v4 へ移行してから照合。
     try:
         ensure_migrated(store, seeker_id, loader)
@@ -1265,11 +1291,9 @@ def post_v4_match():
     except Exception as e:
         return jsonify({"error": f"移行失敗: {e}"}), 500
 
-    # §7-5: query 単位を必要像へ。明示 necessity_id か、seeker 本人の生きた必要像があれば
-    # 必要像起点で照合し、無い/未ベクトル化なら人起点へフォールバック（個人は同一結果）。
-    nec_id = body.get("necessity_id") or _seeker_live_necessity_id(seeker_id, db_path=DB)
-    if body.get("necessity_id") and not _can_use_necessity(body["necessity_id"], seeker_id):
-        return jsonify({"error": "この必要像で照合する権限がありません"}), 403
+    # 必要像が無い人は照合しない（言語化への導線を出す。指示書55 §2-2）。
+    if not nec_id and not ((store.get_necessity(seeker_id, MODEL_TAG) or {}).get("necessity_text") or "").strip():
+        return jsonify({"status": "no_necessity", "results": []}), 200
     out = None
     if nec_id:
         try:
@@ -1287,18 +1311,111 @@ def post_v4_match():
         except Exception as e:
             return jsonify({"error": f"照合失敗: {e}"}), 500
 
-    return jsonify(_public_match_response(out))
+    return jsonify(_public_match_response(out, store, MODEL_TAG, viewer=seeker_id))
 
 
-def _public_match_response(out):
-    """照合結果の外向きの形（指示書55 PR-A）。score・attribution・順位を出さない。
-    候補の id と最も効いた軸（a/b/c の名前）だけを、中立の順（id 順）で返す。"""
-    from matcher_v4 import effective_axis
-    results = [{"candidate_id": r["candidate_id"], "axis": effective_axis(r["attribution"])}
-               for r in out.get("results", [])]
+def _matching_available():
+    """照合の結果を出せるか。stub のときは出さない（POX_DEBUG=1 の開発時だけ出す）。"""
+    import embedding_config
+    return embedding_config.BACKEND != "stub" or _debug_enabled()
+
+
+def _linked_ids(ids):
+    """ids のうち auth_identities に行がある（＝本人と紐づいている）もの（指示書55 §0-3）。"""
+    ids = list(ids)
+    if not ids:
+        return set()
+    from db_connect import get_connection
+    ph = ",".join(["%s"] * len(ids))
+    try:
+        with auth._connect(DB) as con:
+            rows = con.execute(f"SELECT subject_id FROM auth_identities WHERE subject_id IN ({ph})",
+                               tuple(ids)).fetchall()
+    except Exception:  # noqa: BLE001
+        return set()
+    return {r[0] for r in rows}
+
+
+def _text_of(v):
+    if isinstance(v, (list, tuple)):
+        return " / ".join(str(x) for x in v if str(x).strip())
+    return str(v or "").strip()
+
+
+def _state_text(pv):
+    """公開プロフィールの現状（4 スロット）を 1 つの本文にする。切り詰めない。"""
+    pv = pv or {}
+    return " / ".join(t for t in (_text_of(pv.get(k)) for k in
+                                  ("state_have", "state_can_type", "state_bound", "state_unsorted")) if t)
+
+
+def _match_reason(axis, mine, theirs):
+    """説明は「軸の名前＋両者の公開本文」（指示書55 §4-2）。数値・理由文の生成はしない。
+    相手の本文は公開されているものだけ（必要像は公開条件を満たすときだけ）。"""
+    fill_mine = {"kind": "fill_mine", "mine": mine["necessity"], "theirs": theirs["state"]}
+    fill_theirs = {"kind": "fill_theirs", "mine": mine["state"], "theirs": theirs["necessity"]}
+    if axis == "mutual":
+        return [fill_mine, fill_theirs]
+    if axis == "fill_mine":
+        return [fill_mine]
+    if axis == "fill_theirs":
+        return [fill_theirs]
+    return [{"kind": "will", "mine": mine["will"], "theirs": theirs["will"]}]
+
+
+def _public_match_response(out, store=None, model_tag=None, viewer=None):
+    """照合結果の外向きの形（指示書55 PR-A・PR-B）。score・attribution・順位・件数を出さない。
+
+    入口: 総合（方向 A・B のどちらか）が内部閾値以上（passes_entry）。
+    除外: 必要像が無い人／本人と紐づいていない id／既に接続済み・申し出中の相手（指示書55 §0-3。
+          自分と別 model_tag は照合の母集団の時点で入らない）。
+    各件: 表示名・一行紹介・利用者向けの軸（will / fill_mine / fill_theirs / mutual）と、その軸の
+          両者の公開本文。並びは中立（id 順）。
+    """
+    from matcher_v4 import passes_entry, public_axis
+    from ledger import engaged_counterparts
+    rows = [r for r in out.get("results", []) if passes_entry(r)]
+    ids = [r["candidate_id"] for r in rows]
+    bundles = store.get_bundles(ids, model_tag) if (store is not None and ids) else {}
+    has_nec = {cid for cid, b in bundles.items()
+               if ((b.get("necessity") or {}).get("necessity_text") or "").strip()}
+    linked = _linked_ids(ids)
+    engaged = engaged_counterparts(viewer, db_path=DB) if viewer else set()
+    rows = [r for r in rows
+            if r["candidate_id"] in has_nec and r["candidate_id"] in linked
+            and r["candidate_id"] not in engaged]
+
+    owner = out.get("seeker_id") or viewer
+    mine_pv = get_profile_view(owner, db_path=DB) or {} if owner else {}
+    mine_nec = ""
+    if out.get("necessity_id"):
+        try:
+            from necessities import get_necessity
+            mine_nec = (get_necessity(out["necessity_id"], db_path=DB) or {}).get("necessity_text") or ""
+        except Exception:  # noqa: BLE001
+            mine_nec = ""
+    if not mine_nec and owner:
+        mine_nec = (get_owner_necessity(owner) or {}).get("necessity_text") or ""
+    mine = {"will": _text_of(mine_pv.get("pursuing")), "state": _state_text(mine_pv), "necessity": mine_nec}
+
+    names = _resolve_names(ids, fallback=UNNAMED_LABEL)
+    results = []
+    for r in rows:
+        cid = r["candidate_id"]
+        pv = get_profile_view(cid, db_path=DB) or {}
+        theirs = {"will": _text_of(pv.get("pursuing")), "state": _state_text(pv),
+                  "necessity": (get_public_necessity(cid) or {}).get("necessity_text") or ""}
+        axis = public_axis(r["attribution"])
+        results.append({
+            "candidate_id": cid,
+            "name": names.get(cid) or UNNAMED_LABEL,
+            "one_liner": _text_of(pv.get("headline")),
+            "axis": "will" if axis == "will" else ("mutual" if axis == "mutual" else "fill"),
+            "reasons": _match_reason(axis, mine, theirs),
+        })
     results.sort(key=lambda r: str(r["candidate_id"]))
-    pub = {k: out[k] for k in ("seeker_id", "necessity_id", "query_unit", "model_tag", "pool_size")
-           if k in out}
+    pub = {k: out[k] for k in ("seeker_id", "necessity_id", "query_unit", "model_tag") if k in out}
+    pub["status"] = "ok" if results else "none"
     pub["results"] = results
     pub["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
     return pub
@@ -1557,16 +1674,16 @@ def api_my_vessels():
         if v.get("founder") == my_id
         or ((v.get("joins") or [{}])[0].get("joiner") == my_id)
     ]
-    # 表示名を各 vessel に併記（指示書30）。承認画面は相手特定の場面なので表示名＋subject_id。
+    # 表示名を各 vessel に付ける（指示書30）。生 id は画面に出さない（指示書55 172）。
     ids = [v.get("founder") for v in mine]
     for v in mine:
         for j in (v.get("joins") or []):
             ids.append(j.get("joiner"))
-    names = _resolve_names(ids)
+    names = _resolve_names(ids, fallback=UNNAMED_LABEL)
     for v in mine:
-        v["founder_name"] = names.get(v.get("founder"), v.get("founder"))
+        v["founder_name"] = names.get(v.get("founder"), UNNAMED_LABEL)
         for j in (v.get("joins") or []):
-            j["joiner_name"] = names.get(j.get("joiner"), j.get("joiner"))
+            j["joiner_name"] = names.get(j.get("joiner"), UNNAMED_LABEL)
     return jsonify(mine)
 
 
@@ -1592,9 +1709,12 @@ def api_profile(user_id):
     pub_nec = get_public_necessity(user_id)   # None なら足さない（既存分・未生成は出ない）
     if pub_nec:
         pv["necessity_text"] = pub_nec["necessity_text"]
-    # 表示名（指示書30）。プロフィールページは表示名＋subject_id を併記する（相手特定の場面）。
+    # 表示名（指示書30）。生 id は画面に出さない（指示書55 172）。未設定なら「表示名未設定」。
+    # subject_id は画面の遷移用（URL）に返すだけで、表示には使わない。
     pv["subject_id"] = user_id
-    pv["display_name"] = _resolve_name(user_id)
+    name = _resolve_names([user_id], fallback=UNNAMED_LABEL).get(user_id) or UNNAMED_LABEL
+    pv["display_name"] = name
+    pv["display_name_set"] = name != UNNAMED_LABEL
     return jsonify(pv)
 
 
@@ -1887,9 +2007,9 @@ def api_conversation():
     if not me or not other:
         return jsonify({"error": "me と with が必要です"}), 400
     msgs = get_conversation(me, other, db_path=DB)
-    names = _resolve_names([m["from_id"] for m in msgs] + [me, other])
+    names = _resolve_names([m["from_id"] for m in msgs] + [me, other], fallback=UNNAMED_LABEL)
     for m in msgs:
-        m["from_name"] = names.get(m["from_id"], m["from_id"])
+        m["from_name"] = names.get(m["from_id"], UNNAMED_LABEL)
     return jsonify(msgs)   # 配列のまま（各要素に from_name を付与・後方互換）
 
 
@@ -1920,9 +2040,9 @@ def api_inbox():
         return jsonify({"error": "id が必要です"}), 400
     convs   = get_inbox_summary(my_id, db_path=DB)
     # メッセージ一覧は表示名のみでよい（指示書30）。
-    names = _resolve_names([c.get("other_id") for c in convs])
+    names = _resolve_names([c.get("other_id") for c in convs], fallback=UNNAMED_LABEL)
     for c in convs:
-        c["other_name"] = names.get(c.get("other_id"), c.get("other_id"))
+        c["other_name"] = names.get(c.get("other_id"), UNNAMED_LABEL)
     unread  = get_unread_count(my_id, db_path=DB)
     vessels = load_all_vessels(db_path=DB)
     need_approval = sum(

@@ -8,11 +8,15 @@
 
   .toolbar { display: flex; align-items: center; gap: 10px; margin: 10px 0 14px; flex-wrap: wrap; }
   .toolbar label { font-size: 12px; color: #555; }
-  select { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
 
   .card { border: 1px solid #e2e2e2; border-radius: var(--radius); padding: 16px; margin-bottom: 10px;
           display: flex; flex-direction: column; gap: 4px; }
-  .card .cid { font-family: monospace; font-size: 14px; font-weight: bold; text-decoration: none; }
+  .card .cname { font-size: 15px; font-weight: bold; text-decoration: none; }
+  .card .reason { font-size: 13px; color: #333; line-height: 1.6; }
+  .btn-offer { margin-top: 6px; cursor: pointer; font-size: 13px; padding: 6px 14px; border-radius: var(--radius);
+               border: 1px solid #1a3a5c; background: #fff; color: #1a3a5c; }
+  .btn-offer:disabled { cursor: default; opacity: .7; }
+  #nameFilter { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
   .card .oneliner { font-size: 13px; color: #333; }
   .card .meta { font-size: 12px; color: #666; display: flex; gap: 10px; flex-wrap: wrap; }
   .axis-a { color: #1a56bb; } .axis-b { color: #1a6a3a; } .axis-c { color: #7a4a1a; }
@@ -23,7 +27,7 @@
   .notice a { font-weight: bold; }
 
   .dir-row { padding: 12px 4px; min-height: 76px; box-sizing: border-box; border-bottom: 1px solid #eee; font-size: 13px; }
-  .dir-row .did { font-family: monospace; text-decoration: none; font-weight: bold; }
+  .dir-row .dname { text-decoration: none; font-weight: bold; }
   .dir-row .one { color: #333; margin-left: 8px; }
   .dir-row .will { color: #777; margin-top: 2px; }
   .dir-nec, .rec-nec { color: #1a6a3a; font-size: 12px; margin-top: 3px; }
@@ -34,97 +38,119 @@
 <main class="l-wide">
 
 <h1>つながる</h1>
-<p class="sub">あなたの必要像から、いま噛み合いそうな相手を照合します。詳細・承認は各プロフィールから。</p>
+<p class="sub">あなたの必要像と意志から、いま噛み合う相手を照合します。詳細・承認は各プロフィールから。</p>
 
-<h2>あなたへのおすすめ</h2>
+<h2>照合の結果</h2>
 <div id="recStatus"></div>
 <div id="recCards"></div>
 
 <h2>登録者一覧</h2>
-<p class="sub">すべての登録者。気になる人のプロフィールから直接つながれます。</p>
+<p class="sub">気になる人のプロフィールから直接つながれます。</p>
+<div class="toolbar"><label for="nameFilter">表示名で絞り込む</label>
+  <input id="nameFilter" type="search" autocomplete="off" oninput="renderDirectory()"></div>
 <div id="directory"><span class="muted">読み込み中です</span></div>
 
 <script>
 // 照合は本人のプロフィールに基づく個人向け機能。身元はセッション（localStorage ではない）。
+// 指示書55: 数値・順位・件数・並べ替えは出さない。生 id は画面に出さない（表示名で出す）。
 let sid = null;        // ログイン中の subject_id（未ログインは null）
-let recResults = [];   // POST /v4/match の results（候補 id と最も効いた軸の名前のみ）
 
 function escHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => (
     {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
+/* 利用者に見せる軸は 2 つ（意志が近い／足りないところを埋める）＋相互充足（指示書55 §0-4）。 */
 const AXIS = {
-  a: {label: "共鳴が効いています", cls: "axis-a"},
-  b: {label: "補完が効いています", cls: "axis-b"},
-  c: {label: "意志の補完が効いています", cls: "axis-c"},
+  will:   {label: "意志が近い", cls: "axis-a"},
+  fill:   {label: "足りないところを埋める", cls: "axis-b"},
+  mutual: {label: "相互に噛み合っている", cls: "axis-c"},
 };
+/* 理由は「軸の名前＋両者の公開本文」。本文はサーバーで切り詰めない（見た目の丸めは CSS）。 */
+const REASON = {
+  will:        ["あなたの意志", "相手の意志"],
+  fill_mine:   ["あなたの必要像", "相手の現状"],
+  fill_theirs: ["相手の必要像", "あなたの現状"],
+};
+function reasonLine(x) {
+  const [l1, l2] = REASON[x.kind] || ["", ""];
+  // fill_theirs は「相手の必要像 × あなたの現状」の順で見せる
+  const [a, b] = x.kind === "fill_theirs" ? [x.theirs, x.mine] : [x.mine, x.theirs];
+  if (!a || !b) return "";
+  return `<div class="reason clamp-2">${l1}『${escHtml(a)}』× ${l2}『${escHtml(b)}』</div>`;
+}
 
-/* ── おすすめ（v4 照合）── */
+/* ── 照合の結果（v4 照合）── 4 状態: 未ログイン／必要像なし／該当なし／該当あり */
 async function loadRecommendations() {
   const status = document.getElementById("recStatus");
-  // 未ログイン: 個人向けの照合（おすすめ・再試行）は出さず、ログイン後に使える旨だけ案内。
+  const cards = document.getElementById("recCards");
+  cards.innerHTML = "";
   if (!sid) {
-    document.getElementById("recCards").innerHTML = "";
-    status.innerHTML = `<div class="notice">ログインすると、あなたに合った相手を照合できます。
-      下の「登録者一覧」は今も見られます。<a href="/login?next=%2Fconnect">ログイン →</a></div>`;
+    status.innerHTML = `<div class="notice">ログインすると、あなたの必要像から照合できます。
+      下の登録者一覧は、ログインしなくても見られます。<a href="/login?next=%2Fconnect">ログイン →</a></div>`;
     return;
   }
   status.innerHTML = `<span class="muted">照合中…</span>`;
-
   let res, data;
   try {
     res = await fetch("/v4/match", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ seeker_id: sid }),
     });
+    data = await res.json().catch(() => ({}));
   } catch (e) {
     status.innerHTML = `<div class="notice warn">照合に接続できませんでした。下の一覧から探してみてください。</div>`;
     return;
   }
-  if (res.status === 503) {
-    status.innerHTML = `<div class="notice">ローカル環境では照合は利用できません。下の一覧から探せます。</div>`;
+  if (res.status === 503 || data.status === "unavailable") {
+    status.innerHTML = `<div class="notice">照合の準備中です。下の一覧から探せます。</div>`;
     return;
   }
-  data = await res.json().catch(() => ({}));
+  checkMyStatus();   // 自分の準備状態（本人面では preparing と error を区別して出す）
+  if (res.status === 404 || data.status === "no_necessity") {
+    status.innerHTML = `<div class="notice">まだ必要像がありません。言語化すると照合できます。
+      <a href="/register">言語化する →</a></div>`;
+    return;
+  }
   if (!res.ok) {
-    // 自分の v4 ベクトル未生成など。空扱いで一覧へ誘導。
-    status.innerHTML = `<div class="notice">まだおすすめを出せません（あなたの照合準備が整っていない可能性があります）。
-      <a href="#directory">下の一覧から探す →</a></div>`;
+    status.innerHTML = `<div class="notice warn">照合できませんでした。下の一覧から探してみてください。</div>`;
     return;
   }
-
-  recResults = Array.isArray(data.results) ? data.results.slice() : [];
-  checkMyStatus();   // 自分の準備状態を補足表示（非ブロッキング）
-
-  if (!recResults.length) {
-    status.innerHTML = `<div class="notice">まだおすすめできる相手がいません
-      （プール ${data.pool_size ?? 0} 人）。<a href="#directory">下の一覧から探してみてください →</a></div>`;
+  const results = Array.isArray(data.results) ? data.results : [];
+  if (!results.length) {
+    status.innerHTML = `<div class="notice">いま噛み合う相手は見つかっていません。
+      <a href="#directory">登録者一覧を見る →</a></div>`;
     return;
   }
   status.innerHTML = "";
-  renderRecs();
-}
-
-/* 指示書55 PR-A: スコアと並べ替えは出さない（サーバーも返さない）。並びはサーバーの中立の順。
-   軸は「最も効いた軸」（r.axis）。以前は律速軸（最も弱い軸）を「効いています」と出していた。 */
-function renderRecs() {
-  document.getElementById("recCards").innerHTML = recResults.map(r => {
+  cards.innerHTML = results.map(r => {
     const cid = String(r.candidate_id);
     const axis = AXIS[r.axis] || {label: "", cls: ""};
-    const one = dirOneLiner[cid];
-    const oneHtml = one ? `<div class="oneliner clamp-2">${escHtml(one)}</div>` : "";
+    const one = r.one_liner ? `<div class="oneliner clamp-2">${escHtml(r.one_liner)}</div>` : "";
+    const reasons = (r.reasons || []).map(reasonLine).join("");
     return `<div class="card">
-      <a class="cid" href="/profile/${encodeURIComponent(cid)}">${escHtml(cid)}</a>
-      ${oneHtml}
-      ${necLine(cid, "rec-nec")}
-      <div class="meta">
-        ${axis.label ? `<span class="${axis.cls}">${axis.label}</span>` : ""}
-      </div>
+      <a class="cname" href="/profile/${encodeURIComponent(cid)}">${escHtml(r.name)}</a>
+      ${one}
+      <div class="meta">${axis.label ? `<span class="${axis.cls}">${axis.label}</span>` : ""}</div>
+      ${reasons}
+      <div><button class="btn-offer" data-to="${escHtml(cid)}" onclick="offer(this)">つながりたいと伝える</button></div>
     </div>`;
   }).join("");
 }
 
-/* 自分の照合準備状態（preparing のとき注意書き。非ブロッキング）*/
+/* 申し出（相互の承認で成立）。二重に送っても 200（冪等）。送ったら「申請済み」にする。 */
+async function offer(btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch("/approve", {method: "POST", headers: {"Content-Type": "application/json"},
+                                       body: JSON.stringify({ to_id: btn.dataset.to })});
+    if (PoX.handle(r)) { btn.disabled = false; return; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { btn.disabled = false; btn.textContent = "送れませんでした（もう一度）"; return; }
+    btn.textContent = d.established ? "つながりました" : "申請済み";
+  } catch (e) { btn.disabled = false; }
+}
+
+/* 自分の照合準備状態（本人のみ。preparing と error を区別する）*/
 async function checkMyStatus() {
   try {
     const r = await fetch(`/v4/seekers/${encodeURIComponent(sid)}/status`);
@@ -132,10 +158,8 @@ async function checkMyStatus() {
     const st = await r.json();
     if (st.generation_status === "preparing") {
       document.getElementById("recStatus").insertAdjacentHTML("afterbegin",
-        `<div class="notice warn" style="margin-bottom:10px">あなたの照合準備がまだ完了していません。
-         おすすめの精度は準備完了後に上がります。</div>`);
+        `<div class="notice warn" style="margin-bottom:10px">あなたの照合準備がまだ完了していません。</div>`);
     } else if (st.generation_status === "error") {
-      // 失敗時は再試行の動線を出す（§6）
       document.getElementById("recStatus").insertAdjacentHTML("afterbegin",
         `<div class="notice warn" id="recErr" style="margin-bottom:10px">照合準備でエラーが発生しました。
          <button style="cursor:pointer" onclick="retryGeneration(this)">再試行する</button></div>`);
@@ -151,63 +175,42 @@ async function retryGeneration(btn) {
     const r = await fetch(`/v4/seekers/${encodeURIComponent(sid)}/retry`, { method: "POST" });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      if (box) box.innerHTML = "再試行に失敗しました（" + (d.error || r.status)
+      if (box) box.innerHTML = "再試行に失敗しました（" + escHtml(d.error || r.status)
         + "）。<button style='cursor:pointer' onclick='retryGeneration(this)'>もう一度</button>";
     }
-    // 成功時はバックグラウンドで準備が進む。ページ再読込で反映される。
   } catch (e) {
     if (box) box.innerHTML = "通信エラーが発生しました。<button style='cursor:pointer' onclick='retryGeneration(this)'>もう一度</button>";
   }
 }
 
-/* ── 登録者一覧（GET /seekers = id・一行紹介・意志抜粋のみ）── */
-let dirOneLiner = {};   // candidate_id → 一行紹介（おすすめカードにも流用）
-let dirNecessity = {};  // candidate_id → 公開necessity抜粋（おすすめカードにも流用）
-let dirNecState  = {};  // candidate_id → necessity_state（§1-3 3状態）
-
-/* §1-3 一覧の必要像を3状態で出し分ける（「—」は出さない）。
-   public → 本文を2行クランプ／preparing → 「準備中です」／それ以外 → 行を出さない。 */
-function necLine(id, cls) {
-  const st = dirNecState[id];
-  if (st === "public" && dirNecessity[id]) {
-    // §11-1: 一覧では「（AI推定）」を省く（AI推定であることは ProfileView の小ラベルで担保）。
-    return `<div class="${cls} clamp-2">必要としている相手: ${escHtml(dirNecessity[id])}</div>`;
-  }
-  if (st === "preparing") {
-    return `<div class="${cls}" style="color:#9aa0a8">必要としている相手: 準備中です</div>`;
-  }
-  return "";
-}
+/* ── 登録者一覧（GET /seekers = v4 の登録者。表示名・一行紹介・意志・公開の必要像）── */
+let dirRows = [];
 async function loadDirectory() {
   const el = document.getElementById("directory");
-  let rows;
   try {
-    rows = await (await fetch("/seekers")).json();
+    dirRows = (await (await fetch("/seekers")).json()) || [];
   } catch (e) {
     el.innerHTML = `<span class="muted">一覧を読み込めませんでした。</span>`;
     return;
   }
-  rows = (rows || []).filter(r => r.id && r.id !== sid);   // 自分は除外
-  rows.forEach(r => {
-    dirOneLiner[r.id] = r.one_liner || "";
-    dirNecessity[r.id] = r.necessity_excerpt || "";
-    dirNecState[r.id] = r.necessity_state || "hidden";
-  });
+  renderDirectory();
+}
+function renderDirectory() {
+  const el = document.getElementById("directory");
+  const q = (document.getElementById("nameFilter").value || "").trim().toLowerCase();
+  const rows = dirRows.filter(r => r.id && r.id !== sid && (!q || String(r.name || "").toLowerCase().includes(q)));
   if (!rows.length) {
-    el.innerHTML = `<span class="muted">まだ他の登録者がいません。</span>`;
+    el.innerHTML = `<span class="muted">${q ? "該当する表示名の登録者はいません。" : "まだ他の登録者がいません。"}</span>`;
     return;
   }
-  el.innerHTML = rows.map(r => {
-    return `<div class="dir-row">
-      <div><a class="did" href="/profile/${encodeURIComponent(r.id)}">${escHtml(r.id)}</a>
-        <span class="one">${escHtml(r.one_liner || "—")}</span></div>
-      <div class="will clamp-2">${escHtml(r.will_excerpt || "")}</div>
-      ${necLine(r.id, "dir-nec")}
-    </div>`;
-  }).join("");
+  el.innerHTML = rows.map(r => `<div class="dir-row">
+      <div><a class="dname" href="/profile/${encodeURIComponent(r.id)}">${escHtml(r.name)}</a>
+        ${r.one_liner ? `<span class="one">${escHtml(r.one_liner)}</span>` : ""}</div>
+      ${r.will ? `<div class="will clamp-2">${escHtml(r.will)}</div>` : ""}
+      ${r.necessity ? `<div class="dir-nec clamp-2">必要としている相手: ${escHtml(r.necessity)}</div>` : ""}
+    </div>`).join("");
 }
 
-// セッションを確定 → 一覧を先に読み（一行紹介をおすすめでも使う）→ おすすめ照合（ログイン時のみ実照合）
 PoX.me().then(function(s){ sid = s; return loadDirectory(); }).then(loadRecommendations);
 </script>
 </main>

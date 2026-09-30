@@ -27,7 +27,6 @@
 <main class="l-prose">
 <a href="javascript:history.back()" style="font-size:13px;color:#555;text-decoration:none">← 戻る</a>
 <h1>会話: <span id="withName"></span></h1>
-<p style="font-size:12px;color:#888;margin:0">あなた: <code id="myName"></code></p>
 
 <div id="chatBox"></div>
 
@@ -50,8 +49,12 @@ const params = new URLSearchParams(location.search);
 const myId    = params.get("me");
 const otherId = params.get("with");
 
-document.getElementById("myName").textContent   = myId || "";
-document.getElementById("withName").textContent = otherId || "";
+// 相手は表示名で出す（生 id は画面に出さない。指示書55 172）
+if (otherId) {
+  fetch(`/api/profile/${encodeURIComponent(otherId)}`).then(r => r.ok ? r.json() : null).then(pv => {
+    document.getElementById("withName").textContent = (pv && pv.display_name) || "表示名未設定のアカウント";
+  }).catch(() => {});
+}
 
 if (!myId || !otherId) {
   document.getElementById("notice").textContent = "URL に me= と with= が必要です。";
@@ -75,7 +78,7 @@ async function loadConversation() {
       <div class="bubble ${isMine ? "mine" : "theirs"}">
         ${m.body ? escHtml(m.body) : ""}
         ${renderAttachment(m.attachment_url)}
-        <div class="meta">${isMine ? "あなた" : escHtml(m.from_name || m.from_id)} ${time}</div>
+        <div class="meta">${isMine ? "あなた" : escHtml(m.from_name || "表示名未設定のアカウント")} ${time}</div>
       </div>
     </div>`;
   }).join("") || '<p style="color:#aaa;text-align:center;margin-top:40px">まだメッセージがありません</p>';

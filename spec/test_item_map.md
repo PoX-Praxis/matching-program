@@ -227,3 +227,27 @@
 | (c) | `leave::test_t051c_founder_bootstrap_cannot_leave`, `leave::test_t051c_founder_rights_end_but_fact_remains`, `leave::test_t051c_community_edit_requires_session_founder` |
 | §8-1 | `leave::test_t051_reoffer_after_leave_allowed` |
 | 画面 | `leave::test_t051_leave_affordance_rendered` |
+
+## つながるの再設計（指示書55・55-2・161〜194）
+
+| 項目 | テスト |
+|---|---|
+| 161 | `match_auth::test_t161_v4_match_self_only`, `match_auth::test_t161_legacy_match_self_only`, `match_auth::test_t161_necessity_id_of_others_is_forbidden` |
+| 162 | `match_auth::test_t162_no_numbers_in_response`, `match_auth::test_t162_legacy_match_returns_ids_only` |
+| 163・164 | `connect_page::test_connect_has_no_sort_or_score`, `match_auth::test_t165_ui_no_longer_uses_limiting_axis_or_score` |
+| 165 | `match_auth::test_t165_effective_axis_is_strongest_not_limiting` |
+| 166 | `t55b_connect::test_t166_direction_b_is_computed`, `t55b_connect::test_t166_necessity_path_passes_owner_state` |
+| 167 | `t55b_connect::test_t167_candidates_without_necessity_are_excluded`, `t55b_connect::test_t167_seeker_without_necessity_gets_no_necessity_state` |
+| 168 | `t55b_connect::test_t168_directory_reads_v4_not_v3`, `t55b_connect::test_t168_connect_flow_does_not_use_v3_match` |
+| 169・171 | `t55b_connect::test_t169_t171_directory_no_status_no_truncation` |
+| 170 | `t55b_connect::test_t170_no_counts` |
+| 172 | `t55b_connect::test_t172_templates_do_not_render_raw_ids`, `t55b_connect::test_t172_api_names_fall_back_to_label_not_id` |
+| 183 | `t55b_connect::test_t183_prod_refuses_stub` |
+| 184 | `t55b_connect::test_t184_stub_shows_no_results_but_other_screens_work`, `t55b_connect::test_t184_matching_available_follows_backend` |
+| 186 | `t55b_connect::test_t186_engaged_are_excluded_from_results_not_directory` |
+| 187 | `t55b_connect::test_t187_axes_are_summarized`, `t55b_connect::test_t187_public_axis_values` |
+| 190 | `t55b_connect::test_t190_new_registrant_enters_pool_with_same_tag` |
+| 191 | `t55b_connect::test_t191_stub_tag_is_separated_from_real_tags` |
+| 192 | `t55b_connect::test_t192_startup_log_reports_backend_and_tag` |
+| 193 | `match_auth::test_t193_no_unexpected_unauthenticated_write_routes` |
+| 194 | `match_auth::test_t194_t161_profile_edit_self_only` |

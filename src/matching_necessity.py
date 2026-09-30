@@ -20,17 +20,23 @@ from matcher_v4 import rank_candidates
 from necessity_gen import compute_gamma
 
 
-def seeker_vecs_from_necessity(nec_query_vectors: dict, owner_will_passage) -> dict:
-    """必要像の query 側2本＋主体の will_passage から seeker ベクトル束を組む。"""
-    return {
+def seeker_vecs_from_necessity(nec_query_vectors: dict, owner_will_passage,
+                               owner_state_passage=None) -> dict:
+    """必要像の query 側2本＋主体の will_passage から seeker ベクトル束を組む。
+    owner_state_passage があれば方向 B（相手の必要像 × 自分の現状）にも使う（指示書55 §4-3）。"""
+    out = {
         "will_symmetric": nec_query_vectors["will_symmetric"],   # a チャネル
         "necessity_query": nec_query_vectors["necessity_query"],  # b チャネル
         "will_passage": owner_will_passage,                       # c チャネル（主体側 1:1）
     }
+    if owner_state_passage is not None:
+        out["state_passage"] = owner_state_passage               # 方向 B（主体の現状）
+    return out
 
 
 def rank_for_necessity(necessity_numbers: dict, nec_query_vectors: dict,
-                       owner_will_passage, candidate_list, *, top_k=None):
+                       owner_will_passage, candidate_list, *, top_k=None,
+                       owner_state_passage=None):
     """必要像を query として候補をランキング（rank_candidates は不変・§7-5）。
 
     necessity_numbers: {gate_s, gate_u, p_sharpness, alpha, beta}
@@ -44,6 +50,7 @@ def rank_for_necessity(necessity_numbers: dict, nec_query_vectors: dict,
     beta = necessity_numbers.get("beta")
     alpha = 1.0 if alpha is None else alpha
     beta = 1.0 if beta is None else beta
-    seeker_vecs = seeker_vecs_from_necessity(nec_query_vectors, owner_will_passage)
+    seeker_vecs = seeker_vecs_from_necessity(nec_query_vectors, owner_will_passage,
+                                             owner_state_passage)
     return rank_candidates(seeker_vecs, candidate_list, gamma,
                            p=p, alpha=alpha, beta=beta, top_k=top_k)

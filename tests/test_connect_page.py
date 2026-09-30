@@ -13,7 +13,8 @@ def test_connect_route_ok():
     r = _c().get("/connect")
     assert r.status_code == 200
     b = r.get_data(as_text=True)
-    assert "あなたへのおすすめ" in b and "登録者一覧" in b
+    assert "照合の結果" in b and "登録者一覧" in b
+    assert "おすすめ" not in b                      # 選別の語は使わない（指示書55 §2-1）
     assert "/v4/match" in b and 'fetch("/seekers")' in b
 
 
@@ -22,7 +23,7 @@ def test_connect_has_no_sort_or_score():
     b = _c().get("/connect").get_data(as_text=True)
     for label in ("総合順", "補完が効いた順", "共鳴が効いた順", "総合 "):
         assert label not in b, label
-    assert "renderRecs" in b
+    assert "sortMode" not in b and "<select" not in b
 
 
 def test_nav_points_to_connect():

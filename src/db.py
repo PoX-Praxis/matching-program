@@ -95,24 +95,18 @@ def record_policy_consent(user_id: str, policy_version: str, db_path: str = "pox
         )
 
 
-def list_public_seeker_index(db_path: str = "pox.db") -> list[dict]:
-    """
-    公開一覧用の最小射影（指示書09 §3-2）。seeker 原文（生テキスト・素材・現状詳細・
-    必要像）は一切載せない。返すのは id・一行紹介・意志抜粋のみ。
-    load_all_seekers（内部関数・禁則で本体不変）を再利用して射影する。
-    """
-    out = []
-    for row in load_all_seekers(db_path=db_path):
-        seeker = row.get("seeker") or {}
-        sm = seeker.get("supporting_material")
-        sm = sm if isinstance(sm, dict) else {}
-        will = str(seeker.get("意志") or "")
-        out.append({
-            "id": row.get("id"),
-            "one_liner": str(sm.get("一行紹介") or ""),           # 指示書07 追加。無ければ空
-            "will_excerpt": will[:40] + ("…" if len(will) > 40 else ""),  # 表示用抜粋（原文ではない）
-        })
-    return out
+def list_directory_ids(db_path: str = "pox.db") -> list[str]:
+    """登録者一覧の母集団（指示書55 §4-4）。**v4（profiles_v4）を正**とし、本人と紐づいている
+    （auth_identities に行がある）id だけを登録順で返す。旧 v3 seekers は読まない（読み取り専用で残置）。
+    profiles_v4 は Postgres 専用テーブルなので、それ以外では空。"""
+    if not is_postgres():
+        return []
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT p.id FROM profiles_v4 p JOIN auth_identities a ON a.subject_id = p.id "
+            "ORDER BY p.created_at ASC, p.id ASC"
+        ).fetchall()
+    return [r[0] for r in rows]
 
 
 # ── 二層保存（メイン保存口・UPSERT §4）─────────────────────────

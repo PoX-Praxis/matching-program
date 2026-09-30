@@ -9,7 +9,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from embedding_config import _PREFIX_BY_MODEL, MODEL_DIMS, MODEL_TAG, PREFIX
+from embedding_config import _PREFIX_BY_MODEL, MODEL_DIMS, REQUESTED_MODEL_TAG, PREFIX
 
 
 def test_all_model_tags_have_direct_prefix_entry():
@@ -30,8 +30,8 @@ def test_qwen3_prefix_values_unchanged():
 
 def test_default_model_tag_resolves_directly():
     # 既定 MODEL_TAG は直接ヒットし、フォールバックと同一結果
-    assert MODEL_TAG in _PREFIX_BY_MODEL
-    assert PREFIX == _PREFIX_BY_MODEL[MODEL_TAG]
+    assert REQUESTED_MODEL_TAG in _PREFIX_BY_MODEL
+    assert PREFIX == _PREFIX_BY_MODEL[REQUESTED_MODEL_TAG]
 
 
 def test_embgemma_nomic_prefix_values_unchanged():

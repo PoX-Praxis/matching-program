@@ -90,7 +90,11 @@ def run_inventory(*, db_path="pox.db") -> dict:
     ids = sorted(set(auth) | v3 | set(v4))
     accounts = []
     for i in ids:
-        refs = sum(1 for actor, _, payload in ledger if actor == i or f'"{i}"' in (payload or ""))
+        ref_types = {}
+        for actor, typ, payload in ledger:
+            if actor == i or f'"{i}"' in (payload or ""):
+                ref_types[typ] = ref_types.get(typ, 0) + 1
+        refs = sum(ref_types.values())
         accounts.append({
             "id": i,
             "display_name": names.get(i),
@@ -101,6 +105,7 @@ def run_inventory(*, db_path="pox.db") -> dict:
             "registered_at": str(auth.get(i) or (v4[i][1] if i in v4 else "") or "") or None,
             "vector_model_tags": sorted(tags.get(i, [])),
             "ledger_refs": refs,
+            "ledger_ref_types": ref_types,          # 型ごとの件数だけ（payload は返さない）
         })
     out["accounts"] = accounts
     out["accounts_without_auth"] = [a["id"] for a in accounts if not a["in_auth"]]

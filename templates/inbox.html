@@ -79,11 +79,12 @@ function renderApprovals(vessels, myId) {
   tbody.innerHTML = needAction.map(v => {
     const j = (v.joins || [])[0] || {};
     const other = v.founder === myId ? (j.joiner || "-") : v.founder;
-    const oname = v.founder === myId ? (j.joiner_name || other) : (v.founder_name || other);
+    const oname = v.founder === myId ? (j.joiner_name || "表示名未設定のアカウント")
+                                     : (v.founder_name || "表示名未設定のアカウント");
     const oid = encodeURIComponent(other);
-    // 承認画面は相手特定の場面 → 表示名＋subject_id を併記（指示書30）
+    // 生 id は画面に出さない（指示書55 172。46 の「表示名＋id 併記」は廃止）
     return `<tr>
-      <td><a href="/profile/${oid}">${escHtml(oname)}</a> <span class="subject-id">${escHtml(other)}</span></td>
+      <td><a href="/profile/${oid}">${escHtml(oname)}</a></td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
       <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;
@@ -101,7 +102,7 @@ function renderMessages(convs) {
     const href = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(c.other_id)}`;
     // メッセージ一覧は表示名のみ（指示書30）
     return `<tr>
-      <td><a href="/profile/${encodeURIComponent(c.other_id)}">${escHtml(c.other_name || c.other_id)}</a></td>
+      <td><a href="/profile/${encodeURIComponent(c.other_id)}">${escHtml(c.other_name || "表示名未設定のアカウント")}</a></td>
       <td>${escHtml((c.last_body || "").slice(0, 60))}${c.last_body && c.last_body.length > 60 ? "…" : ""}</td>
       <td>${unread}</td>
       <td><a href="${href}">会話を開く</a></td>

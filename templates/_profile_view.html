@@ -123,20 +123,17 @@ window.PoXProfileView = (function(){
   }
 
   function header(pv){
-    var sid = pv.subject_id || "";
-    var dn  = (pv.display_name && pv.display_name !== sid) ? pv.display_name : "";
-    // カスタム表示名があるときだけ ID をハンドルに併記（無ければ ID をタイトルに）
-    return '<h1 id="pvTitle" class="pv-title">' + esc(dn || sid) + '</h1>'
-         + '<p class="pv-handle">' + esc(dn ? sid : "") + '</p>';
+    // 生 id は画面に出さない（指示書55 172）。表示名（未設定なら「表示名未設定のアカウント」）だけ。
+    return '<h1 id="pvTitle" class="pv-title">' + esc(pv.display_name || "") + '</h1>'
+         + '<p class="pv-handle"></p>';
   }
 
   function dnEditor(pv){
-    var sid = pv.subject_id || "";
-    var dn  = (pv.display_name && pv.display_name !== sid) ? pv.display_name : "";
+    var dn  = pv.display_name_set ? pv.display_name : "";
     return '<div class="pv-dn">'
       + '<label for="dnInput" class="pv-dn-label">表示名（任意・30字まで）</label>'
       + '<div class="pv-dn-row">'
-      +   '<input id="dnInput" type="text" maxlength="30" placeholder="未設定（IDが表示されます）" value="' + esc(dn) + '">'
+      +   '<input id="dnInput" type="text" maxlength="30" placeholder="未設定" value="' + esc(dn) + '">'
       +   '<button id="dnSave" onclick="saveDisplayName(this)">保存</button>'
       + '</div><span id="dnNote" class="pv-dn-note"></span></div>';
   }

@@ -260,3 +260,5 @@
 | 177 | `t55c_connections::test_t177_dm_requires_connection` |
 | 180 | `t55c_connections::test_t180_offer_message_optional_and_limited`, `t55c_connections::test_t180_offer_message_stays_at_top_of_conversation_and_can_be_retracted` |
 | 181 | `t55c_connections::test_t181_only_recipient_reads_offer_message` |
+| 175・195 | `t55c_connections::test_t175_t195_close_writes_a_b_by_without_reason`, `t55c_connections::test_t175_display_is_date_and_end_only`, `t55c_connections::test_t195_close_connection_has_no_reason_parameter` |
+| 176 | `t55c_connections::test_t176_connection_types_are_listed` |

@@ -211,13 +211,17 @@ def approve(
     return {"vessel_id": vid, "established": True}
 
 
-def close_connection(a: str, b: str, by: str, reason: str = "", db_path: str = "pox.db") -> dict:
-    """接続を終了する（connection.closed を追記）。理由は事実として残すが判定はしない。"""
+def close_connection(a: str, b: str, by: str, db_path: str = "pox.db") -> dict:
+    """接続を終了する（connection.closed を追記）。
+
+    payload は **{a, b, by} に確定**（指示書55 §4-6・55-2 PR-C）。**理由は書かない**（人への判断を
+    台帳に残さない）。本番に過去の行が 0 件であることを確認したうえでの「未使用分の確定」で、既存の
+    記録の意味は変えていない。by は台帳の事実として残すが、**画面には誰が終了したかを出さない**。
+    """
     if not _active_established(a, b, db_path=db_path):
         return {"vessel_id": _vessel_id(a, b), "closed": False}
     aa, bb = sorted([a, b])
-    le.append_event(by, "connection.closed",
-                    {"a": aa, "b": bb, "by": by, "reason": reason}, db_path=db_path)
+    le.append_event(by, "connection.closed", {"a": aa, "b": bb, "by": by}, db_path=db_path)
     return {"vessel_id": _vessel_id(a, b), "closed": True}
 
 

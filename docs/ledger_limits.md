@@ -96,7 +96,7 @@ redaction.recorded {
 | `purpose.agreed` / `intent.launched` / `intent.participant.joined` / `intent.completed` | 使用中（指示書41 §4 で固定） |
 | `intent.proposed` / `intent.agreed` / `intent.cancelled` | 凍結（新規に書かない・読み取りのみ） |
 | `profile.structured` / `visibility.changed` / `necessity.published` / `necessity.retired` | 使用中 |
-| `connection.established` / `connection.closed` / `anchor.published` | 使用中 |
+| `connection.established` / `connection.closed` / `anchor.published` | 使用中。**`connection.established` と `connection.closed` は指示書41 §4 の型一覧に追記**（指示書55。新設ではなく記録の漏れの解消）。`connection.closed` の payload は **`{a, b, by}` に確定**（理由は書かない。確定時点で本番の過去の行は 0 件）。画面には日付と「終了」だけを出し、誰が終了したかは出さない |
 | `redaction.recorded` | 使用中（45B で新設） |
 | `intent.participant.left` | 使用中（指示書51 で新設）。プロジェクトからの離脱。`member.left`（コミュニティ所属の離脱）とは目的が別 |
 | `content.removed` | **予約済み・不採用**。指示書17 §5-3 で定義されたが実装されなかった。**実装しない**。削除の記録は `redaction.recorded` が担う（同じ目的の型を 2 つ置かない）。指示書17 の本文が出てきた場合も再利用とはせず、「17 §5-3 の要求を `redaction.recorded` が満たしているか」の確認として扱う |

@@ -12,7 +12,7 @@ PoX ③ 最小プラットフォーム
       ANTHROPIC_API_KEY=xxx python app.py  ← 実LLM判定
       POX_DB=/path/to/pox.db python app.py ← DB パス変更
 """
-import sys, os, uuid, secrets
+import sys, os, uuid, secrets, json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session, g, Response
@@ -395,6 +395,23 @@ def ledger_audit_legacy_boundary():
         "unresolved": ids(r["unresolved"]),
         "verdict": r["verdict"],
     }), 200
+
+
+@app.get("/ledger/audit/inventory")
+def ledger_audit_inventory():
+    """埋め込みとアカウントの棚卸し（指示書55 段階0-2 E-1〜E-3・B-2・B-5。scripts/audit_inventory.py と同じ）。
+
+    読み取りのみ。認証は /ledger/audit/legacy-boundary と同じ（X-Anchor-Token が一致しなければ 404）。
+    返すのは設定値・件数・id ごとの所在と表示名まで。本文・スコア・照合の結果は返さない。
+    """
+    if not (_debug_enabled() or _anchor_token_ok()):
+        abort(404)
+    _root = os.path.dirname(os.path.abspath(__file__))
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+    from scripts.audit_inventory import run_inventory
+    return app.response_class(json.dumps(run_inventory(db_path=DB), ensure_ascii=False, default=str),
+                              mimetype="application/json"), 200
 
 
 def _agreement_hash_at(seq):

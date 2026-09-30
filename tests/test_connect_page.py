@@ -17,10 +17,12 @@ def test_connect_route_ok():
     assert "/v4/match" in b and 'fetch("/seekers")' in b
 
 
-def test_connect_sort_is_client_side_labels():
+def test_connect_has_no_sort_or_score():
+    # 指示書55 PR-A（164 の先取り）: 並べ替え 3 種と「総合」の表示は廃止
     b = _c().get("/connect").get_data(as_text=True)
-    for label in ("総合順", "補完が効いた順", "共鳴が効いた順", "renderRecs"):
-        assert label in b
+    for label in ("総合順", "補完が効いた順", "共鳴が効いた順", "総合 "):
+        assert label not in b, label
+    assert "renderRecs" in b
 
 
 def test_nav_points_to_connect():

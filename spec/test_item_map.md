@@ -260,6 +260,8 @@
 | 177 | `t55c_connections::test_t177_dm_requires_connection` |
 | 180 | `t55c_connections::test_t180_offer_message_optional_and_limited`, `t55c_connections::test_t180_offer_message_stays_at_top_of_conversation_and_can_be_retracted` |
 | 181 | `t55c_connections::test_t181_only_recipient_reads_offer_message` |
+| 175・195 | `t55c_connections::test_t175_t195_close_writes_a_b_by_without_reason`, `t55c_connections::test_t175_display_is_date_and_end_only`, `t55c_connections::test_t195_close_connection_has_no_reason_parameter` |
+| 176 | `t55c_connections::test_t176_connection_types_are_listed` |
 | 185 | `t55e_audit_match::test_t185_no_matching_while_someone_lacks_current_tag`, `t55e_audit_match::test_t185_old_tag_rows_alone_do_not_stop_matching`, `t55e_audit_match::test_t185_postgres_query_counts_vectorized_only` |
 | 55-4 §2 | `t55e_audit_match::test_audit_match_requires_token_and_pair`, `t55e_audit_match::test_audit_match_returns_both_directions_without_text`, `t55e_audit_match::test_audit_match_writes_nothing` |
 | 55-3 §3 | `t55e_audit_match::test_necessity_vectors_carry_model_tag`, `t55e_audit_match::test_allow_stub_is_refused_on_render` |

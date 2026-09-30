@@ -69,13 +69,13 @@ def test_close_connection_sets_closed_at_and_ended():
     db = _db()
     ledger.approve("alice", "bob", db_path=db)
     ledger.approve("bob", "alice", db_path=db)
-    c = ledger.close_connection("alice", "bob", by="alice", reason="", db_path=db)
+    c = ledger.close_connection("alice", "bob", by="alice", db_path=db)
     assert c["closed"] is True
     v = ledger.load_all_vessels(db_path=db)[0]
     assert v["joins"][0]["closed_at"] is not None
     assert v["joins"][0]["terminal_state"] != "active"
     assert le.verify_chain(db_path=db)["ok"] is True
-    # 理由は payload に事実として残るが、導出 vessel に reason を混ぜない
+    # 理由は書かない（指示書55: payload は {a, b, by}）。導出 vessel にも reason は無い
     assert "reason" not in v["joins"][0]
 
 

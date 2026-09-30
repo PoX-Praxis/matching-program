@@ -468,12 +468,15 @@ def get_seekers():
     me = current_subject_id()
     ids = [i for i in list_directory_ids(db_path=DB) if i != me]
     names = _resolve_names(ids, fallback=UNNAMED_LABEL)
+    import handles
+    hs = handles.get_many(ids, db_path=DB)        # リンクは /u/<ハンドル>（アドレス欄に生 id を出さない）
     rows = []
     for i in ids:
         pv = get_profile_view(i, db_path=DB) or {}
         pub = get_public_necessity(i)          # 数値なし・日時閾値ゲート済み
         rows.append({
             "id": i,
+            "handle": hs.get(i),
             "name": names.get(i) or UNNAMED_LABEL,
             "one_liner": _text_of(pv.get("headline")),
             "will": _text_of(pv.get("pursuing")),
@@ -1009,7 +1012,24 @@ def _draft_preview(draft):
         "payload": draft["payload"],
         "rejections": draft.get("rejections", []),
         "updated_at": draft["updated_at"],
+        **_handle_hint(draft),
     }
+
+
+def _handle_hint(draft):
+    """確定の前に見せるハンドルの材料（指示書55-2 PR-D）。個人の下書きで、まだハンドルが無い人だけ。
+    初期値は①の出力の "id"（英数字のハンドルネーム。指示書30 で宙に浮いていた値）を使う。"""
+    if draft.get("owner_kind") != "subject":
+        return {}
+    import handles
+    if handles.get_handle(draft["subject_id"], db_path=DB):
+        return {"needs_handle": False}
+    raw = str((draft.get("payload") or {}).get("id") or "")
+    try:
+        suggestion = handles.normalize(raw)
+    except handles.HandleError:
+        suggestion = ""
+    return {"needs_handle": True, "handle_suggestion": suggestion}
 
 
 @app.post("/v4/drafts")
@@ -1126,6 +1146,19 @@ def confirm_draft(draft_id):
     if not (flat.get("necessity_text") or "").strip():
         return jsonify({"error": "必要像がありません。①をやり直して必要像を含めて再送してください。"}), 400
 
+    # ハンドル（指示書55-2 PR-D）: 登録時に確定（必須）。未設定の人は確定の本文で受け取り、書式と
+    # 重複をここで確かめる（書き込みは確定の最後）。設定済みの人には求めない（不変）。
+    import handles
+    cbody = request.get_json(force=True, silent=True) or {}
+    new_handle = None
+    if handles.get_handle(d["subject_id"], db_path=DB) is None:
+        try:
+            new_handle = handles.check(cbody.get("handle") or "", d["subject_id"], db_path=DB)
+        except handles.HandleError as e:
+            return jsonify({"error": f"ハンドル: {e}", "field": "handle"}), 400
+        except handles.HandleTaken as e:
+            return jsonify({"error": f"ハンドル: {e}", "field": "handle"}), 409
+
     # 違和感(discomfort)の拒否があれば gate_u を引き上げる（§5-1）。ingest より前に反映し、
     # 照合に使う v4 ストア側の必要像にも同じ値が入るようにする（fact_error はここでは動かさない）。
     n_discomfort = drafts.count_rejections(d, "discomfort")
@@ -1161,19 +1194,24 @@ def confirm_draft(draft_id):
             actor=pid, db_path=DB)
 
     # プライバシーポリシー同意の証跡（確定時に記録・best-effort。従来 /seekers で記録していた分）。
-    cbody = request.get_json(force=True, silent=True) or {}
     if cbody.get("privacy_policy_agreed"):
         try:
             record_policy_consent(pid, str(cbody.get("privacy_policy_version") or ""), db_path=DB)
         except Exception as e:  # noqa: BLE001
             app.logger.warning(f"[policy-consent] 記録skip（確定は成功）: {e}")
 
+    if new_handle:
+        try:
+            handles.set_handle(d["subject_id"], new_handle, db_path=DB)
+        except (handles.HandleTaken, handles.HandleImmutable) as e:   # 確認と書き込みの間に取られた
+            app.logger.warning(f"[handle] 設定できませんでした（確定は成功・後から設定可）: {e}")
     drafts.set_status(draft_id, "confirmed", db_path=DB)
     # churn（指示書35 §3）: 内容が前回と同一なら台帳もスナップショットも記録されない（仕様どおり）。
     # 「何も起きなかった」ように見えないよう、確定時に利用者へ伝える材料を返す。
     unchanged = bool(prof.get("skipped"))
     return jsonify({
         "id": pid, "draft_id": draft_id, "confirmed": True,
+        "handle": handles.get_handle(pid, db_path=DB),
         "attempt_n": d["attempt_n"],
         "route": "fallback" if is_fallback else "user-supplied",
         "unchanged": unchanged,
@@ -1399,6 +1437,8 @@ def _public_match_response(out, store=None, model_tag=None, viewer=None):
     mine = {"will": _text_of(mine_pv.get("pursuing")), "state": _state_text(mine_pv), "necessity": mine_nec}
 
     names = _resolve_names(ids, fallback=UNNAMED_LABEL)
+    import handles
+    hs = handles.get_many(ids, db_path=DB)
     results = []
     for r in rows:
         cid = r["candidate_id"]
@@ -1408,6 +1448,7 @@ def _public_match_response(out, store=None, model_tag=None, viewer=None):
         axis = public_axis(r["attribution"])
         results.append({
             "candidate_id": cid,
+            "handle": hs.get(cid),
             "name": names.get(cid) or UNNAMED_LABEL,
             "one_liner": _text_of(pv.get("headline")),
             "axis": "will" if axis == "will" else ("mutual" if axis == "mutual" else "fill"),
@@ -1712,9 +1753,12 @@ def api_profile(user_id):
     # 表示名（指示書30）。生 id は画面に出さない（指示書55 172）。未設定なら「表示名未設定」。
     # subject_id は画面の遷移用（URL）に返すだけで、表示には使わない。
     pv["subject_id"] = user_id
-    name = _resolve_names([user_id], fallback=UNNAMED_LABEL).get(user_id) or UNNAMED_LABEL
-    pv["display_name"] = name
-    pv["display_name_set"] = name != UNNAMED_LABEL
+    import handles
+    raw = _resolve_names([user_id], fallback=UNNAMED_LABEL, with_handle=False).get(user_id) or UNNAMED_LABEL
+    pv["display_name_set"] = raw != UNNAMED_LABEL
+    pv["display_name"] = raw                                   # 表示名だけ（編集欄の初期値）
+    pv["handle"] = handles.get_handle(user_id, db_path=DB)     # 未設定なら None（本人に導線を出す）
+    pv["display_label"] = _label(raw if pv["display_name_set"] else "", pv["handle"]) or UNNAMED_LABEL
     return jsonify(pv)
 
 
@@ -1884,7 +1928,55 @@ def register():
 
 @app.get("/profile/<seeker_id>")
 def profile(seeker_id):
-    return render_template("profile.html")
+    """旧 URL（生 id）。ハンドルがあれば /u/<ハンドル> へ移す（アドレス欄に生 id を出さない。188）。
+    ハンドル未設定の人はこの URL のまま（設定するまで表示名のみ）。"""
+    import handles
+    h = handles.get_handle(seeker_id, db_path=DB)
+    if h:
+        return redirect(f"/u/{h}", code=301)
+    return render_template("profile.html", profile_subject=seeker_id)
+
+
+@app.get("/u/<handle>")
+def profile_by_handle(handle):
+    """プロフィールの URL（指示書55 §3-7）。退役したハンドルは誰にも解決しない（404）。"""
+    import handles
+    sid = handles.subject_for(handle, db_path=DB)
+    if sid is None:
+        abort(404)
+    return render_template("profile.html", profile_subject=sid)
+
+
+@app.post("/api/my/handle")
+@login_required
+def set_my_handle():
+    """ハンドルの初回設定（既存ユーザーの導線）。**一意・不変**。設定済みなら 409（変えられない）。"""
+    import handles
+    body = request.get_json(force=True, silent=True) or {}
+    sid = require_self(body.get("id"))
+    if not sid:
+        return jsonify({"error": "ログインが必要です"}), 401
+    try:
+        h = handles.set_handle(sid, body.get("handle") or "", db_path=DB)
+    except handles.HandleError as e:
+        return jsonify({"error": str(e)}), 400
+    except (handles.HandleTaken, handles.HandleImmutable) as e:
+        return jsonify({"error": str(e)}), 409
+    return jsonify({"handle": h}), 201
+
+
+@app.get("/api/handle/check")
+@login_required
+def check_handle():
+    """ハンドルが使えるか（書式・重複）。書き込まない。"""
+    import handles
+    try:
+        h = handles.check(request.args.get("h") or "", current_subject_id(), db_path=DB)
+    except handles.HandleError as e:
+        return jsonify({"available": False, "error": str(e)}), 200
+    except handles.HandleTaken as e:
+        return jsonify({"available": False, "error": str(e)}), 200
+    return jsonify({"available": True, "handle": h}), 200
 
 
 @app.get("/inbox")
@@ -1964,20 +2056,33 @@ def post_message():
 UNNAMED_LABEL = "表示名未設定のアカウント"
 
 
-def _resolve_names(subject_ids, fallback=None):
-    """複数 subject_id → {sid: 表示名}。community は communities.name、個人は display_names、
-    無ければ fallback（未指定なら subject_id）。参加・加入系の画面は fallback=UNNAMED_LABEL を渡し、
-    生 id を表示に出さない（指示書48 114・テスト49）。"""
-    import display_names
+def _resolve_names(subject_ids, fallback=None, with_handle=True):
+    """複数 subject_id → {sid: 表示}。community は communities.name、個人は「表示名（@ハンドル）」
+    （指示書55-2 PR-D。表示名が無ければ「@ハンドル」、どちらも無ければ fallback＝未指定なら subject_id）。
+    参加・加入系の画面は fallback=UNNAMED_LABEL を渡し、生 id を表示に出さない（指示書48 114・テスト49）。"""
+    import display_names, handles
     ids = [s for s in {s for s in subject_ids if s}]
     if not ids:
         return {}
     dn = display_names.get_many(ids, db_path=DB)
+    hs = handles.get_many(ids, db_path=DB) if with_handle else {}
     out = {}
     for s in ids:
         c = get_community(s, db_path=DB)          # community_id は subject_id と同空間
-        out[s] = (c["name"] if c else None) or dn.get(s) or (fallback or s)
+        if c:
+            out[s] = c["name"] or (fallback or s)
+            continue
+        out[s] = _label(dn.get(s), hs.get(s)) or (fallback or s)
     return out
+
+
+def _label(name, handle):
+    """表示は「表示名（@ハンドル）」（指示書55 §0-9）。片方しか無ければある方だけ。"""
+    if name and handle:
+        return f"{name}（@{handle}）"
+    if handle:
+        return f"@{handle}"
+    return name or ""
 
 
 def _resolve_name(subject_id):

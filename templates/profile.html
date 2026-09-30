@@ -58,8 +58,8 @@
 </div>
 
 <script>
-const pathParts = location.pathname.split("/");
-const profileId = decodeURIComponent(pathParts[pathParts.length - 1]);
+// 表示している人の subject_id はサーバーが渡す（URL は /u/<ハンドル>。アドレス欄に生 id を出さない）。
+const profileId = {{ profile_subject|tojson }};
 
 async function init() {
   // 「自分のプロフィールならマイページへ」の判定はセッション基準（指示書26）。

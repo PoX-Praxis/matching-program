@@ -468,6 +468,16 @@ function renderDraftPreview(draft) {
     if (notes) h += `<p style="font-size:12px;color:#555;margin:6px 0 0">${notes}</p>`;
     h += `</div>`;
   }
+  // ハンドル（指示書55-2 PR-D）: 登録時に確定（必須）。**後から変えられない**ことを確定の前に見せる。
+  if (draft.needs_handle) {
+    h += `<div style="border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:10px 12px;margin:10px 0">
+      <label for="handleInput" style="font-weight:700;font-size:13px">ハンドル（@の後ろ・英小文字・数字・_ の 3〜30 字）</label><br>
+      <span style="font-size:13px">@</span><input id="handleInput" type="text" maxlength="31" autocomplete="off"
+        value="${esc(draft.handle_suggestion || "")}" style="font-size:14px;padding:4px 8px;margin:6px 0">
+      <p style="font-size:12px;color:#8a4a00;margin:4px 0 0">ハンドルは<b>後から変えられません</b>。実名を入れると、ずっとその名前で表示されます。
+        表示は「表示名（@ハンドル）」、プロフィールの URL は /u/ハンドル になります。表示名はあとから自由に変えられます。</p>
+    </div>`;
+  }
   h += `<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
     <button type="button" onclick="confirmDraft('${esc(draft.draft_id)}', this)"
       style="background:#1f3a5f;color:#fff;border:none;border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer">確定する</button>
@@ -487,7 +497,8 @@ async function confirmDraft(draftId, btn) {
     res = await fetch(`/v4/drafts/${encodeURIComponent(draftId)}/confirm`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ privacy_policy_agreed: true,
-                             privacy_policy_version: PRIVACY_POLICY_VERSION }),
+                             privacy_policy_version: PRIVACY_POLICY_VERSION,
+                             handle: (document.getElementById("handleInput") || {}).value || "" }),
     });
   } catch (e) {
     el.className = "err"; el.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
@@ -502,7 +513,7 @@ async function confirmDraft(draftId, btn) {
     const changeNote = data.unchanged
       ? `<br><span style="font-size:12px;color:#a15c00">内容に変更がないため、履歴には追加されませんでした。</span>`
       : "";
-    el.innerHTML = `✅ 確定しました！ ID: <strong>${esc(data.id)}</strong>
+    el.innerHTML = `✅ 確定しました！${data.handle ? ` ハンドル: <strong>@${esc(data.handle)}</strong>` : ""}
       &nbsp; <a href="/mypage?id=${encodeURIComponent(data.id)}">マイページを開く →</a>
       &nbsp; <a href="/connect">つながる →</a>${changeNote}
       <br><span style="font-size:12px;color:#666">照合用のベクトル化はこの後バックグラウンドで進みます（マイページで状態を確認できます）。</span>`;

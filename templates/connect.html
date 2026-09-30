@@ -71,6 +71,10 @@ const REASON = {
   fill_mine:   ["あなたの必要像", "相手の現状"],
   fill_theirs: ["相手の必要像", "あなたの現状"],
 };
+/* プロフィールへのリンク。ハンドルがあれば /u/<ハンドル>（アドレス欄に生 id を出さない）。 */
+function profileHref(id, handle) {
+  return handle ? `/u/${encodeURIComponent(handle)}` : `/profile/${encodeURIComponent(id)}`;
+}
 function reasonLine(x) {
   const [l1, l2] = REASON[x.kind] || ["", ""];
   // fill_theirs は「相手の必要像 × あなたの現状」の順で見せる
@@ -128,7 +132,7 @@ async function loadRecommendations() {
     const one = r.one_liner ? `<div class="oneliner clamp-2">${escHtml(r.one_liner)}</div>` : "";
     const reasons = (r.reasons || []).map(reasonLine).join("");
     return `<div class="card">
-      <a class="cname" href="/profile/${encodeURIComponent(cid)}">${escHtml(r.name)}</a>
+      <a class="cname" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
       ${one}
       <div class="meta">${axis.label ? `<span class="${axis.cls}">${axis.label}</span>` : ""}</div>
       ${reasons}
@@ -204,7 +208,7 @@ function renderDirectory() {
     return;
   }
   el.innerHTML = rows.map(r => `<div class="dir-row">
-      <div><a class="dname" href="/profile/${encodeURIComponent(r.id)}">${escHtml(r.name)}</a>
+      <div><a class="dname" href="${profileHref(r.id, r.handle)}">${escHtml(r.name)}</a>
         ${r.one_liner ? `<span class="one">${escHtml(r.one_liner)}</span>` : ""}</div>
       ${r.will ? `<div class="will clamp-2">${escHtml(r.will)}</div>` : ""}
       ${r.necessity ? `<div class="dir-nec clamp-2">必要としている相手: ${escHtml(r.necessity)}</div>` : ""}

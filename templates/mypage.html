@@ -93,6 +93,31 @@ function handleAuth(res) {
 
 /* 表示名の保存（本人のみ・指示書30）。redact/30字上限はサーバー側で最終確定。
    入力欄・注記・タイトルは共通コンポーネントが出力した要素（dnInput/dnNote/pvTitle）。 */
+/* ハンドルの初回設定（指示書55-2 PR-D）。一意・不変。設定後は変えられない。 */
+async function saveHandle(btn) {
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
+  const note = document.getElementById("handleNote");
+  const v = (document.getElementById("handleInput").value || "").trim();
+  if (!v) { note.textContent = "ハンドルを入力してください"; return; }
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/my/handle", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: sid, handle: v }),
+    });
+    if (PoX.handle(res)) { if (btn) btn.disabled = false; return; }
+    const data = await res.json();
+    if (!res.ok) { note.textContent = data.error || "設定できませんでした"; if (btn) btn.disabled = false; return; }
+    note.textContent = `@${data.handle} に確定しました`;
+    document.getElementById("handleInput").disabled = true;
+    init();
+  } catch (e) {
+    note.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function saveDisplayName(btn) {
   const sid = await PoX.me();                       // 同一性はセッション
   if (!sid) { PoX.loginRedirect(); return; }

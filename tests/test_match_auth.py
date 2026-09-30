@@ -90,7 +90,7 @@ def test_t162_no_numbers_in_response(v4):
               "log_contrib", "rank", "gamma", "alpha", "beta"):
         assert k not in blob, k
     assert [r["candidate_id"] for r in d["results"]] == ["c1"]                # c2 は入口の閾値未満
-    assert set(d["results"][0]) == {"candidate_id", "name", "one_liner", "axis", "reasons"}
+    assert set(d["results"][0]) == {"candidate_id", "handle", "name", "one_liner", "axis", "reasons"}
     assert "pool_size" not in d                                                 # 件数も出さない（170）
 
 

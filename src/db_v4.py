@@ -279,6 +279,11 @@ class MemoryStore:
     def candidate_ids(self, seeker_id, model_tag):
         return [pid for (pid, mt) in self.vectors if mt == model_tag and pid != seeker_id]
 
+    def count_missing_tag(self, model_tag):
+        """ベクトル化済みなのに現行タグの行を持たないプロフィールの数（指示書55-4 §4-1・185）。"""
+        have = {pid for (pid, mt) in self.vectors if mt == model_tag}
+        return len({pid for (pid, _mt) in self.vectors} - have)
+
     def write_ledger(self, seeker_id, candidate_id, event, payload):
         self.ledger.append({"seeker_id": seeker_id, "candidate_id": candidate_id,
                             "event": event, "payload": payload})
@@ -495,6 +500,22 @@ class PostgresStore:
                 vecs[k] = json.loads(val) if isinstance(val, str) else list(val)
             out[pid] = {"vectors": vecs, "necessity": nec_by_id.get(pid, {})}
         return out
+
+    def count_missing_tag(self, model_tag):
+        """ベクトル化済み（どれかのタグの有効行がある）なのに、現行タグの有効行を持たないプロフィールの数。
+
+        指示書55-4 §4-1・テスト 185: これが 0 でない間は「モデルの切替が済んでいない」ので照合しない。
+        「他のタグの行がある」では判定しない（旧タグの行は切替後も is_active で残るため、止まり続ける）。
+        まだ一度もベクトル化されていない人（準備中・失敗）は数えない（全員の照合を止めないため）。
+        """
+        with self._get_connection(self.db_path) as con:
+            r = con.execute(
+                """SELECT count(DISTINCT profile_id) FROM profile_vectors
+                   WHERE is_active = true AND profile_id NOT IN
+                     (SELECT profile_id FROM profile_vectors WHERE model_tag=%s AND is_active=true)""",
+                (model_tag,),
+            ).fetchone()
+        return int(r[0])
 
     def candidate_ids(self, seeker_id, model_tag):
         """同 model_tag・is_active の候補 profile_id を全件返す（stage1 総当たり）。"""

@@ -50,7 +50,7 @@ def _connect(db_path: str = "pox.db"):
             "seeking TEXT, canon_version TEXT)"    # 指示書28 §3-3/§3-4
         )
         # 既存 SQLite DB への後付け（冪等・本番 Postgres は schema._migrate_columns）。
-        for col in ("seeking TEXT", "canon_version TEXT"):
+        for col in ("seeking TEXT", "canon_version TEXT", "model_tag TEXT"):   # model_tag: 55-3 §3-3
             try:
                 con.execute(f"ALTER TABLE necessities ADD COLUMN {col}")
             except Exception:  # noqa: BLE001（既存なら無視）
@@ -377,24 +377,33 @@ def vectorize_necessity(necessity_id: str, *, embed_fn=None, db_path: str = "pox
     rec = get_necessity(necessity_id, db_path=db_path)
     if rec is None:
         return None
+    from embedding_config import MODEL_TAG
     ef = embed_fn or _default_embed
     will_sym = ef(rec["will_text"], "symmetric")     # a チャネル用（対称の複製）
     nq = ef(rec["necessity_text"], "query")          # b チャネル用（必要像）
     with _connect(db_path) as con:
+        # model_tag: どのタグのベクトルか（指示書55-3 §3-3。切替時に古いものだけを作り直すため）
         con.execute(
-            "UPDATE necessities SET will_vec=%s, necessity_vec=%s WHERE necessity_id=%s",
-            (json.dumps(will_sym), json.dumps(nq), necessity_id),
+            "UPDATE necessities SET will_vec=%s, necessity_vec=%s, model_tag=%s WHERE necessity_id=%s",
+            (json.dumps(will_sym), json.dumps(nq), MODEL_TAG, necessity_id),
         )
-    return {"necessity_id": necessity_id, "dim": len(nq)}
+    return {"necessity_id": necessity_id, "dim": len(nq), "model_tag": MODEL_TAG}
 
 
 def query_vectors(necessity_id: str, db_path: str = "pox.db") -> dict | None:
-    """照合の query 側2本を返す（未ベクトル化なら None）。"""
+    """照合の query 側2本を返す（未ベクトル化なら None）。
+
+    別のタグで作ったベクトルは返さない（None＝照合は人起点へフォールバック。跨プール禁止）。
+    model_tag が空の行は、この列を足す前（55-3 以前）に作ったもの。本番は nomic しか使っていない
+    ため現行タグとして扱う（切替の前に作り直すこと。docs/matching.md）。"""
+    from embedding_config import MODEL_TAG
     with _connect(db_path) as con:
         r = con.execute(
-            "SELECT will_vec, necessity_vec FROM necessities WHERE necessity_id=%s",
+            "SELECT will_vec, necessity_vec, model_tag FROM necessities WHERE necessity_id=%s",
             (necessity_id,),
         ).fetchone()
     if not r or r[0] is None or r[1] is None:
+        return None
+    if r[2] and r[2] != MODEL_TAG:
         return None
     return {"will_symmetric": json.loads(r[0]), "necessity_query": json.loads(r[1])}

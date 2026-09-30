@@ -123,9 +123,25 @@ window.PoXProfileView = (function(){
   }
 
   function header(pv){
-    // 生 id は画面に出さない（指示書55 172）。表示名（未設定なら「表示名未設定のアカウント」）だけ。
-    return '<h1 id="pvTitle" class="pv-title">' + esc(pv.display_name || "") + '</h1>'
-         + '<p class="pv-handle"></p>';
+    // 表示は「表示名（@ハンドル）」（指示書55-2 PR-D）。生 id は画面に出さない（172）。
+    // 表示名が無ければハンドルを見出しに、どちらも無ければ「表示名未設定のアカウント」。
+    var dn = pv.display_name_set ? pv.display_name : "";
+    var h  = pv.handle ? "@" + pv.handle : "";
+    return '<h1 id="pvTitle" class="pv-title">' + esc(dn || h || pv.display_name || "") + '</h1>'
+         + '<p class="pv-handle">' + esc(dn ? h : "") + '</p>';
+  }
+
+  /* ハンドルの初回設定（本人のみ・未設定のときだけ出す導線）。**後から変えられない**ことを先に見せる。 */
+  function handleEditor(pv){
+    if (pv.handle) return "";
+    return '<div class="pv-dn" id="handleBox">'
+      + '<label for="handleInput" class="pv-dn-label">ハンドル（@の後ろ・英小文字・数字・_ の 3〜30 字）</label>'
+      + '<p class="pv-dn-note" style="color:#8a4a00">ハンドルは<b>後から変えられません</b>。実名を入れると、ずっとその名前で表示されます。'
+      +   'プロフィールの URL（/u/ハンドル）にもなります。</p>'
+      + '<div class="pv-dn-row">'
+      +   '<input id="handleInput" type="text" maxlength="31" placeholder="例: alice_2025" autocomplete="off">'
+      +   '<button id="handleSave" onclick="saveHandle(this)">この内容で確定する</button>'
+      + '</div><span id="handleNote" class="pv-dn-note"></span></div>';
   }
 
   function dnEditor(pv){
@@ -260,7 +276,7 @@ window.PoXProfileView = (function(){
     opts = opts || {};
     var mode = opts.mode === "owner" ? "owner" : "public";
     root.classList.add("pv");
-    var h = header(pv) + (mode === "owner" ? dnEditor(pv) : "") + prov();
+    var h = header(pv) + (mode === "owner" ? dnEditor(pv) + handleEditor(pv) : "") + prov();
     h += (pv.schema_version === "v4") ? bodyV4(pv, mode) : bodyV3(pv, mode);
     if (mode === "owner") {
       h += '<a id="editLink" class="pv-btn" href="#">プロフィールを編集する</a>';

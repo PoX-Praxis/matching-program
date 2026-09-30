@@ -251,3 +251,7 @@
 | 192 | `t55b_connect::test_t192_startup_log_reports_backend_and_tag` |
 | 193 | `match_auth::test_t193_no_unexpected_unauthenticated_write_routes` |
 | 194 | `match_auth::test_t194_t161_profile_edit_self_only` |
+| 178 | `t55d_handles::test_t178_label_is_name_with_handle`, `t55d_handles::test_t178_api_profile_carries_handle` |
+| 179 | `t55d_handles::test_t179_unique_and_immutable`, `t55d_handles::test_t179_api_first_set_then_409`, `t55d_handles::test_t179_handle_cannot_be_another_subject_id`, `t55d_handles::test_t179_confirm_requires_handle_for_new_users`, `t55d_handles::test_t179_draft_preview_suggests_handle_from_seeker_id` |
+| 188 | `t55d_handles::test_t188_profile_url_uses_handle`, `t55d_handles::test_t188_without_handle_stays_on_old_url` |
+| 189 | `t55d_handles::test_t189_exception_change_once_and_old_retired`, `t55d_handles::test_t189_change_is_recorded_not_shown` |

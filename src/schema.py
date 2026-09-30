@@ -235,6 +235,24 @@ _SQLITE_DDL = [
         updated_at TEXT NOT NULL,
         PRIMARY KEY (talk_id, voter)
     )""",
+    # ハンドル（指示書55-2 PR-D）。一意・不変。例外の変更は 1 回・旧ハンドルは退役（再利用しない）。
+    """CREATE TABLE IF NOT EXISTS handles (
+        subject_id TEXT PRIMARY KEY,
+        handle     TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS retired_handles (
+        handle     TEXT PRIMARY KEY,
+        subject_id TEXT NOT NULL,
+        retired_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS handle_changes (
+        subject_id TEXT NOT NULL,
+        old_handle TEXT NOT NULL,
+        new_handle TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        note       TEXT
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -468,6 +486,24 @@ _PG_DDL = [
         stance     TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         PRIMARY KEY (talk_id, voter)
+    )""",
+    # ハンドル（指示書55-2 PR-D）。一意・不変。例外の変更は 1 回・旧ハンドルは退役（再利用しない）。
+    """CREATE TABLE IF NOT EXISTS handles (
+        subject_id TEXT PRIMARY KEY,
+        handle     TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS retired_handles (
+        handle     TEXT PRIMARY KEY,
+        subject_id TEXT NOT NULL,
+        retired_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS handle_changes (
+        subject_id TEXT NOT NULL,
+        old_handle TEXT NOT NULL,
+        new_handle TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        note       TEXT
     )""",
 ]
 

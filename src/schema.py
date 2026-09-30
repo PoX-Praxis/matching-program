@@ -576,7 +576,8 @@ def _migrate_columns(con) -> None:
 
     # 追加: 後から DDL/コードに入ったが Postgres 側に自己修復が無かった列。
     # connection_requests のチャネル来歴（指示書18 §3。ledger.py は SQLite のみ ALTER していた）。
-    for col in ("predicted_role", "channel", "match_run_id"):
+    # offer_message（申し出の文・指示書55 §3-5）も同じく後付け。
+    for col in ("predicted_role", "channel", "match_run_id", "offer_message"):
         _add_column_if_missing(con, "connection_requests", col, "TEXT")
     # profiles の後付け列（db.py は SQLite のみ自己修復）。
     _add_column_if_missing(con, "profiles", "view_overrides", "TEXT NOT NULL DEFAULT '{}'")

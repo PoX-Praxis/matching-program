@@ -1490,6 +1490,10 @@ def post_approve():
         abort(400, "from_id と to_id が必要です")
     if from_id == to_id:
         abort(400, "自分自身は承認できません")
+    # 申し出の文（指示書55 §3-5）: 任意・上限あり。受けた本人だけが読む（通常DB。台帳に書かない）。
+    message = (body.get("message") or "").strip()
+    if len(message) > OFFER_MESSAGE_MAX:
+        return jsonify({"error": f"申し出の文は {OFFER_MESSAGE_MAX} 字までです"}), 400
 
     result = approve(
         from_id=from_id,
@@ -1502,8 +1506,64 @@ def post_approve():
         establish_hook=_snapshot_pair_resolver,   # 成立時に両者の最新スナップショットを結合（指示書12）
         ref_resolver=_conn_ref_resolver,          # 接続の根拠（指示書18 §1）
         require_grounding=True,                    # 両者に profile.structured が無ければ成立させない（§1-3）
+        message=message or None,
     )
     return jsonify(result), 200
+
+
+OFFER_MESSAGE_MAX = 400
+
+
+def _other_id(body):
+    other = (body.get("to_id") or body.get("with") or "").strip()
+    if not other:
+        abort(400, "相手（to_id）が必要です")
+    return other
+
+
+@app.post("/api/connections/withdraw")
+@login_required
+def withdraw_connection_request():
+    """自分の申し出（未成立）を取り下げる（指示書55 §3-4）。台帳に書かない。申し出の文も消える。
+    申し出が無ければ withdrawn=false（冪等・200）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("from_id"))
+    from ledger import withdraw_request
+    return jsonify({"withdrawn": withdraw_request(me, _other_id(body), db_path=DB)}), 200
+
+
+@app.get("/api/connections/state")
+@login_required
+def connection_state_route():
+    """本人から見た相手との状態（connected / pending_out / pending_in / none）。画面の出し分け用。"""
+    me = require_self(request.args.get("me"))
+    other = (request.args.get("with") or "").strip()
+    if not other:
+        return jsonify({"error": "with が必要です"}), 400
+    from ledger import connection_state
+    return jsonify({"state": connection_state(me, other, db_path=DB)}), 200
+
+
+@app.get("/api/my/offers")
+@login_required
+def my_received_offers():
+    """自分宛ての申し出と、その文（**受けた本人だけ**。第三者・公開 API には出さない）。"""
+    me = require_self(request.args.get("id"))
+    from ledger import received_offers
+    offers = received_offers(me, db_path=DB)
+    names = _resolve_names([o["from"] for o in offers], fallback=UNNAMED_LABEL)
+    _mark_noindex()
+    return jsonify([{**o, "from_name": names.get(o["from"], UNNAMED_LABEL)} for o in offers]), 200
+
+
+@app.post("/api/connections/offer-message/retract")
+@login_required
+def retract_offer_message_route():
+    """送った本人が、自分の申し出の文を取り消す（成立後の会話の冒頭からも消える）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("from_id"))
+    from ledger import retract_offer_message
+    return jsonify({"retracted": retract_offer_message(me, _other_id(body), db_path=DB)}), 200
 
 
 def _snapshot_pair_resolver(founder, joiner):
@@ -2045,6 +2105,10 @@ def post_message():
     attachment_url = body.get("attachment_url")
     if not from_id or not to_id or (not msg_body and not attachment_url):
         return jsonify({"error": "from_id, to_id, body か attachment_url が必要です"}), 400
+    # DM は接続の成立後だけ（指示書55 §0-10）。接続前は「申し出」（とその文）だけを送れる。
+    from ledger import is_connected
+    if not is_connected(from_id, to_id, db_path=DB):
+        return jsonify({"error": "メッセージは接続が成立してから送れます。まず「つながりたいと伝える」から申し出てください。"}), 403
     msg = send_message(from_id, to_id, msg_body, attachment_url=attachment_url, db_path=DB)
     return jsonify(msg), 201
 
@@ -2112,6 +2176,13 @@ def api_conversation():
     if not me or not other:
         return jsonify({"error": "me と with が必要です"}), 400
     msgs = get_conversation(me, other, db_path=DB)
+    # 成立後は申し出の文を会話の冒頭に残す（指示書55 §3-5。送った本人が取り消したものは出ない）。
+    from ledger import offer_messages_between, is_connected
+    offers = []
+    if is_connected(me, other, db_path=DB):
+        offers = [{"kind": "offer", "from_id": o["from"], "to_id": o["to"], "body": o["message"],
+                   "created_at": o["at"]} for o in offer_messages_between(me, other, db_path=DB)]
+    msgs = offers + list(msgs)
     names = _resolve_names([m["from_id"] for m in msgs] + [me, other], fallback=UNNAMED_LABEL)
     for m in msgs:
         m["from_name"] = names.get(m["from_id"], UNNAMED_LABEL)

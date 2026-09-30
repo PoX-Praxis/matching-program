@@ -58,9 +58,19 @@ async function init() {
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display = "block";
 
+  // 自分宛ての申し出の文（受けた本人だけが読める。指示書55 §3-5）
+  let offers = [];
+  try {
+    const oRes = await fetch(`/api/my/offers?id=${encodeURIComponent(myId)}`);
+    if (oRes.ok) offers = await oRes.json();
+  } catch (e) { /* 文が無くても承認はできる */ }
+  offerMsg = Object.fromEntries(offers.map(o => [o.from, o.message || ""]));
+
   renderApprovals(vessels, myId);
   renderMessages(inbox.conversations || []);
 }
+
+let offerMsg = {};   // 申し出た人 → 申し出の文
 
 function renderApprovals(vessels, myId) {
   const needAction = vessels.filter(v => {
@@ -84,7 +94,8 @@ function renderApprovals(vessels, myId) {
     const oid = encodeURIComponent(other);
     // 生 id は画面に出さない（指示書55 172。46 の「表示名＋id 併記」は廃止）
     return `<tr>
-      <td><a href="/profile/${oid}">${escHtml(oname)}</a></td>
+      <td><a href="/profile/${oid}">${escHtml(oname)}</a>
+        ${offerMsg[other] ? `<div class="offer-msg" style="font-size:12px;color:#444;margin-top:4px;white-space:pre-wrap">${escHtml(offerMsg[other])}</div>` : ""}</td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
       <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;

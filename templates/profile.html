@@ -42,9 +42,15 @@
   <!-- connect actions（接続CTA＝差3。owner ビューには無い） -->
   <div class="connect-block" id="connectBlock" style="display:none">
     <h2 class="pv-h">つながる<span class="en">CONNECT</span></h2>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-connect" onclick="doConnect(this)">この人とつながる</button>
-      <button class="btn btn-msg" onclick="sendMsg()">メッセージを送る</button>
+    <!-- 申し出の文（任意・400 字まで）。受け取った本人だけが読める。接続前は申し出だけを送れる（DM は成立後）。 -->
+    <div id="offerBox" style="display:none;margin-bottom:10px">
+      <label for="offerMsg" style="font-size:12px;color:#555">なぜつながりたいか（任意・400字まで。相手だけが読めます）</label>
+      <textarea id="offerMsg" maxlength="400" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;margin-top:4px"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap" id="connectActions">
+      <button class="btn btn-connect" id="btnOffer" onclick="doConnect(this)">つながりたいと伝える</button>
+      <button class="btn btn-msg" id="btnWithdraw" style="display:none" onclick="doWithdraw(this)">取り下げる</button>
+      <button class="btn btn-msg" id="btnDm" style="display:none" onclick="sendMsg()">メッセージを送る</button>
     </div>
     <!-- 未ログイン時の注記（指示書37 §4）。ボタンは活性のまま・押下でログイン導線へ。 -->
     <p id="loginNote" style="display:none;font-size:13px;color:#888;margin:8px 0 0">つながる・メッセージにはログインが必要です。</p>
@@ -88,7 +94,32 @@ async function init() {
 
   // 他人のプロフィール（未ログイン含む）は接続ブロックを表示（差3）。
   document.getElementById("connectBlock").style.display = "block";
-  if (!sid) document.getElementById("loginNote").style.display = "block";
+  if (!sid) { document.getElementById("loginNote").style.display = "block";
+              document.getElementById("offerBox").style.display = "block"; return; }
+  refreshConnectState();
+}
+
+/* 相手との状態で出し分ける（指示書55-2 PR-C）:
+   none → 申し出（文は任意）／pending_out → 「申請済み」＋取り下げ／pending_in → 承認
+   connected → メッセージ（DM は成立後だけ） */
+async function refreshConnectState() {
+  let state = "none";
+  try {
+    const r = await fetch(`/api/connections/state?with=${encodeURIComponent(profileId)}`);
+    if (r.ok) state = (await r.json()).state || "none";
+  } catch (e) { /* 既定のまま */ }
+  const $ = id => document.getElementById(id);
+  const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
+  $("btnOffer").disabled = false;
+  $("btnOffer").textContent = state === "pending_in" ? "承認する" : "つながりたいと伝える";
+  show("btnOffer", state === "none" || state === "pending_in");
+  show("offerBox", state === "none");
+  show("btnWithdraw", state === "pending_out");
+  show("btnDm", state === "connected");
+  const notice = $("notice");
+  notice.className = state === "none" ? "" : "ok";
+  notice.textContent = state === "pending_out" ? "申請済みです。相手の承認をお待ちください。"
+                     : state === "connected" ? "つながっています。" : "";
 }
 
 /* 接続の申し出（指示書55 PR-B）。以前は旧 v3 の /match を先に呼んでいたため、v4 で登録した人は
@@ -103,7 +134,8 @@ async function doConnect(btn) {
   try {
     const aRes = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: profileId }),
+      body: JSON.stringify({ to_id: profileId,
+                             message: (document.getElementById("offerMsg").value || "").trim() }),
     });
     if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
     const aData = await aRes.json();
@@ -112,14 +144,24 @@ async function doConnect(btn) {
       notice.textContent = "送信できませんでした: " + (aData.error || aRes.status);
       if (btn) btn.disabled = false; return;
     }
-    notice.className = "ok";
-    notice.textContent = aData.established ? "つながりました。" : "申請済みです。相手の承認をお待ちください。";
-    // 成功後はボタンを無効のまま（重複申請を防ぐ）
+    document.getElementById("offerMsg").value = "";
+    refreshConnectState();                          // 「申請済み」（または成立）の表示へ
   } catch (e) {
     notice.className = "err";
     notice.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
     if (btn) btn.disabled = false;
   }
+}
+
+async function doWithdraw(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/api/connections/withdraw", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({ to_id: profileId })});
+    if (PoX.handle(r)) { if (btn) btn.disabled = false; return; }
+  } catch (e) { /* 下で再描画 */ }
+  if (btn) btn.disabled = false;
+  refreshConnectState();
 }
 
 async function sendMsg() {

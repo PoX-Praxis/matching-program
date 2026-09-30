@@ -74,6 +74,14 @@ async function loadConversation() {
   box.innerHTML = msgs.map(m => {
     const isMine = m.from_id === myId;
     const time = (m.created_at || "").slice(11, 16);
+    // 申し出の文（接続の成立後、会話の冒頭に残る。送った本人は取り消せる。指示書55 §3-5）
+    if (m.kind === "offer") {
+      return `<div class="offer" style="border:1px dashed #c9cfd8;border-radius:8px;padding:8px 12px;margin:6px 0;font-size:13px">
+        <div style="font-size:11px;color:#888">${isMine ? "あなた" : escHtml(m.from_name || "表示名未設定のアカウント")} の申し出の文</div>
+        <div style="white-space:pre-wrap">${escHtml(m.body)}</div>
+        ${isMine ? `<button style="font-size:11px;margin-top:4px;cursor:pointer" onclick="retractOffer(this)">この文を取り消す</button>` : ""}
+      </div>`;
+    }
     return `<div style="display:flex;justify-content:${isMine ? "flex-end" : "flex-start"}">
       <div class="bubble ${isMine ? "mine" : "theirs"}">
         ${m.body ? escHtml(m.body) : ""}
@@ -86,6 +94,14 @@ async function loadConversation() {
   if (atBottom || msgs.length === 0) {
     box.scrollTop = box.scrollHeight;
   }
+}
+
+async function retractOffer(btn) {
+  if (btn) btn.disabled = true;
+  const r = await fetch("/api/connections/offer-message/retract", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({ to_id: otherId })}).catch(() => null);
+  if (r && PoX.handle(r)) { if (btn) btn.disabled = false; return; }
+  loadConversation();
 }
 
 function handleKey(e) {

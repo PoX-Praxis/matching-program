@@ -255,3 +255,8 @@
 | 179 | `t55d_handles::test_t179_unique_and_immutable`, `t55d_handles::test_t179_api_first_set_then_409`, `t55d_handles::test_t179_handle_cannot_be_another_subject_id`, `t55d_handles::test_t179_confirm_requires_handle_for_new_users`, `t55d_handles::test_t179_draft_preview_suggests_handle_from_seeker_id` |
 | 188 | `t55d_handles::test_t188_profile_url_uses_handle`, `t55d_handles::test_t188_without_handle_stays_on_old_url` |
 | 189 | `t55d_handles::test_t189_exception_change_once_and_old_retired`, `t55d_handles::test_t189_change_is_recorded_not_shown` |
+| 173・182 | `t55c_connections::test_t173_t182_withdraw_removes_request_and_message`, `t55c_connections::test_t173_cannot_withdraw_others_request` |
+| 174 | `t55c_connections::test_t174_double_offer_is_idempotent_and_shows_pending` |
+| 177 | `t55c_connections::test_t177_dm_requires_connection` |
+| 180 | `t55c_connections::test_t180_offer_message_optional_and_limited`, `t55c_connections::test_t180_offer_message_stays_at_top_of_conversation_and_can_be_retracted` |
+| 181 | `t55c_connections::test_t181_only_recipient_reads_offer_message` |

@@ -297,10 +297,12 @@ function renderConnections(vessels, myId) {
     const theyApproved = approvers.has(other);
 
     let badge, action = "";
+    const eo = escHtml(other).replace(/'/g, "\\'");
     if (v.is_connected) {
       badge = `<span class="badge-ok">✅ 接続成立 ${(j.established_at || "").slice(0, 10)}</span>`;
     } else if (iApproved && !theyApproved) {
-      badge = `<span class="badge-wait">⏳ ${escHtml(oname)} の承認待ち</span>`;
+      badge = `<span class="badge-wait">⏳ 申請済み（${escHtml(oname)} の承認待ち）</span>`;
+      action = `<button class="pv-btn" onclick="withdrawReq('${eo}', this)">取り下げる</button>`;
     } else if (!iApproved && theyApproved) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
@@ -312,7 +314,7 @@ function renderConnections(vessels, myId) {
     const dmHref = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(other)}`;
     const otherCell = other !== "-"
       ? `<a href="/profile/${encodeURIComponent(other)}">${escHtml(oname)}</a>
-         <a href="${dmHref}" style="margin-left:10px;font-size:12px;color:#1f3a5f">DM →</a>`
+         ${v.is_connected && !j.closed_at ? `<a href="${dmHref}" style="margin-left:10px;font-size:12px;color:#1f3a5f">DM →</a>` : ""}`
       : "-";
 
     return `<div class="mp-card">
@@ -321,6 +323,14 @@ function renderConnections(vessels, myId) {
       ${action ? `<div class="row"><span class="k">操作</span><span>${action}</span></div>` : ""}
     </div>`;
   }).join("");
+}
+
+async function withdrawReq(otherId, btn) {
+  if (btn) btn.disabled = true;
+  const r = await fetch("/api/connections/withdraw", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({ to_id: otherId })}).catch(() => null);
+  if (r && PoX.handle(r)) { if (btn) btn.disabled = false; return; }
+  init();
 }
 
 async function doApprove(otherId, btn) {

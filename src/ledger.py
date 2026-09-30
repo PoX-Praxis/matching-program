@@ -71,7 +71,8 @@ def _connect(db_path: str = "pox.db"):
             "created_at TEXT NOT NULL, responded_at TEXT)"
         )
         # チャネル来歴（指示書18 §3）。台帳に載せず通常DBに保持（照合の内部値・削除可能）。
-        for col in ("predicted_role", "channel", "match_run_id"):
+        # offer_message: 申し出の文（指示書55 §3-5。受けた本人だけが読む・取り下げで消える）。
+        for col in ("predicted_role", "channel", "match_run_id", "offer_message"):
             try:
                 con.execute(f"ALTER TABLE connection_requests ADD COLUMN {col} TEXT")
             except Exception:  # noqa: BLE001（既存なら無視）
@@ -98,6 +99,7 @@ def approve(
     establish_hook=None,
     ref_resolver=None,
     require_grounding: bool = False,
+    message: str = None,
 ) -> dict:
     """
     from_id が to_id を承認する（成立の前段は connection_requests）。
@@ -112,6 +114,8 @@ def approve(
         両者に profile.structured が揃った後の再承認で成立する。
 
     §3: predicted_role / channel / match_run_id は台帳に載せず connection_requests に保持。
+    message（申し出の文・指示書55 §3-5）も通常DBだけに置く。**1 人 1 通**: 既に申し出中なら
+    上書きしない（書き直すには取り下げてから送り直す）。
     戻り値: {"vessel_id", "established": bool[, "reason"]}。
     """
     vid = _vessel_id(from_id, to_id)
@@ -131,10 +135,10 @@ def approve(
             con.execute(
                 "INSERT INTO connection_requests "
                 "(id, from_subject, to_subject, necessity_id, status, created_at, responded_at, "
-                " predicted_role, channel, match_run_id) "
-                "VALUES (%s,%s,%s,%s,'pending',%s,NULL,%s,%s,%s)",
+                " predicted_role, channel, match_run_id, offer_message) "
+                "VALUES (%s,%s,%s,%s,'pending',%s,NULL,%s,%s,%s,%s)",
                 (f"cr_{uuid.uuid4().hex[:10]}", from_id, to_id, None, _now(),
-                 predicted_role, channel, match_run_id),
+                 predicted_role, channel, match_run_id, (message or None)),
             )
         recip = con.execute(
             "SELECT created_at FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
@@ -215,6 +219,71 @@ def close_connection(a: str, b: str, by: str, reason: str = "", db_path: str = "
     le.append_event(by, "connection.closed",
                     {"a": aa, "b": bb, "by": by, "reason": reason}, db_path=db_path)
     return {"vessel_id": _vessel_id(a, b), "closed": True}
+
+
+def withdraw_request(from_id: str, to_id: str, db_path: str = "pox.db") -> bool:
+    """自分の申し出（pending）を取り下げる（指示書55 §3-4）。**台帳に書かない**。申し出の文も一緒に消える。
+    戻り値: 取り下げたか（申し出が無ければ False＝冪等）。"""
+    with _connect(db_path) as con:
+        cur = con.execute(
+            "DELETE FROM connection_requests WHERE from_subject=%s AND to_subject=%s AND status='pending'",
+            (from_id, to_id),
+        )
+        return (cur.rowcount or 0) > 0
+
+
+def connection_state(me: str, other: str, db_path: str = "pox.db") -> str:
+    """me から見た other との状態: connected / pending_out / pending_in / none（画面の出し分け用）。"""
+    if _active_established(me, other, db_path=db_path):
+        return "connected"
+    with _connect(db_path) as con:
+        out = con.execute("SELECT 1 FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
+                          "AND status='pending'", (me, other)).fetchone()
+        inc = con.execute("SELECT 1 FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
+                          "AND status='pending'", (other, me)).fetchone()
+    if out:
+        return "pending_out"
+    if inc:
+        return "pending_in"
+    return "none"
+
+
+def is_connected(a: str, b: str, db_path: str = "pox.db") -> bool:
+    """成立していて終了していない接続があるか（DM の可否に使う。指示書55 §0-10）。"""
+    return _active_established(a, b, db_path=db_path)
+
+
+def received_offers(me: str, db_path: str = "pox.db") -> list[dict]:
+    """me 宛ての申し出（pending）と、その文。**受けた本人だけ**に返す（第三者・公開 API には出さない）。"""
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT from_subject, offer_message, created_at FROM connection_requests "
+            "WHERE to_subject=%s AND status='pending' ORDER BY created_at ASC", (me,),
+        ).fetchall()
+    return [{"from": r[0], "message": r[1] or "", "at": r[2]} for r in rows]
+
+
+def offer_messages_between(a: str, b: str, db_path: str = "pox.db") -> list[dict]:
+    """成立済みの 2 人の申し出の文（会話の冒頭に残す分）。送った本人が取り消したものは含まない。"""
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT from_subject, to_subject, offer_message, created_at FROM connection_requests "
+            "WHERE status='established' AND offer_message IS NOT NULL AND offer_message <> '' "
+            "AND ((from_subject=%s AND to_subject=%s) OR (from_subject=%s AND to_subject=%s)) "
+            "ORDER BY created_at ASC", (a, b, b, a),
+        ).fetchall()
+    return [{"from": r[0], "to": r[1], "message": r[2], "at": r[3]} for r in rows]
+
+
+def retract_offer_message(from_id: str, to_id: str, db_path: str = "pox.db") -> bool:
+    """送った本人が、自分の申し出の文を取り消す（成立後の会話の冒頭からも消える）。"""
+    with _connect(db_path) as con:
+        cur = con.execute(
+            "UPDATE connection_requests SET offer_message=NULL "
+            "WHERE from_subject=%s AND to_subject=%s AND offer_message IS NOT NULL",
+            (from_id, to_id),
+        )
+        return (cur.rowcount or 0) > 0
 
 
 # ── 導出（イベント列 → vessel 形）───────────────────────────────────────────

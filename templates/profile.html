@@ -51,6 +51,7 @@
       <button class="btn btn-connect" id="btnOffer" onclick="doConnect(this)">つながりたいと伝える</button>
       <button class="btn btn-msg" id="btnWithdraw" style="display:none" onclick="doWithdraw(this)">取り下げる</button>
       <button class="btn btn-msg" id="btnDm" style="display:none" onclick="sendMsg()">メッセージを送る</button>
+      <button class="btn btn-msg" id="btnClose" style="display:none" onclick="doClose(this)">接続を終了する</button>
     </div>
     <!-- 未ログイン時の注記（指示書37 §4）。ボタンは活性のまま・押下でログイン導線へ。 -->
     <p id="loginNote" style="display:none;font-size:13px;color:#888;margin:8px 0 0">つながる・メッセージにはログインが必要です。</p>
@@ -101,7 +102,7 @@ async function init() {
 
 /* 相手との状態で出し分ける（指示書55-2 PR-C）:
    none → 申し出（文は任意）／pending_out → 「申請済み」＋取り下げ／pending_in → 承認
-   connected → メッセージ（DM は成立後だけ） */
+   connected → メッセージ・接続の終了（DM は成立後だけ） */
 async function refreshConnectState() {
   let state = "none";
   try {
@@ -116,6 +117,7 @@ async function refreshConnectState() {
   show("offerBox", state === "none");
   show("btnWithdraw", state === "pending_out");
   show("btnDm", state === "connected");
+  show("btnClose", state === "connected");
   const notice = $("notice");
   notice.className = state === "none" ? "" : "ok";
   notice.textContent = state === "pending_out" ? "申請済みです。相手の承認をお待ちください。"
@@ -158,6 +160,17 @@ async function doWithdraw(btn) {
   try {
     const r = await fetch("/api/connections/withdraw", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify({ to_id: profileId })});
+    if (PoX.handle(r)) { if (btn) btn.disabled = false; return; }
+  } catch (e) { /* 下で再描画 */ }
+  if (btn) btn.disabled = false;
+  refreshConnectState();
+}
+
+async function doClose(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/api/connections/close", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({ with: profileId })});
     if (PoX.handle(r)) { if (btn) btn.disabled = false; return; }
   } catch (e) { /* 下で再描画 */ }
   if (btn) btn.disabled = false;

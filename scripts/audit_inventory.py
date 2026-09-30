@@ -110,6 +110,16 @@ def run_inventory(*, db_path="pox.db") -> dict:
     out["accounts"] = accounts
     out["accounts_without_auth"] = [a["id"] for a in accounts if not a["in_auth"]]
 
+    # 必要像レコードのベクトルのタグ（55-3 §3-3。空は列を足す前に作ったもの）
+    nt = _rows("SELECT coalesce(model_tag, ''), count(*) FROM necessities WHERE necessity_vec IS NOT NULL "
+               "GROUP BY coalesce(model_tag, '')", db_path=db_path)
+    out["necessity_vectors"] = None if nt is None else {(t or "(未記録)"): int(n) for t, n in nt}
+    # 185: ベクトル化済みなのに現行タグを持たない人（0 でない間は照合しない）
+    miss = _rows("SELECT count(DISTINCT profile_id) FROM profile_vectors WHERE is_active = true AND "
+                 "profile_id NOT IN (SELECT profile_id FROM profile_vectors WHERE model_tag=%s AND is_active=true)",
+                 (EC.MODEL_TAG,), db_path=db_path)
+    out["vectorized_without_current_model_tag"] = None if miss is None else int(miss[0][0])
+
     lv4 = _rows("SELECT event, count(*) FROM ledger_v4 GROUP BY event ORDER BY event", db_path=db_path)
     out["ledger"] = {
         "connection_closed_count": sum(1 for _, t, _ in ledger if t == "connection.closed"),

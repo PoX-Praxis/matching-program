@@ -186,6 +186,7 @@ def match_v4(store, seeker_id, *, model_tag=MODEL_TAG,
         "model_tag": model_tag,
         "results": results,
         "pool_size": len(cand_list),
+        "numbers": {"gate_s": nec.get("gate_s"), "gate_u": nec.get("gate_u")},   # 意志の下限の判定用（内部）
     }
 
 

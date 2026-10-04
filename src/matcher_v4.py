@@ -19,8 +19,9 @@ import math
 from embedding_service import cosine, guard
 from match_config import (
     GAMMA_EPS, P_SHARPNESS_DEFAULT, ALPHA_DEFAULT, BETA_DEFAULT, SHORTLIST_K,
-    MATCH_ENTRY_THRESHOLD,
+    MATCH_ENTRY_THRESHOLD, WILL_REQUIREMENT_MIN,
 )
+import match_config
 
 
 # ── E-2: power mean ─────────────────────────────────────────────────────────
@@ -142,25 +143,50 @@ def add_direction_b(result, seeker_vecs, candidate_vecs, gamma,
     return result
 
 
-def passes_entry(result, threshold=MATCH_ENTRY_THRESHOLD):
+def will_requirement(gate_s, gate_u):
+    """志の一致の要求の強さ（指示書55-5 §4）。gate_s × (1 − gate_u)。0〜1。"""
+    s = max(0.0, min(1.0, float(gate_s or 0.0)))
+    u = max(0.0, min(1.0, float(gate_u or 0.0)))
+    return s * (1.0 - u)
+
+
+def will_required(gate_s, gate_u):
+    """「志を必須と申告し、かつ確信が高い」か。gate_u が高い人には立てない（不確実なら広げる）。"""
+    return will_requirement(gate_s, gate_u) >= WILL_REQUIREMENT_MIN
+
+
+def will_floor(gate_s, gate_u):
+    """意志の軸（ga）の下限。必須かつ確信ありの人だけ。値が未確定（None）の間は下限なし。"""
+    floor = match_config.WILL_FLOOR_G
+    if floor is None or not will_required(gate_s, gate_u):
+        return None
+    return floor
+
+
+def passes_entry(result, threshold=MATCH_ENTRY_THRESHOLD, floor=None):
     """「照合の結果」に入れるか（指示書55 §4-1）。**総合が内部閾値以上**。
 
     総合は自分の α・β に沿う（共鳴型なら意志の近さが、補完型なら補完が効く）。b 単独では切らない。
     方向 B（相手が自分を必要としている）も同じ式の総合で評価し、どちらかが閾値以上なら入れる。
+    floor（will_floor）があれば、意志の軸がそれ未満の相手は入れない（総合が高くても）。
     """
+    if floor is not None and result["attribution"]["ga"] < floor:
+        return False
     return max(result["score"], result.get("score_b", 0.0)) >= threshold
 
 
-def public_axis(attr, level=MATCH_ENTRY_THRESHOLD):
-    """利用者に見せる軸（指示書55 §0-4。**2 つに要約**＋相互充足）。数値は返さない。
+def public_axis(attr, level=MATCH_ENTRY_THRESHOLD, require_will=False):
+    """利用者に見せる軸（指示書55 §0-4。**2 つに要約**＋双方向の補完）。数値は返さない。
 
-    - "mutual": 補完が双方向とも効いている（自分の必要像×相手の現状、相手の必要像×自分の現状）
+    - "mutual": 足りないところを互いに埋める（自分の必要像×相手の現状、相手の必要像×自分の現状の
+      両方が効いている）。require_will（志を必須と申告し確信が高い人）のときは、**意志の軸（ga）も
+      同じ水準以上**でなければ "mutual" にしない（意志が噛み合わない相手を「互いに」と出さない）
     - "fill_mine" / "fill_theirs": 足りないところを埋める（どちら向きか）
     - "will": 意志が近い（a 共鳴と c 意志補完はどちらも意志どうしなので 1 つにまとめる）
     最も効いた軸（effective_axis と同じく重みを掛けない類似度の最大）で選ぶ。律速軸ではない。
     """
     gb, gd = attr["gb"], attr.get("gd")
-    if gd is not None and gb >= level and gd >= level:
+    if gd is not None and gb >= level and gd >= level and (not require_will or attr["ga"] >= level):
         return "mutual"
     will = attr["ga"]
     if attr.get("c_log_contrib", 0.0) != 0.0:

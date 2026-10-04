@@ -1,0 +1,71 @@
+{#- 照合の根拠（「なぜこの人か」）と申し出の文の共通描画（指示書55・55-5）。
+    つながる（照合の結果のカード）・受信箱・マイページの接続カード・プロフィールの承認欄が include する。
+    - 根拠は「軸の名前＋両者の公開本文」の固定文だけ。数値・順位・LLM の理由文は出さない。
+    - 申し出の文は、受けた本人にだけサーバーが返す（GET /api/my/offers）。 -#}
+<style>
+  .mr-axis { font-size: 12px; font-weight: bold; }
+  .mr-axis.will { color: #1a56bb; } .mr-axis.fill { color: #1a6a3a; } .mr-axis.mutual { color: #7a4a1a; }
+  .mr-line { font-size: 13px; color: #333; line-height: 1.6; }
+  .mr-offer { font-size: 12.5px; color: #444; margin-top: 4px; white-space: pre-wrap;
+              border-left: 3px solid #d5dae1; padding-left: 8px; }
+  .mr-offer .k { display: block; font-size: 11px; color: #888; }
+  .mr-compose textarea { width: 100%; box-sizing: border-box; font-size: 13px; margin-top: 4px; }
+  .mr-compose label { font-size: 12px; color: #555; }
+</style>
+<script>
+window.PoXReason = (function () {
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => (
+      {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  /* 利用者に見せる軸は 2 つ（意志が近い／足りないところを埋める）＋双方向の補完（55-5 §5 で文言を変更）。 */
+  const AXIS = {
+    will:   "意志が近い",
+    fill:   "足りないところを埋める",
+    mutual: "足りないところを互いに埋める",
+  };
+  const LABELS = {
+    will:        ["あなたの意志", "相手の意志"],
+    fill_mine:   ["あなたの必要像", "相手の現状"],
+    fill_theirs: ["相手の必要像", "あなたの現状"],
+  };
+  function line(x) {
+    const [l1, l2] = LABELS[x.kind] || ["", ""];
+    const [a, b] = x.kind === "fill_theirs" ? [x.theirs, x.mine] : [x.mine, x.theirs];
+    if (!a || !b) return "";
+    return `<div class="mr-line clamp-2">${l1}『${esc(a)}』× ${l2}『${esc(b)}』</div>`;
+  }
+  /* 根拠（axis と reasons）を HTML にする。無ければ空文字。 */
+  function reasonHtml(r) {
+    if (!r || !AXIS[r.axis]) return "";
+    return `<div class="mr-axis ${r.axis}">${AXIS[r.axis]}</div>` + (r.reasons || []).map(line).join("");
+  }
+  /* 申し出の文（受けた本人だけに届く）。 */
+  function offerHtml(text) {
+    if (!text) return "";
+    return `<div class="mr-offer"><span class="k">申し出の文</span>${esc(text)}</div>`;
+  }
+  /* 承認の場面の根拠をサーバーから取る（その場で再計算）。取れなければ null。 */
+  async function fetchReason(otherId) {
+    try {
+      const r = await fetch(`/api/connections/reason?with=${encodeURIComponent(otherId)}`);
+      if (!r.ok) return null;
+      return (await r.json()).reason || null;
+    } catch (e) { return null; }
+  }
+  /* 自分宛ての申し出の文 {申し出た人: 文}。 */
+  async function fetchOffers() {
+    try {
+      const r = await fetch("/api/my/offers");
+      if (!r.ok) return {};
+      return Object.fromEntries((await r.json()).map(o => [o.from, o.message || ""]));
+    } catch (e) { return {}; }
+  }
+  /* 申し出の文の入力欄（任意・400 字。経路によらず同じ）。 */
+  function composeHtml(id) {
+    return `<div class="mr-compose"><label for="${id}">なぜつながりたいか（任意・400字まで。相手だけが読めます）</label>
+      <textarea id="${id}" maxlength="400" rows="2"></textarea></div>`;
+  }
+  return { esc, AXIS, reasonHtml, offerHtml, fetchReason, fetchOffers, composeHtml };
+})();
+</script>

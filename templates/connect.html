@@ -19,7 +19,6 @@
   #nameFilter { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
   .card .oneliner { font-size: 13px; color: #333; }
   .card .meta { font-size: 12px; color: #666; display: flex; gap: 10px; flex-wrap: wrap; }
-  .axis-a { color: #1a56bb; } .axis-b { color: #1a6a3a; } .axis-c { color: #7a4a1a; }
 
   .notice { background: #eef2ff; color: #33417a; border-radius: 6px; padding: 12px 14px;
             font-size: 13px; line-height: 1.6; }
@@ -33,6 +32,7 @@
   .dir-nec, .rec-nec { color: #1a6a3a; font-size: 12px; margin-top: 3px; }
   .muted { color: #888; font-size: 13px; }
 </style>
+{% include "_match_reason.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-wide">
@@ -59,28 +59,10 @@ function escHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => (
     {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
-/* 利用者に見せる軸は 2 つ（意志が近い／足りないところを埋める）＋相互充足（指示書55 §0-4）。 */
-const AXIS = {
-  will:   {label: "意志が近い", cls: "axis-a"},
-  fill:   {label: "足りないところを埋める", cls: "axis-b"},
-  mutual: {label: "相互に噛み合っている", cls: "axis-c"},
-};
-/* 理由は「軸の名前＋両者の公開本文」。本文はサーバーで切り詰めない（見た目の丸めは CSS）。 */
-const REASON = {
-  will:        ["あなたの意志", "相手の意志"],
-  fill_mine:   ["あなたの必要像", "相手の現状"],
-  fill_theirs: ["相手の必要像", "あなたの現状"],
-};
+/* 軸の名前・理由の文・申し出の文の入力欄は共通部品（_match_reason.html の PoXReason）。 */
 /* プロフィールへのリンク。ハンドルがあれば /u/<ハンドル>（アドレス欄に生 id を出さない）。 */
 function profileHref(id, handle) {
   return handle ? `/u/${encodeURIComponent(handle)}` : `/profile/${encodeURIComponent(id)}`;
-}
-function reasonLine(x) {
-  const [l1, l2] = REASON[x.kind] || ["", ""];
-  // fill_theirs は「相手の必要像 × あなたの現状」の順で見せる
-  const [a, b] = x.kind === "fill_theirs" ? [x.theirs, x.mine] : [x.mine, x.theirs];
-  if (!a || !b) return "";
-  return `<div class="reason clamp-2">${l1}『${escHtml(a)}』× ${l2}『${escHtml(b)}』</div>`;
 }
 
 /* ── 照合の結果（v4 照合）── 4 状態: 未ログイン／必要像なし／該当なし／該当あり */
@@ -126,17 +108,16 @@ async function loadRecommendations() {
     return;
   }
   status.innerHTML = "";
-  cards.innerHTML = results.map(r => {
+  cards.innerHTML = results.map((r, i) => {
     const cid = String(r.candidate_id);
-    const axis = AXIS[r.axis] || {label: "", cls: ""};
     const one = r.one_liner ? `<div class="oneliner clamp-2">${escHtml(r.one_liner)}</div>` : "";
-    const reasons = (r.reasons || []).map(reasonLine).join("");
+    // 申し出の文の入力欄はプロフィールからの申し出と同じ（任意・400 字。経路で有無が変わらない）
     return `<div class="card">
       <a class="cname" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
       ${one}
-      <div class="meta">${axis.label ? `<span class="${axis.cls}">${axis.label}</span>` : ""}</div>
-      ${reasons}
-      <div><button class="btn-offer" data-to="${escHtml(cid)}" onclick="offer(this)">つながりたいと伝える</button></div>
+      ${PoXReason.reasonHtml(r)}
+      ${PoXReason.composeHtml(`offerMsg_${i}`)}
+      <div><button class="btn-offer" data-to="${escHtml(cid)}" data-msg="offerMsg_${i}" onclick="offer(this)">つながりたいと伝える</button></div>
     </div>`;
   }).join("");
 }
@@ -145,12 +126,15 @@ async function loadRecommendations() {
 async function offer(btn) {
   btn.disabled = true;
   try {
+    const box = document.getElementById(btn.dataset.msg);
     const r = await fetch("/approve", {method: "POST", headers: {"Content-Type": "application/json"},
-                                       body: JSON.stringify({ to_id: btn.dataset.to })});
+                                       body: JSON.stringify({ to_id: btn.dataset.to,
+                                                              message: ((box && box.value) || "").trim() })});
     if (PoX.handle(r)) { btn.disabled = false; return; }
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { btn.disabled = false; btn.textContent = "送れませんでした（もう一度）"; return; }
     btn.textContent = d.established ? "つながりました" : "申請済み";
+    if (box) box.closest(".mr-compose").style.display = "none";
   } catch (e) { btn.disabled = false; }
 }
 

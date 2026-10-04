@@ -240,10 +240,10 @@ def test_t187_axes_are_summarized(v4):
     assert r["axis"] in {"will", "fill", "mutual"}
     assert r["axis"] == "mutual"                          # me と c1 は双方向に噛み合う
     assert [x["kind"] for x in r["reasons"]] == ["fill_mine", "fill_theirs"]
-    html = _tpl("connect.html")
-    for label in ("意志が近い", "足りないところを埋める", "相互に噛み合っている"):
+    html = _cli().get("/connect").get_data(as_text=True)      # 共通部品（_match_reason.html）を含む
+    for label in ("意志が近い", "足りないところを埋める", "足りないところを互いに埋める"):
         assert label in html
-    for old in ("共鳴が効いています", "補完が効いています", "意志の補完が効いています"):
+    for old in ("共鳴が効いています", "補完が効いています", "意志の補完が効いています", "相互に噛み合っている"):
         assert old not in html
 
 

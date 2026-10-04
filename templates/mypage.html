@@ -54,6 +54,7 @@
 </style>
 {% include "_profile_view.html" %}
 {% include "_trajectory.html" %}
+{% include "_match_reason.html" %}
 {% endblock %}
 {% block content %}
 <a href="/" class="back">← トップに戻る</a>
@@ -296,7 +297,7 @@ function renderConnections(vessels, myId) {
     const iApproved    = approvers.has(myId);
     const theyApproved = approvers.has(other);
 
-    let badge, action = "";
+    let badge, action = "", why = "";
     const eo = escHtml(other).replace(/'/g, "\\'");
     if (v.is_connected) {
       badge = `<span class="badge-ok">✅ 接続成立 ${(j.established_at || "").slice(0, 10)}</span>`;
@@ -307,6 +308,9 @@ function renderConnections(vessels, myId) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
       action = `<button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
+      // 承認の場面の根拠と申し出の文（55-5 §1・§2）。描画後に非同期で埋める。
+      why = `<div class="mr-slot" data-other="${escHtml(other)}"></div>
+             <div class="mr-offer-slot" data-other="${escHtml(other)}"></div>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
     }
@@ -320,9 +324,24 @@ function renderConnections(vessels, myId) {
     return `<div class="mp-card">
       <div class="row"><span class="k">相手</span><span>${otherCell}</span></div>
       <div class="row"><span class="k">状態</span><span>${badge}</span></div>
+      ${why ? `<div class="row"><span class="k">なぜこの人か</span><span>${why}</span></div>` : ""}
       ${action ? `<div class="row"><span class="k">操作</span><span>${action}</span></div>` : ""}
     </div>`;
   }).join("");
+  fillApprovalContext(el);
+}
+
+/* 承認待ちカードに、照合の根拠（その場で再計算）と申し出の文（受けた本人だけ）を入れる。 */
+async function fillApprovalContext(root) {
+  const slots = root.querySelectorAll(".mr-slot");
+  if (!slots.length) return;
+  const offers = await PoXReason.fetchOffers();
+  root.querySelectorAll(".mr-offer-slot").forEach(el => {
+    el.innerHTML = PoXReason.offerHtml(offers[el.dataset.other]);
+  });
+  slots.forEach(async el => {
+    el.innerHTML = PoXReason.reasonHtml(await PoXReason.fetchReason(el.dataset.other));
+  });
 }
 
 async function withdrawReq(otherId, btn) {

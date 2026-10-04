@@ -29,6 +29,7 @@
 </style>
 {% include "_profile_view.html" %}
 {% include "_trajectory.html" %}
+{% include "_match_reason.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-prose pv">
@@ -47,6 +48,8 @@
       <label for="offerMsg" style="font-size:12px;color:#555">なぜつながりたいか（任意・400字まで。相手だけが読めます）</label>
       <textarea id="offerMsg" maxlength="400" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;margin-top:4px"></textarea>
     </div>
+    <!-- 承認の場面の根拠（なぜこの人か）と申し出の文。承認待ち（pending_in）のときだけ出す（55-5 §1・§2）。 -->
+    <div id="approvalContext" style="display:none;margin-bottom:10px"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap" id="connectActions">
       <button class="btn btn-connect" id="btnOffer" onclick="doConnect(this)">つながりたいと伝える</button>
       <button class="btn btn-msg" id="btnWithdraw" style="display:none" onclick="doWithdraw(this)">取り下げる</button>
@@ -116,6 +119,11 @@ async function refreshConnectState() {
   show("offerBox", state === "none");
   show("btnWithdraw", state === "pending_out");
   show("btnDm", state === "connected");
+  show("approvalContext", state === "pending_in");
+  if (state === "pending_in") {
+    const [reason, offers] = await Promise.all([PoXReason.fetchReason(profileId), PoXReason.fetchOffers()]);
+    $("approvalContext").innerHTML = PoXReason.reasonHtml(reason) + PoXReason.offerHtml(offers[profileId]);
+  }
   const notice = $("notice");
   notice.className = state === "none" ? "" : "ok";
   notice.textContent = state === "pending_out" ? "申請済みです。相手の承認をお待ちください。"

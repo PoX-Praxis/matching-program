@@ -1,5 +1,6 @@
 {% extends "_base.html" %}
-{% block title %}インボックス — PoX{% endblock %}
+{% block title %}インボックス — PoX{% include "_match_reason.html" %}
+{% endblock %}
 {% block head %}
 <style>
   /* h1/h2 は共通規格（_base.html §5）に委譲。下線見出しは廃止。 */
@@ -59,12 +60,7 @@ async function init() {
   document.getElementById("main").style.display = "block";
 
   // 自分宛ての申し出の文（受けた本人だけが読める。指示書55 §3-5）
-  let offers = [];
-  try {
-    const oRes = await fetch(`/api/my/offers?id=${encodeURIComponent(myId)}`);
-    if (oRes.ok) offers = await oRes.json();
-  } catch (e) { /* 文が無くても承認はできる */ }
-  offerMsg = Object.fromEntries(offers.map(o => [o.from, o.message || ""]));
+  offerMsg = await PoXReason.fetchOffers();
 
   renderApprovals(vessels, myId);
   renderMessages(inbox.conversations || []);
@@ -95,11 +91,20 @@ function renderApprovals(vessels, myId) {
     // 生 id は画面に出さない（指示書55 172。46 の「表示名＋id 併記」は廃止）
     return `<tr>
       <td><a href="/profile/${oid}">${escHtml(oname)}</a>
-        ${offerMsg[other] ? `<div class="offer-msg" style="font-size:12px;color:#444;margin-top:4px;white-space:pre-wrap">${escHtml(offerMsg[other])}</div>` : ""}</td>
+        <div class="mr-slot" data-other="${escHtml(other)}"></div>
+        ${PoXReason.offerHtml(offerMsg[other])}</td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
       <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;
   }).join("");
+  fillReasons(tbody);
+}
+
+/* 承認の場面の根拠（なぜこの人か）。照合の結果のカードと同じ形をその場で計算して出す（55-5 §1）。 */
+function fillReasons(root) {
+  root.querySelectorAll(".mr-slot").forEach(async el => {
+    el.innerHTML = PoXReason.reasonHtml(await PoXReason.fetchReason(el.dataset.other));
+  });
 }
 
 function renderMessages(convs) {

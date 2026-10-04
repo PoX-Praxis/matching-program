@@ -510,6 +510,8 @@ def _pair_detail(store, seeker, other, model_tag):
         return {"query_unit": out.get("query_unit"), "numbers": numbers,
                 "error": "相手が照合の母集団にいません（同じ model_tag の有効なベクトルが無い）"}
     at = r["attribution"]
+    from matcher_v4 import will_requirement, will_required, will_floor
+    gs, gu = numbers.get("gate_s"), numbers.get("gate_u")
     keys = ("a_sim", "b_sim", "c_sim", "d_sim", "ga", "gb", "gc", "gd",
             "a_log_contrib", "b_log_contrib", "c_log_contrib", "complement", "limiting_axis")
     # 「照合の結果」から外れる理由（入口以外）。値は bool だけ。
@@ -520,9 +522,12 @@ def _pair_detail(store, seeker, other, model_tag):
         "channels": {k: at.get(k) for k in keys},
         "score_A": r["score"],
         "score_B": r.get("score_b"),
-        "passes_entry": passes_entry(r),
+        "passes_entry": passes_entry(r, floor=will_floor(gs, gu)),
+        "will_requirement": will_requirement(gs, gu),      # gate_s × (1 − gate_u)
+        "will_required": will_required(gs, gu),
+        "will_floor": will_floor(gs, gu),                  # 値が未確定の間は None
         "effective_axis": effective_axis(at),
-        "public_axis": public_axis(at),
+        "public_axis": public_axis(at, require_will=will_required(gs, gu)),
         "excluded": {
             "engaged": other in engaged_counterparts(seeker, db_path=DB),
             "not_linked": other not in _linked_ids([other]),
@@ -1383,7 +1388,8 @@ def _match_by_necessity(store, necessity_id, *, model_tag, top_k=None, write_led
                 pass
 
     return {"seeker_id": owner, "necessity_id": necessity_id, "query_unit": "necessity",
-            "model_tag": model_tag, "results": results, "pool_size": len(cand_list)}
+            "model_tag": model_tag, "results": results, "pool_size": len(cand_list),
+            "numbers": numbers}
 
 
 @app.post("/v4/match")
@@ -1508,18 +1514,60 @@ def _match_reason(axis, mine, theirs):
     return [{"kind": "will", "mine": mine["will"], "theirs": theirs["will"]}]
 
 
+def _mine_texts(out, owner):
+    """照合した側（自分）の公開本文: 意志・現状・必要像（必要像起点なら、その必要像の本文）。"""
+    mine_pv = (get_profile_view(owner, db_path=DB) or {}) if owner else {}
+    mine_nec = ""
+    if out.get("necessity_id"):
+        try:
+            from necessities import get_necessity
+            mine_nec = (get_necessity(out["necessity_id"], db_path=DB) or {}).get("necessity_text") or ""
+        except Exception:  # noqa: BLE001
+            mine_nec = ""
+    if not mine_nec and owner:
+        mine_nec = (get_owner_necessity(owner) or {}).get("necessity_text") or ""
+    return {"will": _text_of(mine_pv.get("pursuing")), "state": _state_text(mine_pv), "necessity": mine_nec}
+
+
+def _will_rule(out):
+    """照合した側の意志の要求（指示書55-5 §4）: (下限, 必須かつ確信ありか)。"""
+    from matcher_v4 import will_floor, will_required
+    n = out.get("numbers") or {}
+    return will_floor(n.get("gate_s"), n.get("gate_u")), will_required(n.get("gate_s"), n.get("gate_u"))
+
+
+def _public_card(r, mine, name, handle, require_will):
+    """1 件分の外向きの形（照合の結果のカードと、承認の画面の根拠で共通）。数値は入れない。"""
+    from matcher_v4 import public_axis
+    cid = r["candidate_id"]
+    pv = get_profile_view(cid, db_path=DB) or {}
+    theirs = {"will": _text_of(pv.get("pursuing")), "state": _state_text(pv),
+              "necessity": (get_public_necessity(cid) or {}).get("necessity_text") or ""}
+    axis = public_axis(r["attribution"], require_will=require_will)
+    return {
+        "candidate_id": cid,
+        "handle": handle,
+        "name": name or UNNAMED_LABEL,
+        "one_liner": _text_of(pv.get("headline")),
+        "axis": "will" if axis == "will" else ("mutual" if axis == "mutual" else "fill"),
+        "reasons": _match_reason(axis, mine, theirs),
+    }
+
+
 def _public_match_response(out, store=None, model_tag=None, viewer=None):
     """照合結果の外向きの形（指示書55 PR-A・PR-B）。score・attribution・順位・件数を出さない。
 
-    入口: 総合（方向 A・B のどちらか）が内部閾値以上（passes_entry）。
+    入口: 総合（方向 A・B のどちらか）が内部閾値以上（passes_entry）。志を必須と申告し確信が高い人
+          では、意志の軸が下限（will_floor）未満の相手も入れない（55-5 §4。下限の値は実測後に確定）。
     除外: 必要像が無い人／本人と紐づいていない id／既に接続済み・申し出中の相手（指示書55 §0-3。
           自分と別 model_tag は照合の母集団の時点で入らない）。
     各件: 表示名・一行紹介・利用者向けの軸（will / fill_mine / fill_theirs / mutual）と、その軸の
           両者の公開本文。並びは中立（id 順）。
     """
-    from matcher_v4 import passes_entry, public_axis
+    from matcher_v4 import passes_entry
     from ledger import engaged_counterparts
-    rows = [r for r in out.get("results", []) if passes_entry(r)]
+    floor, require_will = _will_rule(out)
+    rows = [r for r in out.get("results", []) if passes_entry(r, floor=floor)]
     ids = [r["candidate_id"] for r in rows]
     bundles = store.get_bundles(ids, model_tag) if (store is not None and ids) else {}
     has_nec = {cid for cid, b in bundles.items()
@@ -1530,43 +1578,71 @@ def _public_match_response(out, store=None, model_tag=None, viewer=None):
             if r["candidate_id"] in has_nec and r["candidate_id"] in linked
             and r["candidate_id"] not in engaged]
 
-    owner = out.get("seeker_id") or viewer
-    mine_pv = get_profile_view(owner, db_path=DB) or {} if owner else {}
-    mine_nec = ""
-    if out.get("necessity_id"):
-        try:
-            from necessities import get_necessity
-            mine_nec = (get_necessity(out["necessity_id"], db_path=DB) or {}).get("necessity_text") or ""
-        except Exception:  # noqa: BLE001
-            mine_nec = ""
-    if not mine_nec and owner:
-        mine_nec = (get_owner_necessity(owner) or {}).get("necessity_text") or ""
-    mine = {"will": _text_of(mine_pv.get("pursuing")), "state": _state_text(mine_pv), "necessity": mine_nec}
-
+    mine = _mine_texts(out, out.get("seeker_id") or viewer)
     names = _resolve_names(ids, fallback=UNNAMED_LABEL)
     import handles
     hs = handles.get_many(ids, db_path=DB)
-    results = []
-    for r in rows:
-        cid = r["candidate_id"]
-        pv = get_profile_view(cid, db_path=DB) or {}
-        theirs = {"will": _text_of(pv.get("pursuing")), "state": _state_text(pv),
-                  "necessity": (get_public_necessity(cid) or {}).get("necessity_text") or ""}
-        axis = public_axis(r["attribution"])
-        results.append({
-            "candidate_id": cid,
-            "handle": hs.get(cid),
-            "name": names.get(cid) or UNNAMED_LABEL,
-            "one_liner": _text_of(pv.get("headline")),
-            "axis": "will" if axis == "will" else ("mutual" if axis == "mutual" else "fill"),
-            "reasons": _match_reason(axis, mine, theirs),
-        })
+    results = [_public_card(r, mine, names.get(r["candidate_id"]), hs.get(r["candidate_id"]), require_will)
+               for r in rows]
     results.sort(key=lambda r: str(r["candidate_id"]))
     pub = {k: out[k] for k in ("seeker_id", "necessity_id", "query_unit", "model_tag") if k in out}
     pub["status"] = "ok" if results else "none"
     pub["results"] = results
     pub["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
     return pub
+
+
+def _run_match_for(store, seeker, model_tag):
+    """/v4/match と同じ経路（必要像起点 → 無ければ人起点）で照合する。記録は書かない。無ければ None。"""
+    from db_v4 import match_v4
+    nec_id = _seeker_live_necessity_id(seeker, db_path=DB)
+    if nec_id:
+        try:
+            return _match_by_necessity(store, nec_id, model_tag=model_tag, write_ledger=False)
+        except LookupError:
+            pass
+    try:
+        out = match_v4(store, seeker, model_tag=model_tag, write_ledger=False)
+    except ValueError:
+        return None
+    out["query_unit"] = "person"
+    return out
+
+
+@app.get("/api/connections/reason")
+@login_required
+def connection_reason():
+    """承認の場面で見せる「なぜこの人か」（指示書55-5 §1）。照合の結果のカードと同じ形（軸の名前＋
+    両者の公開本文。数値なし）。
+
+    - **その場で再計算**する（申し出の時点の根拠は保存しない）。本文が更新されていれば今の本文で出す。
+    - 本人（セッション）から見た相手の根拠。**申し出・承認待ち・接続中の相手に限る**（任意の人について
+      照合を引けると、照合の結果の除外や横断禁止を迂回できるため）。
+    - 入口の閾値では切らない（説明のため）。照合できない（stub・切替中・ベクトルなし）ときは reason なし。
+    """
+    me = require_self(request.args.get("me"))
+    other = (request.args.get("with") or "").strip()
+    if not other or other == me:
+        return jsonify({"error": "with が必要です"}), 400
+    from ledger import connection_state
+    if connection_state(me, other, db_path=DB) == "none":
+        return jsonify({"error": "申し出・接続の相手についてだけ見られます"}), 403
+    if not is_postgres() or not _matching_available():
+        return jsonify({"reason": None}), 200
+    from embedding_config import MODEL_TAG
+    store = _v4_store()
+    if store.count_missing_tag(MODEL_TAG):
+        return jsonify({"reason": None}), 200
+    out = _run_match_for(store, me, MODEL_TAG)
+    r = next((x for x in (out or {}).get("results", []) if x["candidate_id"] == other), None)
+    if r is None:
+        return jsonify({"reason": None}), 200
+    import handles
+    _floor, require_will = _will_rule(out)
+    card = _public_card(r, _mine_texts(out, me), _resolve_names([other], fallback=UNNAMED_LABEL).get(other),
+                        handles.get_handle(other, db_path=DB), require_will)
+    _mark_noindex()
+    return jsonify({"reason": {"axis": card["axis"], "reasons": card["reasons"]}}), 200
 
 
 def _can_use_necessity(necessity_id, sid):

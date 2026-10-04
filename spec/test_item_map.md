@@ -263,3 +263,7 @@
 | 185 | `t55e_audit_match::test_t185_no_matching_while_someone_lacks_current_tag`, `t55e_audit_match::test_t185_old_tag_rows_alone_do_not_stop_matching`, `t55e_audit_match::test_t185_postgres_query_counts_vectorized_only` |
 | 55-4 §2 | `t55e_audit_match::test_audit_match_requires_token_and_pair`, `t55e_audit_match::test_audit_match_returns_both_directions_without_text`, `t55e_audit_match::test_audit_match_writes_nothing` |
 | 55-3 §3 | `t55e_audit_match::test_necessity_vectors_carry_model_tag`, `t55e_audit_match::test_allow_stub_is_refused_on_render` |
+| 55-5 §1・§2 | `t55f_approval_context::test_reason_for_incoming_offer`, `t55f_approval_context::test_reason_only_for_engaged_pairs`, `t55f_approval_context::test_reason_absent_when_matching_unavailable`, `t55f_approval_context::test_approval_screens_show_reason_and_offer_message` |
+| 55-5 §3 | `t55f_approval_context::test_connect_card_has_offer_message_box` |
+| 55-5 §4 | `t55f_approval_context::test_will_requirement_combines_s_and_u`, `t55f_approval_context::test_will_floor_is_unset_until_measured`, `t55f_approval_context::test_will_floor_excludes_when_set` |
+| 55-5 §5 | `t55f_approval_context::test_mutual_requires_will_for_required_people` |

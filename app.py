@@ -735,6 +735,7 @@ def _v4_profile_input(body):
         "state_bound":    body.get("state_bound", ""),
         "state_unsorted": body.get("state_unsorted", ""),
         "supporting_raw": body.get("supporting_raw") or {},
+        **({"v5": body["v5"]} if body.get("v5") else {}),   # ①v5 の本文（宣言のハッシュ p2 に使う）
     }
 
 
@@ -853,6 +854,14 @@ def _save_snapshot(profile_id, profile_input, necessity):
     from snapshots import save_snapshot
     from subject_ledger import profile_content_hash
     nec = necessity or {}
+    doc5 = profile_input.get("v5")
+    if doc5:
+        # ①v5（指示書57）: 版のノードに目的ごとの必要像と与え像が並ぶように、本文の記録に載せる。
+        nec = {**nec,
+               "purposes": [{"purpose_id": p.get("purpose_id"), "向かう先": p.get("向かう先"),
+                             "手段": p.get("手段"), "必要像": p.get("必要像") or []}
+                            for p in (doc5.get("purposes") or [])],
+               "与え像": doc5.get("与え像") or []}
     # churn 判定は content_hash に統一（指示書18 §2）。台帳 publish_profile_structured と
     # 同一の profile_content_hash を同じ profile_input から算出 → 計算範囲が完全に一致する。
     content_hash = profile_content_hash(profile_input)
@@ -1116,7 +1125,78 @@ def _draft_preview(draft):
         "rejections": draft.get("rejections", []),
         "updated_at": draft["updated_at"],
         **_handle_hint(draft),
+        **_purpose_hint(draft),
     }
+
+
+def _clamp_numbers(nums):
+    """①v5 の目的ごとの数値を検証・クランプ（無検証で信頼しない）。gate は [0,1]、α・β は [0,2]。"""
+    def f(x, lo, hi, default):
+        try:
+            return max(lo, min(hi, float(x)))
+        except (TypeError, ValueError):
+            return default
+    nums = nums or {}
+    return {"gate_s": f(nums.get("gate_s"), 0, 1, 0.0), "gate_u": f(nums.get("gate_u"), 0, 1, 0.5),
+            "alpha": f(nums.get("alpha"), 0, 2, 1.0), "beta": f(nums.get("beta"), 0, 2, 1.0)}
+
+
+def _confirm_v5_ledger(pid, doc, assigned, prof, draft, narrative=None):
+    """①v5 の確定（指示書57 段2）: 与え像の版 → 目的ごとの necessity.published（c3・purpose_id・offer_hash）
+    → 消えた目的の必要像を necessity.retired → 本文の保存 → 文単位ベクトル（非同期）。"""
+    import v5
+    import necessities as _nec
+    offer = v5.save_offer(pid, doc.get("与え像") or [], db_path=DB)
+    prompt_ver = ((draft["payload"].get("_meta") or {}).get("source")) or "v5"
+    published = []
+    for purpose_id, p in assigned:
+        nec_in = {**_clamp_numbers(p.get("数値")), "will_text": str(p.get("向かう先") or ""),
+                  "evidence_span": str(p.get("根拠") or "")}
+        r = _nec.publish_necessity(
+            pid, "subject", nec_in, origin="generated", generator="",
+            source_snapshot_hash=prof.get("content_hash"), generator_tag=prompt_ver,
+            attempt_n=draft["attempt_n"], actor=pid, db_path=DB,
+            purpose_id=purpose_id, sentences=p.get("必要像") or [], offer_hash=offer["offer_hash"])
+        published.append(r)
+    keep = {purpose_id for purpose_id, _ in assigned}
+    for n in v5.live_necessities_v5(pid, db_path=DB):
+        if n["purpose_id"] not in keep:                     # 目的が消えた（対応が取れなかった）
+            _nec.retire_necessity(n["necessity_id"], actor=pid, db_path=DB)
+    v5.save_doc(pid, doc, narrative, db_path=DB)
+    threading.Thread(target=_v5_sentence_job, args=(pid, offer), daemon=True).start()
+    return published
+
+
+def _v5_sentence_job(pid, offer):
+    """文単位ベクトル（必要像の文＝query／与え像の文＝passage）を作る。失敗しても確定は成立済み。"""
+    try:
+        import v5
+        import necessities as _nec
+        from embedding_config import MODEL_TAG
+        for n in v5.live_necessities_v5(pid, db_path=DB):
+            if not v5.get_sentence_vectors("necessity", n["necessity_id"], MODEL_TAG, db_path=DB):
+                v5.save_sentence_vectors("necessity", n["necessity_id"], [x["文"] for x in n["sentences"]],
+                                         MODEL_TAG, _nec._default_embed, db_path=DB)
+        if not v5.get_sentence_vectors("offer", offer["offer_id"], MODEL_TAG, db_path=DB):
+            o = v5.get_offer(offer["offer_id"], db_path=DB) or {"sentences": []}
+            v5.save_sentence_vectors("offer", offer["offer_id"], [x["文"] for x in o["sentences"]],
+                                     MODEL_TAG, _nec._default_embed, db_path=DB)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[v5-sentences] 文単位ベクトルの作成に失敗（確定は成立済み）: {e}")
+
+
+def _purpose_hint(draft):
+    """①v5 の再構造化: 前の目的との対応の提案（本人が確認する。指示書57 §1-2）。"""
+    import v5
+    if draft.get("owner_kind") != "subject" or not v5.is_v5(draft.get("payload")):
+        return {}
+    sid = draft["subject_id"]
+    prev = v5.get_doc(sid, db_path=DB) or {}
+    labels = {p.get("purpose_id"): p.get("向かう先") for p in (prev.get("purposes") or [])}
+    existing = [{"purpose_id": p, "label": labels.get(p) or ""}
+                for p in v5.list_purposes(sid, db_path=DB) if v5.is_live_purpose(sid, p, db_path=DB)]
+    return {"v5": True, "existing_purposes": existing,
+            "purpose_mapping": v5.suggest_mapping(sid, draft["payload"], db_path=DB)}
 
 
 def _handle_hint(draft):
@@ -1150,10 +1230,20 @@ def post_draft():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
     else:
-        parsed = {k: v for k, v in body.items() if k != "user_id"}
-    flat = _normalize_v4_body(parsed)
-    if not (flat.get("will_text") or "").strip():
-        return jsonify({"error": "will_text が必要です（意志が空です）"}), 400
+        parsed = {k: v for k, v in body.items() if k not in ("user_id", "narrative")}
+    import v5
+    if v5.is_v5(parsed):
+        # ①v5（指示書57）: 受信の検証規則（10 項目）。通らなければ保存せず、理由を 1 行で返す。
+        narrative = body.get("narrative") or None
+        ok, why = v5.validate(parsed, narrative)
+        if not ok:
+            return jsonify({"error": why}), 400
+        if narrative:
+            parsed["_narrative"] = narrative            # 本人のみ・検査用（照合には使わない）
+    else:
+        flat = _normalize_v4_body(parsed)
+        if not (flat.get("will_text") or "").strip():
+            return jsonify({"error": "will_text が必要です（意志が空です）"}), 400
     subject_id = require_self(body.get("user_id"))
     if not subject_id:
         return jsonify({"error": "ログインが必要です"}), 401
@@ -1242,7 +1332,18 @@ def confirm_draft(draft_id):
     if not is_postgres():
         return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
 
-    flat = _normalize_v4_body(d["payload"])
+    import v5
+    cbody = request.get_json(force=True, silent=True) or {}
+    v5_doc = None
+    if v5.is_v5(d["payload"]):
+        v5_doc = {k: v for k, v in d["payload"].items() if k != "_narrative"}
+        narrative = d["payload"].get("_narrative")
+        ok, why = v5.validate(v5_doc, narrative)
+        if not ok:
+            return jsonify({"error": why}), 400
+        flat = v5.to_flat(v5_doc, narrative)
+    else:
+        flat = _normalize_v4_body(d["payload"])
     if not (flat.get("will_text") or "").strip():
         return jsonify({"error": "will_text が空です。①をやり直してください"}), 400
     # fallback B 廃止（§6-1）: 必要像が無ければ確定させない（①をやり直す）。
@@ -1252,7 +1353,6 @@ def confirm_draft(draft_id):
     # ハンドル（指示書55-2 PR-D）: 登録時に確定（必須）。未設定の人は確定の本文で受け取り、書式と
     # 重複をここで確かめる（書き込みは確定の最後）。設定済みの人には求めない（不変）。
     import handles
-    cbody = request.get_json(force=True, silent=True) or {}
     new_handle = None
     if handles.get_handle(d["subject_id"], db_path=DB) is None:
         try:
@@ -1268,6 +1368,15 @@ def confirm_draft(draft_id):
     if n_discomfort and flat.get("gate_u") is not None:
         flat["gate_u"] = drafts.gate_u_after_discomfort(flat["gate_u"], n_discomfort)
 
+    # ①v5: 目的にサーバーの不変 id を振る（本人が確かめた対応 purpose_map。無ければ提案どおり）。
+    assigned = []
+    if v5_doc is not None:
+        mapping = cbody.get("purpose_map")
+        if not isinstance(mapping, dict):
+            mapping = v5.suggest_mapping(d["subject_id"], v5_doc, db_path=DB)
+        assigned = v5.assign_purposes(d["subject_id"], v5_doc, mapping, db_path=DB)
+        flat["v5"] = {**v5_doc, "purposes": [{**p, "purpose_id": pid} for pid, p in assigned]}
+
     # 受付（profiles_v4 / derived_necessity へ）＋ベクトル化ジョブ起動（非同期）。
     # 台帳は confirm が同期で書くので、ジョブ側の台帳書き込みは抑止（publish_ledger=False）。
     try:
@@ -1282,7 +1391,9 @@ def confirm_draft(draft_id):
     profile_input = _v4_profile_input(flat)
     # profile.structured（生成元）を書き、その content_hash を必要像のピン留めに使う（§3-1）。
     prof = publish_profile_structured(pid, profile_input, actor=pid, db_path=DB)
-    if necessity is not None:
+    if v5_doc is not None:
+        _confirm_v5_ledger(pid, flat["v5"], assigned, prof, d, narrative=d["payload"].get("_narrative"))
+    elif necessity is not None:
         sm = profile_input.get("supporting_raw") or {}
         seeking = sm.get("求めている") or ""                       # §3-3: content_hash に含める
         prompt_ver = ((d["payload"].get("_meta") or {}).get("source")) or ""
@@ -1440,24 +1551,10 @@ def post_v4_match():
     # 必要像が無い人は照合しない（言語化への導線を出す。指示書55 §2-2）。
     if not nec_id and not ((store.get_necessity(seeker_id, MODEL_TAG) or {}).get("necessity_text") or "").strip():
         return jsonify({"status": "no_necessity", "results": []}), 200
-    out = None
-    if nec_id:
-        try:
-            out = _match_by_necessity(store, nec_id, model_tag=MODEL_TAG, top_k=top_k)
-        except LookupError:
-            out = None
-        except Exception as e:  # noqa: BLE001
-            return jsonify({"error": f"照合失敗: {e}"}), 500
-    if out is None:
-        try:
-            out = match_v4(store, seeker_id, top_k=top_k)
-            out["query_unit"] = "person"
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 404
-        except Exception as e:
-            return jsonify({"error": f"照合失敗: {e}"}), 500
-
-    return jsonify(_public_match_response(out, store, MODEL_TAG, viewer=seeker_id))
+    try:
+        return jsonify(_v5_match_response(store, seeker_id, MODEL_TAG))
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": f"照合失敗: {e}"}), 500
 
 
 def _matching_available():
@@ -1495,122 +1592,22 @@ def _state_text(pv):
                                   ("state_have", "state_can_type", "state_bound", "state_unsorted")) if t)
 
 
-def _match_reason(axis, mine, theirs):
-    """説明は「軸の名前＋両者の公開本文」（指示書55 §4-2）。数値・理由文の生成はしない。
-    相手の本文は公開されているものだけ（必要像は公開条件を満たすときだけ）。"""
-    fill_mine = {"kind": "fill_mine", "mine": mine["necessity"], "theirs": theirs["state"]}
-    fill_theirs = {"kind": "fill_theirs", "mine": mine["state"], "theirs": theirs["necessity"]}
-    if axis == "mutual":
-        return [fill_mine, fill_theirs]
-    if axis == "fill_mine":
-        return [fill_mine]
-    if axis == "fill_theirs":
-        return [fill_theirs]
-    return [{"kind": "will", "mine": mine["will"], "theirs": theirs["will"]}]
-
-
-def _mine_texts(out, owner):
-    """照合した側（自分）の公開本文: 意志・現状・必要像（必要像起点なら、その必要像の本文）。"""
-    mine_pv = (get_profile_view(owner, db_path=DB) or {}) if owner else {}
-    mine_nec = ""
-    if out.get("necessity_id"):
-        try:
-            from necessities import get_necessity
-            mine_nec = (get_necessity(out["necessity_id"], db_path=DB) or {}).get("necessity_text") or ""
-        except Exception:  # noqa: BLE001
-            mine_nec = ""
-    if not mine_nec and owner:
-        mine_nec = (get_owner_necessity(owner) or {}).get("necessity_text") or ""
-    return {"will": _text_of(mine_pv.get("pursuing")), "state": _state_text(mine_pv), "necessity": mine_nec}
-
-
-def _public_card(r, mine, name, handle):
-    """1 件分の外向きの形（照合の結果のカードと、承認の画面の根拠で共通）。数値は入れない。"""
-    from matcher_v4 import public_axis
-    cid = r["candidate_id"]
-    pv = get_profile_view(cid, db_path=DB) or {}
-    theirs = {"will": _text_of(pv.get("pursuing")), "state": _state_text(pv),
-              "necessity": (get_public_necessity(cid) or {}).get("necessity_text") or ""}
-    axis = public_axis(r["attribution"])
-    return {
-        "candidate_id": cid,
-        "handle": handle,
-        "name": name or UNNAMED_LABEL,
-        "one_liner": _text_of(pv.get("headline")),
-        "axis": "will" if axis == "will" else ("mutual" if axis == "mutual" else "fill"),
-        "reasons": _match_reason(axis, mine, theirs),
-    }
-
-
-def _public_match_response(out, store=None, model_tag=None, viewer=None):
-    """照合結果の外向きの形（指示書55 PR-A・PR-B）。score・attribution・順位・件数を出さない。
-
-    入口: 総合A か総合B のどちらかが内部閾値以上（passes_entry。閾値は暫定・指示書56）。
-    除外: 必要像が無い人／本人と紐づいていない id／既に接続済み・申し出中の相手（指示書55 §0-3。
-          自分と別 model_tag は照合の母集団の時点で入らない）。
-    各件: 表示名・一行紹介・利用者向けの軸（will / fill_mine / fill_theirs / mutual）と、その軸の
-          両者の公開本文。並びは中立（id 順）。
-    """
-    from matcher_v4 import passes_entry
-    from ledger import engaged_counterparts
-    rows = [r for r in out.get("results", []) if passes_entry(r)]
-    ids = [r["candidate_id"] for r in rows]
-    bundles = store.get_bundles(ids, model_tag) if (store is not None and ids) else {}
-    has_nec = {cid for cid, b in bundles.items()
-               if ((b.get("necessity") or {}).get("necessity_text") or "").strip()}
-    linked = _linked_ids(ids)
-    engaged = engaged_counterparts(viewer, db_path=DB) if viewer else set()
-    rows = [r for r in rows
-            if r["candidate_id"] in has_nec and r["candidate_id"] in linked
-            and r["candidate_id"] not in engaged]
-
-    mine = _mine_texts(out, out.get("seeker_id") or viewer)
-    names = _resolve_names(ids, fallback=UNNAMED_LABEL)
-    import handles
-    hs = handles.get_many(ids, db_path=DB)
-    results = [_public_card(r, mine, names.get(r["candidate_id"]), hs.get(r["candidate_id"]))
-               for r in rows]
-    results.sort(key=lambda r: str(r["candidate_id"]))
-    pub = {k: out[k] for k in ("seeker_id", "necessity_id", "query_unit", "model_tag") if k in out}
-    pub["status"] = "ok" if results else "none"
-    pub["results"] = results
-    pub["match_run_id"] = f"run_{uuid.uuid4().hex[:8]}"
-    return pub
-
-
-def _run_match_for(store, seeker, model_tag):
-    """/v4/match と同じ経路（必要像起点 → 無ければ人起点）で照合する。記録は書かない。無ければ None。"""
-    from db_v4 import match_v4
-    nec_id = _seeker_live_necessity_id(seeker, db_path=DB)
-    if nec_id:
-        try:
-            return _match_by_necessity(store, nec_id, model_tag=model_tag, write_ledger=False)
-        except LookupError:
-            pass
-    try:
-        out = match_v4(store, seeker, model_tag=model_tag, write_ledger=False)
-    except ValueError:
-        return None
-    out["query_unit"] = "person"
-    return out
-
-
 @app.get("/api/connections/reason")
 @login_required
 def connection_reason():
-    """承認の場面で見せる「なぜこの人か」（指示書55-5 §1）。照合の結果のカードと同じ形（軸の名前＋
-    両者の公開本文。数値なし）。
+    """承認の場面で見せる「なぜこの人か」（指示書55-5 §1・指示書57 §2-3）。照合の結果と同じ根拠
+    （軸の名前＋引用の対。数値なし）。
 
-    - **その場で再計算**する（申し出の時点の根拠は保存しない）。本文が更新されていれば今の本文で出す。
-    - 本人（セッション）から見た相手の根拠。**申し出・承認待ち・接続中の相手に限る**（任意の人について
-      照合を引けると、照合の結果の除外や横断禁止を迂回できるため）。
-    - 入口の閾値では切らない（説明のため）。照合できない（stub・切替中・ベクトルなし）ときは reason なし。
+    - **申し出に保存した版の参照から再計算**する（根拠のコピーは保存しない）。申し出た側の必要像・
+      与え像は申し出た時点の版（necessity_ref・offer_ref）、受けた側は現在の版を使う。
+    - 申し出・承認待ち・接続中の相手に限る（任意の人の照合を引けると除外や横断禁止を迂回できる）。
+    - 判定の入口では切らない（説明のため）。照合できない（stub・切替中・ベクトルなし）ときは reason なし。
     """
     me = require_self(request.args.get("me"))
     other = (request.args.get("with") or "").strip()
     if not other or other == me:
         return jsonify({"error": "with が必要です"}), 400
-    from ledger import connection_state
+    from ledger import connection_state, request_refs
     if connection_state(me, other, db_path=DB) == "none":
         return jsonify({"error": "申し出・接続の相手についてだけ見られます"}), 403
     if not is_postgres() or not _matching_available():
@@ -1619,15 +1616,149 @@ def connection_reason():
     store = _v4_store()
     if store.count_missing_tag(MODEL_TAG):
         return jsonify({"reason": None}), 200
-    out = _run_match_for(store, me, MODEL_TAG)
-    r = next((x for x in (out or {}).get("results", []) if x["candidate_id"] == other), None)
-    if r is None:
+    mine = _side_of(store, me, MODEL_TAG)
+    theirs = _side_of(store, other, MODEL_TAG)
+    # 申し出た側の版の参照（その目的・その時点の与え像）で上書きする
+    for who, side in ((me, mine), (other, theirs)):
+        ref = request_refs(who, me if who == other else other, db_path=DB)
+        if ref:
+            _apply_refs(side, ref, MODEL_TAG)
+    from matcher_v5 import direction
+    pairs = []
+    for p in mine["purposes"]:
+        ok, prs = direction(p["needs"], theirs["offers"])
+        if ok or not pairs:
+            pairs = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in prs] or pairs
+        if ok:
+            break
+    b_pairs = []
+    for q in theirs["purposes"]:
+        ok, prs = direction(q["needs"], mine["offers"])
+        if ok:
+            b_pairs = [{"kind": "fill_theirs", "mine": x["offer"], "theirs": x["need"]} for x in prs]
+            break
+    if not pairs and not b_pairs:
         return jsonify({"reason": None}), 200
-    import handles
-    card = _public_card(r, _mine_texts(out, me), _resolve_names([other], fallback=UNNAMED_LABEL).get(other),
-                        handles.get_handle(other, db_path=DB))
+    axis = "mutual" if (pairs and b_pairs) else "fill"
+    items = _reason_items((pairs[:1] + b_pairs[:1]) if axis == "mutual" else (pairs or b_pairs), mine, theirs)
     _mark_noindex()
-    return jsonify({"reason": {"axis": card["axis"], "reasons": card["reasons"]}}), 200
+    return jsonify({"reason": {"axis": axis, "reasons": items}}), 200
+
+
+def _apply_refs(side, ref, model_tag):
+    """申し出に保存した版の参照で、片側の目的と与え像を差し替える（その時点の版で再計算するため）。"""
+    import v5
+    if ref.get("necessity_ref"):
+        vecs = v5.get_sentence_vectors("necessity", ref["necessity_ref"], model_tag, db_path=DB)
+        if vecs:
+            side["purposes"] = [{"purpose_id": ref.get("purpose_id"), "label": "", "necessity_id": ref["necessity_ref"],
+                                 "needs": [{"text": t, "vec": v, "required": False} for t, v in vecs]}]
+    if ref.get("offer_ref"):
+        vecs = v5.get_sentence_vectors("offer", ref["offer_ref"], model_tag, db_path=DB)
+        if vecs:
+            side["offers"], side["has_offer"] = [{"text": t, "vec": v} for t, v in vecs], True
+
+
+# ── 照合の段3（指示書57）: 目的ごと・文単位 ──────────────────────────────────────
+def _side_of(store, sid, model_tag, bundle=None):
+    """照合の片側: 目的ごとの必要像の文と、与え像の文（ベクトル付き）。
+
+    v5 の人は文単位ベクトル。v4 の人（または文単位ベクトルがまだ無い人）は「目的 1 つ・与え像なし」と
+    して読み、必要像の全文ベクトルと、与え像の代わりに現状（state_passage）を使う（v4 互換）。
+    """
+    import v5
+    doc = v5.get_doc(sid, db_path=DB) or {}
+    labels = {p.get("purpose_id"): str(p.get("向かう先") or "") for p in (doc.get("purposes") or [])}
+    purposes = []
+    for n in v5.live_necessities_v5(sid, db_path=DB):
+        vecs = v5.get_sentence_vectors("necessity", n["necessity_id"], model_tag, db_path=DB)
+        if not vecs:
+            continue
+        req = [bool((x or {}).get("必須")) for x in n["sentences"]]
+        purposes.append({"purpose_id": n["purpose_id"], "label": labels.get(n["purpose_id"], ""),
+                         "necessity_id": n["necessity_id"],
+                         "needs": [{"text": t, "vec": v, "required": req[i] if i < len(req) else False}
+                                   for i, (t, v) in enumerate(vecs)]})
+    offers, offer_id = [], None
+    off = v5.latest_offer(sid, db_path=DB)
+    if off:
+        vecs = v5.get_sentence_vectors("offer", off["offer_id"], model_tag, db_path=DB)
+        if vecs:
+            offers, offer_id = [{"text": t, "vec": v} for t, v in vecs], off["offer_id"]
+    has_offer = bool(offers)
+    if bundle is None:
+        bundle = store.get_bundle(sid, model_tag)
+    vecs4 = (bundle or {}).get("vectors") or {}
+    if not purposes and bundle:
+        text = ((bundle.get("necessity") or {}).get("necessity_text") or "").strip()
+        if text and vecs4.get("necessity_query"):
+            purposes = [{"purpose_id": None, "label": "", "necessity_id": None,
+                         "needs": [{"text": text, "vec": vecs4["necessity_query"], "required": False}]}]
+    if not offers and vecs4.get("state_passage"):
+        offers = [{"text": _state_text(get_profile_view(sid, db_path=DB) or {}), "vec": vecs4["state_passage"]}]
+    return {"purposes": purposes, "offers": offers, "has_offer": has_offer, "offer_id": offer_id}
+
+
+def _reason_items(pairs, mine_side, their_side):
+    """引用の対を表示用にする（数値なし）。与え像が無い側は「現状」と書く（v4 互換）。"""
+    out = []
+    for p in pairs:
+        if p["kind"] == "fill_mine":
+            out.append({"kind": "fill_mine", "need_label": "あなたの必要像", "need": p["mine"],
+                        "offer_label": "相手の与え像" if their_side["has_offer"] else "相手の現状",
+                        "offer": p["theirs"]})
+        else:
+            out.append({"kind": "fill_theirs", "need_label": "相手の必要像", "need": p["theirs"],
+                        "offer_label": "あなたの与え像" if mine_side["has_offer"] else "あなたの現状",
+                        "offer": p["mine"]})
+    return out
+
+
+def _v5_match_response(store, me, model_tag):
+    """照合の結果（目的ごとにグループ化）。数値・順位・件数は出さない。並びは中立（id 順）。
+
+    除外: 必要像が無い人／本人と紐づいていない id／既に接続済み・申し出中の相手（相手ごとの理由は出さない）。
+    """
+    from matcher_v5 import match_pair
+    from ledger import engaged_counterparts
+    mine = _side_of(store, me, model_tag)
+    if not mine["purposes"]:
+        return {"status": "no_necessity", "groups": [], "results": []}
+    ids = [i for i in store.candidate_ids(me, model_tag)]
+    linked = _linked_ids(ids)
+    engaged = engaged_counterparts(me, db_path=DB)
+    ids = sorted(i for i in ids if i in linked and i not in engaged)
+    bundles = store.get_bundles(ids, model_tag) if ids else {}
+    names = _resolve_names(ids, fallback=UNNAMED_LABEL)
+    import handles
+    hs = handles.get_many(ids, db_path=DB)
+    groups = {p["purpose_id"]: {"purpose_id": p["purpose_id"], "label": p["label"], "results": []}
+              for p in mine["purposes"]}
+    them_need_me = {"purpose_id": "_theirs", "label": "", "results": []}
+    for cid in ids:
+        theirs = _side_of(store, cid, model_tag, bundle=bundles.get(cid))
+        if not theirs["purposes"]:
+            continue                                     # 必要像の無い人は出さない
+        r = match_pair(mine, theirs)
+        pv = None
+        for pid, res in r["by_purpose"].items():
+            pv = pv or (get_profile_view(cid, db_path=DB) or {})
+            groups[pid]["results"].append(_card(cid, names, hs, pv, res, mine, theirs, pid))
+        if r["theirs_need_me"]:
+            pv = pv or (get_profile_view(cid, db_path=DB) or {})
+            them_need_me["results"].append(_card(cid, names, hs, pv, r["theirs_need_me"], mine, theirs, None))
+    out_groups = [g for g in groups.values() if g["results"]]
+    if them_need_me["results"]:
+        out_groups.append(them_need_me)
+    flat = [c for g in out_groups for c in g["results"]]
+    return {"status": "ok" if flat else "none", "groups": out_groups, "results": flat,
+            "has_offer": mine["has_offer"], "match_run_id": f"run_{uuid.uuid4().hex[:8]}"}
+
+
+def _card(cid, names, hs, pv, res, mine, theirs, purpose_id):
+    return {"candidate_id": cid, "handle": hs.get(cid), "name": names.get(cid) or UNNAMED_LABEL,
+            "one_liner": _text_of(pv.get("headline")), "purpose_id": purpose_id,
+            "axis": res["axis"], "reasons": _reason_items(res["pairs"], mine, theirs)}
 
 
 def _can_use_necessity(necessity_id, sid):
@@ -1662,6 +1793,17 @@ def post_approve():
     message = (body.get("message") or "").strip()
     if len(message) > OFFER_MESSAGE_MAX:
         return jsonify({"error": f"申し出の文は {OFFER_MESSAGE_MAX} 字までです"}), 400
+    # 指示書57: どの目的の申し出か（自分の目的に限る）と、申し出た時点の自分の版の参照。
+    import v5
+    purpose_id = (body.get("purpose_id") or "").strip() or None
+    necessity_ref = offer_ref = None
+    if purpose_id:
+        live = {n["purpose_id"]: n["necessity_id"] for n in v5.live_necessities_v5(from_id, db_path=DB)}
+        if purpose_id not in live:
+            return jsonify({"error": "この目的では申し出られません（自分の生きている目的を選んでください）"}), 400
+        necessity_ref = live[purpose_id]
+    off = v5.latest_offer(from_id, db_path=DB)
+    offer_ref = off["offer_id"] if off else None
 
     result = approve(
         from_id=from_id,
@@ -1675,6 +1817,7 @@ def post_approve():
         ref_resolver=_conn_ref_resolver,          # 接続の根拠（指示書18 §1）
         require_grounding=True,                    # 両者に profile.structured が無ければ成立させない（§1-3）
         message=message or None,
+        purpose_id=purpose_id, necessity_ref=necessity_ref, offer_ref=offer_ref,
     )
     return jsonify(result), 200
 
@@ -1698,6 +1841,21 @@ def withdraw_connection_request():
     me = require_self(body.get("from_id"))
     from ledger import withdraw_request
     return jsonify({"withdrawn": withdraw_request(me, _other_id(body), db_path=DB)}), 200
+
+
+@app.get("/api/my/purposes")
+@login_required
+def my_purposes():
+    """本人の目的（サーバーの不変 id と向かう先）と、与え像の有無（指示書57）。本人のみ。
+    与え像が無い間は「現状で照合しています」をマイページに常設する（v4 互換）。"""
+    me = require_self(request.args.get("id"))
+    import v5
+    doc = v5.get_doc(me, db_path=DB) or {}
+    labels = {p.get("purpose_id"): str(p.get("向かう先") or "") for p in (doc.get("purposes") or [])}
+    live = [n["purpose_id"] for n in v5.live_necessities_v5(me, db_path=DB)]
+    _mark_noindex()
+    return jsonify({"purposes": [{"purpose_id": p, "label": labels.get(p, "")} for p in live],
+                    "has_offer": v5.latest_offer(me, db_path=DB) is not None}), 200
 
 
 @app.get("/api/connections/state")
@@ -1744,14 +1902,18 @@ def _snapshot_pair_resolver(founder, joiner):
         return None
 
 
-def _conn_ref_resolver(subject):
+def _conn_ref_resolver(subject, purpose_id=None):
     """接続の根拠（指示書18 §1-2）: profile.structured の content_hash と
-    necessity.published の event_hash（無ければ None）。null と空文字を区別する。"""
+    necessity.published の event_hash（無ければ None）。null と空文字を区別する。
+    指示書57: 目的のある申し出は、**その目的の最新の**必要像の event_hash（別の目的を根拠にしない）。"""
     try:
         from subject_ledger import latest_profile_content_hash
         from necessities import latest_published_event_hash
+        import v5
+        nh = (v5.latest_event_hash_for_purpose(subject, purpose_id, db_path=DB) if purpose_id
+              else latest_published_event_hash(subject, db_path=DB))
         return {"profile_snapshot_hash": latest_profile_content_hash(subject, db_path=DB),
-                "necessity_hash": latest_published_event_hash(subject, db_path=DB)}
+                "necessity_hash": nh}
     except Exception:  # noqa: BLE001
         return {"profile_snapshot_hash": None, "necessity_hash": None}
 

@@ -140,7 +140,7 @@ def test_t203_zero_result_reason_is_own_side_only(v4):
     v4.vectors = {k: v for k, v in v4.vectors.items() if k[0] in ("me", "far")}
     d = _cli("me").post("/v4/match", json={}).get_json()
     assert d["status"] == "none" and d["results"] == []
-    assert set(d) <= {"seeker_id", "necessity_id", "query_unit", "model_tag", "status", "results", "match_run_id"}
+    assert set(d) <= {"status", "groups", "results", "has_offer", "match_run_id"}   # 相手ごとの理由のキーが無い
     html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
     assert "まだ照合できる相手がいません" in html and "まだ必要像がありません" in html
     assert "excluded" not in html and "not_linked" not in html                # 相手ごとの除外理由は出さない

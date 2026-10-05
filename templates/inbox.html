@@ -94,7 +94,8 @@ function renderApprovals(vessels, myId) {
         <div class="mr-slot" data-other="${escHtml(other)}"></div>
         ${PoXReason.offerHtml(offerMsg[other])}</td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
-      <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
+      <td>${PoXReason.composeHtml(`apvMsg_${escHtml(other)}`)}
+        <button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;
   }).join("");
   fillReasons(tbody);
@@ -133,7 +134,8 @@ async function doApprove(otherId, btn) {
   try {
     const res = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: otherId }),
+      body: JSON.stringify({ to_id: otherId,
+                             message: ((document.getElementById(`apvMsg_${otherId}`) || {}).value || "").trim() }),
     });
     if (PoX.handle(res)) { if (btn) btn.disabled = false; return; }
     const data = await res.json();

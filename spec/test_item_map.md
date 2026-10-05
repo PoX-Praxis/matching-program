@@ -281,3 +281,23 @@
 | 202 | `t56_matching_stage1::test_t202_no_numbers_in_api_or_screen` |
 | 203 | `t56_matching_stage1::test_t203_zero_result_reason_is_own_side_only` |
 | 204 | `t56_matching_stage1::test_t204_c_deviation_recorded_in_docs` |
+
+## 照合の段2〜3（指示書57・205〜220）
+
+| 項目 | テスト（`t57_v5::`） |
+|---|---|
+| 205 | `test_t205_validation_rules[*]`, `test_t205_rule1_schema_version`, `test_t205_valid_v5_draft_saved_and_extra_numbers_dropped`, `test_t205_narrative_can_be_given_separately` |
+| 206 | `test_t206_purpose_ids_server_side_and_stable` |
+| 207 | `test_t207_one_event_per_purpose_c3` |
+| 208 | `test_t208_offer_change_changes_each_purpose_hash` |
+| 209 | `test_t209_profile_structured_canon_version`, `test_t209_c1_c2_rows_still_recompute` |
+| 210 | `test_t210_sentence_vectors_saved`, `test_t210_required_sentence_must_be_met` |
+| 211・212 | `test_t211_t212_results_grouped_by_purpose_with_quote_pairs` |
+| 213 | `test_t213_approval_reason_recomputed_from_refs` |
+| 214 | `test_t214_offer_stores_purpose_and_refs_idempotent_per_purpose`, `test_t214_establish_uses_purpose_event_hash` |
+| 215 | `test_t215_offer_message_box_on_all_paths` |
+| 216 | `test_t216_v4_counterpart_matched_by_state` |
+| 217 | `test_t217_trajectory_purposes_and_branch` |
+| 218 | `test_t218_wording` |
+| 219 | `test_t219_types_do_not_partition_comparison` |
+| 220 | `test_t220_one_per_person_assumptions_removed` |

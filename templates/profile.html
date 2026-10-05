@@ -45,6 +45,11 @@
     <h2 class="pv-h">つながる<span class="en">CONNECT</span></h2>
     <!-- 申し出の文（任意・400 字まで）。受け取った本人だけが読める。接続前は申し出だけを送れる（DM は成立後）。 -->
     <div id="offerBox" style="display:none;margin-bottom:10px">
+      <!-- どの目的の申し出か（指示書57。自分の目的が 2 つ以上あるときだけ選ぶ） -->
+      <div id="purposeRow" style="display:none;margin-bottom:6px">
+        <label for="offerPurpose" style="font-size:12px;color:#555">どの目的の申し出ですか</label>
+        <select id="offerPurpose" style="font-size:13px;margin-left:6px"></select>
+      </div>
       <label for="offerMsg" style="font-size:12px;color:#555">なぜつながりたいか（任意・400字まで。相手だけが読めます）</label>
       <textarea id="offerMsg" maxlength="400" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;margin-top:4px"></textarea>
     </div>
@@ -116,7 +121,8 @@ async function refreshConnectState() {
   $("btnOffer").disabled = false;
   $("btnOffer").textContent = state === "pending_in" ? "承認する" : "つながりたいと伝える";
   show("btnOffer", state === "none" || state === "pending_in");
-  show("offerBox", state === "none");
+  show("offerBox", state === "none" || state === "pending_in");   // 申し出の文は承認でも添えられる（指示書57）
+  if (state === "none") loadMyPurposes();
   show("btnWithdraw", state === "pending_out");
   show("btnDm", state === "connected");
   show("approvalContext", state === "pending_in");
@@ -143,6 +149,7 @@ async function doConnect(btn) {
     const aRes = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to_id: profileId,
+                             purpose_id: document.getElementById("offerPurpose").value || null,
                              message: (document.getElementById("offerMsg").value || "").trim() }),
     });
     if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
@@ -159,6 +166,20 @@ async function doConnect(btn) {
     notice.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
     if (btn) btn.disabled = false;
   }
+}
+
+/* 自分の目的（v5）。1 つならそれを使い、2 つ以上なら選んでもらう。v4 の人は目的の指定なし。 */
+async function loadMyPurposes() {
+  const sel = document.getElementById("offerPurpose");
+  if (sel.dataset.loaded) return;
+  sel.dataset.loaded = "1";
+  try {
+    const r = await fetch("/api/my/purposes");
+    if (!r.ok) return;
+    const ps = (await r.json()).purposes || [];
+    sel.innerHTML = ps.map(p => `<option value="${escHtml(p.purpose_id)}">${escHtml(p.label || "目的")}</option>`).join("");
+    document.getElementById("purposeRow").style.display = ps.length > 1 ? "" : "none";
+  } catch (e) { /* 目的の指定なしで申し出る */ }
 }
 
 async function doWithdraw(btn) {

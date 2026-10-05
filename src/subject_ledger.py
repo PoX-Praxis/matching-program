@@ -45,11 +45,39 @@ def profile_content_hash(profile_input: dict) -> str:
       - 除外: 生テキスト(raw)・evidence_span（永久化しないもの）／gate/α/β/γ 等の内部数値・
         match_run_id（宣言ではないもの）。
     """
+    if profile_input.get("v5"):
+        return profile_content_hash_p2(profile_input)
     sm = profile_input.get("supporting_raw") or {}
     fields = {"will_text": str(profile_input.get("will_text") or "")}
     for k in _STATE_KEYS:
         fields[k] = str(profile_input.get(k) or "")
     for k in _DECLARE_SM_KEYS:
+        fields[k] = str(sm.get(k) or "")
+    return sha256_hex(canonicalize(fields))
+
+
+PROFILE_CANON_P2 = "p2"
+
+
+def profile_content_hash_p2(profile_input: dict) -> str:
+    """宣言の内容ハッシュ p2（指示書57・①v5）。台帳の payload に canon_version="p2" を載せる。
+
+    対象（完全列挙）: purposes[].{purpose_id（サーバーの不変 id）, 向かう先, 手段}／関心[].文／
+    現状 4 スロット／supporting_material の表示項目（背景・一行紹介・要約文）。
+    除外: 生テキスト（本人のみ・検査用）・必要像と与え像（生成された仮説＝必要像の側の c3 に入る）・
+    根拠・数値。欠損は空文字。
+    """
+    doc = profile_input.get("v5") or {}
+    sm = profile_input.get("supporting_raw") or {}
+    fields = {
+        "purposes": [{"purpose_id": str(p.get("purpose_id") or ""),
+                      "向かう先": str(p.get("向かう先") or ""), "手段": str(p.get("手段") or "")}
+                     for p in (doc.get("purposes") or [])],
+        "関心": [str((x or {}).get("文") or "") for x in (doc.get("関心") or [])],
+    }
+    for k in _STATE_KEYS:
+        fields[k] = str(profile_input.get(k) or "")
+    for k in ("背景", "一行紹介", "要約文"):
         fields[k] = str(sm.get(k) or "")
     return sha256_hex(canonicalize(fields))
 
@@ -84,10 +112,14 @@ def publish_profile_structured(subject_id: str, profile_input: dict, *,
                 "n": mine[-1]["payload"].get("n"), "prev_snapshot": None}
     n = len(mine) + 1
     prev_snapshot = mine[-1]["payload"].get("content_hash") if mine else None
-    le.append_event(actor or subject_id, "profile.structured", {
+    payload = {
         "subject_id": subject_id, "n": n, "content_hash": ch,
         "prev_snapshot": prev_snapshot, "members_after_hash": members_after_hash,
-    }, db_path=db_path)
+    }
+    # 宣言のハッシュ規則の版（指示書57）。任意キーで、無いもの＝c1。検証側はこれで規則を選ぶ。
+    if profile_input.get("v5"):
+        payload["canon_version"] = PROFILE_CANON_P2
+    le.append_event(actor or subject_id, "profile.structured", payload, db_path=db_path)
     return {"skipped": False, "content_hash": ch, "n": n, "prev_snapshot": prev_snapshot}
 
 

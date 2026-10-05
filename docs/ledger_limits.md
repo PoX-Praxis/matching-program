@@ -95,7 +95,7 @@ redaction.recorded {
 | `subject.created` / `member.joined` / `member.left` | 使用中 |
 | `purpose.agreed` / `intent.launched` / `intent.participant.joined` / `intent.completed` | 使用中（指示書41 §4 で固定） |
 | `intent.proposed` / `intent.agreed` / `intent.cancelled` | 凍結（新規に書かない・読み取りのみ） |
-| `profile.structured` / `visibility.changed` / `necessity.published` / `necessity.retired` | 使用中 |
+| `profile.structured` / `visibility.changed` / `necessity.published` / `necessity.retired` | 使用中。**指示書57（①v5）で任意キーを追加**（型は変えない）: `profile.structured.canon_version`（"p2"。無い＝c1）／`necessity.published.purpose_id`・`offer_hash`（目的ごとの必要像・与え像のピン留め。ハッシュ規則 c3 は `necessities.canon_version`） |
 | `connection.established` / `connection.closed` / `anchor.published` | 使用中 |
 | `redaction.recorded` | 使用中（45B で新設） |
 | `intent.participant.left` | 使用中（指示書51 で新設）。プロジェクトからの離脱。`member.left`（コミュニティ所属の離脱）とは目的が別 |

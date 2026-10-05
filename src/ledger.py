@@ -72,7 +72,9 @@ def _connect(db_path: str = "pox.db"):
         )
         # チャネル来歴（指示書18 §3）。台帳に載せず通常DBに保持（照合の内部値・削除可能）。
         # offer_message: 申し出の文（指示書55 §3-5。受けた本人だけが読む・取り下げで消える）。
-        for col in ("predicted_role", "channel", "match_run_id", "offer_message"):
+        # purpose_id・necessity_ref・offer_ref: 指示書57（どの目的の申し出か・申し出た時点の版の参照）
+        for col in ("predicted_role", "channel", "match_run_id", "offer_message",
+                    "purpose_id", "necessity_ref", "offer_ref"):
             try:
                 con.execute(f"ALTER TABLE connection_requests ADD COLUMN {col} TEXT")
             except Exception:  # noqa: BLE001（既存なら無視）
@@ -100,6 +102,9 @@ def approve(
     ref_resolver=None,
     require_grounding: bool = False,
     message: str = None,
+    purpose_id: str = None,
+    necessity_ref: str = None,
+    offer_ref: str = None,
 ) -> dict:
     """
     from_id が to_id を承認する（成立の前段は connection_requests）。
@@ -116,6 +121,9 @@ def approve(
     §3: predicted_role / channel / match_run_id は台帳に載せず connection_requests に保持。
     message（申し出の文・指示書55 §3-5）も通常DBだけに置く。**1 人 1 通**: 既に申し出中なら
     上書きしない（書き直すには取り下げてから送り直す）。
+    指示書57: purpose_id（どの目的の申し出か）と、申し出た時点の版の参照（自分の必要像 necessity_ref・
+    与え像 offer_ref）を保存する。**冪等は「相手 × 目的」**。成立時の根拠 a_ref/b_ref の necessity_hash は、
+    各自の申し出の目的の最新の必要像（ref_resolver(subject, purpose_id)）。
     戻り値: {"vessel_id", "established": bool[, "reason"]}。
     """
     vid = _vessel_id(from_id, to_id)
@@ -128,26 +136,27 @@ def approve(
         # この向きの承認を記録（重複させない）。チャネル来歴も保持（§3）。
         row = con.execute(
             "SELECT id FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
-            "AND status='pending'",
-            (from_id, to_id),
+            "AND status='pending' AND coalesce(purpose_id,'')=%s",
+            (from_id, to_id, purpose_id or ""),
         ).fetchone()
         if not row:
             con.execute(
                 "INSERT INTO connection_requests "
                 "(id, from_subject, to_subject, necessity_id, status, created_at, responded_at, "
-                " predicted_role, channel, match_run_id, offer_message) "
-                "VALUES (%s,%s,%s,%s,'pending',%s,NULL,%s,%s,%s,%s)",
+                " predicted_role, channel, match_run_id, offer_message, purpose_id, necessity_ref, offer_ref) "
+                "VALUES (%s,%s,%s,%s,'pending',%s,NULL,%s,%s,%s,%s,%s,%s,%s)",
                 (f"cr_{uuid.uuid4().hex[:10]}", from_id, to_id, None, _now(),
-                 predicted_role, channel, match_run_id, (message or None)),
+                 predicted_role, channel, match_run_id, (message or None),
+                 purpose_id, necessity_ref, offer_ref),
             )
         recip = con.execute(
-            "SELECT created_at FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
-            "AND status='pending'",
+            "SELECT created_at, purpose_id FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
+            "AND status='pending' ORDER BY created_at ASC",
             (to_id, from_id),
         ).fetchone()
         mine = con.execute(
-            "SELECT created_at FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
-            "AND status='pending'",
+            "SELECT created_at, purpose_id FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
+            "AND status='pending' ORDER BY created_at ASC",
             (from_id, to_id),
         ).fetchone()
 
@@ -161,11 +170,16 @@ def approve(
     founder = to_id if at_recip <= at_from else from_id   # 先に承認した側が起点
     other = b if founder == a else a
 
+    purpose_of = {from_id: (mine[1] if mine else None), to_id: recip[1]}
+
     def _resolve(x):
         if ref_resolver is None:
             return {"profile_snapshot_hash": None, "necessity_hash": None}
         try:
-            r = ref_resolver(x) or {}
+            try:
+                r = ref_resolver(x, purpose_of.get(x)) or {}
+            except TypeError:                       # 目的を受け取らない resolver（旧形）
+                r = ref_resolver(x) or {}
         except Exception:  # noqa: BLE001
             r = {}
         return {"profile_snapshot_hash": r.get("profile_snapshot_hash"),
@@ -221,14 +235,19 @@ def close_connection(a: str, b: str, by: str, reason: str = "", db_path: str = "
     return {"vessel_id": _vessel_id(a, b), "closed": True}
 
 
-def withdraw_request(from_id: str, to_id: str, db_path: str = "pox.db") -> bool:
+def withdraw_request(from_id: str, to_id: str, purpose_id: str = None, db_path: str = "pox.db") -> bool:
     """自分の申し出（pending）を取り下げる（指示書55 §3-4）。**台帳に書かない**。申し出の文も一緒に消える。
-    戻り値: 取り下げたか（申し出が無ければ False＝冪等）。"""
+    purpose_id を渡すとその目的の申し出だけ（指示書57）。戻り値: 取り下げたか（無ければ False＝冪等）。"""
     with _connect(db_path) as con:
-        cur = con.execute(
-            "DELETE FROM connection_requests WHERE from_subject=%s AND to_subject=%s AND status='pending'",
-            (from_id, to_id),
-        )
+        if purpose_id:
+            cur = con.execute(
+                "DELETE FROM connection_requests WHERE from_subject=%s AND to_subject=%s AND status='pending' "
+                "AND purpose_id=%s", (from_id, to_id, purpose_id))
+        else:
+            cur = con.execute(
+                "DELETE FROM connection_requests WHERE from_subject=%s AND to_subject=%s AND status='pending'",
+                (from_id, to_id),
+            )
         return (cur.rowcount or 0) > 0
 
 
@@ -335,6 +354,8 @@ def _derive_from_events(db_path: str = "pox.db") -> dict:
             if snaps:
                 vessel["snapshots"] = snaps
             vessel["grounded"] = _is_grounded(p)     # §1-4: 根拠あり/なしを識別可能に
+            # 根拠の参照（ハッシュのみ）。軌跡が「どの目的の接続か」を解くのに使う（指示書57）。
+            vessel["refs"] = {a: p.get("a_ref") or {}, b: p.get("b_ref") or {}}
             out[vid] = vessel
         elif t == "connection.closed":
             v = out.get(vid)
@@ -431,3 +452,16 @@ def engaged_counterparts(subject_id: str, db_path: str = "pox.db") -> set:
         out |= {frm, to}
     out.discard(subject_id)
     return out
+
+
+def request_refs(from_id: str, to_id: str, db_path: str = "pox.db"):
+    """from → to の申し出（pending か成立済みのうち最新）に保存した目的と版の参照（指示書57）。無ければ None。"""
+    with _connect(db_path) as con:
+        r = con.execute(
+            "SELECT purpose_id, necessity_ref, offer_ref FROM connection_requests "
+            "WHERE from_subject=%s AND to_subject=%s AND status IN ('pending','established') "
+            "ORDER BY created_at DESC LIMIT 1", (from_id, to_id),
+        ).fetchone()
+    if not r:
+        return None
+    return {"purpose_id": r[0], "necessity_ref": r[1], "offer_ref": r[2]}

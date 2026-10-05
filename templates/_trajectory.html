@@ -41,7 +41,8 @@ window.PoXTrajectory = (function(){
     let text;
     const link = (t) => b.url ? `<a href="${esc(b.url)}">${esc(t)}</a>` : esc(t);
     if (b.kind === "connection")
-      text = `${link(b.other_name)}（自分 第${ver(b.self_version)}版 × ${esc(b.other_name)} 第${ver(b.other_version)}版）`;
+      text = `${link(b.other_name)}（自分 第${ver(b.self_version)}版${b.self_purpose ? `（目的: ${esc(b.self_purpose)}）` : ""}`
+           + ` × ${esc(b.other_name)} 第${ver(b.other_version)}版${b.other_purpose ? `（目的: ${esc(b.other_purpose)}）` : ""}）`;
     else if (b.kind === "connection_ended") text = `${link(b.other_name)} との接続が終わりました`;
     else if (b.kind === "joined_project" || b.kind === "completed") text = `プロジェクト「${link(b.title)}」`;
     else if (b.kind === "joined_community") text = `コミュニティ「${link(b.title)}」`;
@@ -59,7 +60,13 @@ window.PoXTrajectory = (function(){
     if (c.will_text) rows.push(`<div><span class="k">意志</span>${esc(c.will_text)}</div>`);
     const st = Object.entries(c.state || {}).filter(([,x]) => x);
     if (st.length) rows.push(`<div><span class="k">現状</span>${st.map(([k,x]) => `${esc(STATE[k] || k)}: ${esc(x)}`).join(" ／ ")}</div>`);
-    if (c.necessity_text) rows.push(`<div><span class="k">必要としている相手</span>${esc(c.necessity_text)}</div>`);
+    if (c.purposes && c.purposes.length) {
+      // ①v5: 目的ごとの必要像（指示書57）
+      c.purposes.forEach(p => rows.push(`<div><span class="k">目的</span>${esc(p.label)}<ul>`
+        + (p.needs || []).map(n => `<li>${n["必須"] ? "必須" : "歓迎"}: ${esc(n["文"])}</li>`).join("") + `</ul></div>`));
+      if (c.offers && c.offers.length)
+        rows.push(`<div><span class="k">与え像</span><ul>${c.offers.map(o => `<li>${esc(o)}</li>`).join("")}</ul></div>`);
+    } else if (c.necessity_text) rows.push(`<div><span class="k">必要としている相手</span>${esc(c.necessity_text)}</div>`);
     if (opts.owner && c.evidence_span) rows.push(`<div><span class="k">根拠</span>${esc(c.evidence_span)}</div>`);
     return `<div class="tj-body">${rows.join("") || '<span class="tj-muted">—</span>'}</div>`;
   }

@@ -295,11 +295,45 @@ def test_t214_establish_uses_purpose_event_hash(world):
     assert mine["necessity_hash"] == v5.latest_event_hash_for_purpose("me", pids[1], db_path=appmod.DB)
 
 
-def test_t215_offer_message_box_on_all_paths():
+def test_t215_offer_message_box_only_for_offerer():
+    """申し出の文の入力欄は申し出る側だけ（57 受理時の訂正 #5）。承認欄は文を「表示する」場所。"""
     assert 'id="offerMsg"' in TPL("profile.html")
     assert "PoXReason.composeHtml" in TPL("connect.html")
-    assert "apvMsg_" in TPL("inbox.html") and "apvMsg_" in TPL("mypage.html")
-    assert 'state === "pending_in"' in TPL("profile.html")
+    for t in ("inbox.html", "mypage.html"):
+        assert "apvMsg_" not in TPL(t) and "composeHtml" not in TPL(t)
+        assert "PoXReason.offerHtml" in TPL(t)                         # 受けた文は表示する
+    assert 'show("offerBox", state === "none")' in TPL("profile.html")
+
+
+def test_t57f_approval_does_not_carry_message(world):
+    """承認は状態の遷移だけ。承認の側から文を送っても保存しない（DM は成立後だけ・177 と整合）。"""
+    pids = [n["purpose_id"] for n in v5.live_necessities_v5("c2", db_path=appmod.DB)]
+    _cli("c2").post("/approve", json={"to_id": "me", "purpose_id": pids[1], "message": "申し出の文"})
+    _cli("me").post("/approve", json={"to_id": "c2", "message": "承認の側の文"})
+    with ledger._connect(appmod.DB) as con:
+        rows = dict(con.execute("SELECT from_subject, offer_message FROM connection_requests").fetchall())
+    assert rows == {"c2": "申し出の文", "me": None}
+
+
+def test_t57f_exclusion_is_per_purpose(world):
+    """申し出中の相手は「その目的」のグループからだけ外す（57 受理時の推奨 #4）。"""
+    pids = [n["purpose_id"] for n in v5.live_necessities_v5("me", db_path=appmod.DB)]
+    _cli("me").post("/approve", json={"to_id": "c1", "purpose_id": pids[1]})     # 別の目的で申し出中
+    _cli("me").post("/approve", json={"to_id": "c2", "purpose_id": pids[1]})     # この目的で申し出中
+    d = _cli("me").post("/v4/match", json={}).get_json()
+    by = {g["purpose_id"]: [r["candidate_id"] for r in g["results"]] for g in d["groups"]}
+    assert by.get(pids[0]) == ["c1"] and pids[1] not in by
+    _cli("me").post("/approve", json={"to_id": "c1"})                            # 目的を指定しない申し出は全部から外す
+    d = _cli("me").post("/v4/match", json={}).get_json()
+    assert all(r["candidate_id"] != "c1" for g in d["groups"] for r in g["results"])
+
+
+def test_t57f_register_prompt_is_v5():
+    """登録画面のプロンプトは v5 の文面（2026-10-06）。v4 の JSON も受け付ける旨を残す。"""
+    reg = TPL("register.html")
+    assert 'id="promptV5"' in reg and '"schema_version": "v5"' in reg and "■ 本人の語り" in reg
+    assert "求人票の文体を禁止" in reg.replace("**", "") and "promptInterview" not in reg
+    assert "v4）で作った JSON も" in reg
 
 
 # ── 217 軌跡 ──────────────────────────────────────────────────────────────────

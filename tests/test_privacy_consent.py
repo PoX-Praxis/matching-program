@@ -31,8 +31,9 @@ def test_register_has_consent_checkbox_and_guard():
     assert 'id="policyAgree"' in b                     # 既定オフのチェックボックス
     assert "プライバシーポリシーへの同意が必要です" in b   # ガードのメッセージ
     assert "PRIVACY_POLICY_VERSION" in b               # 版を1箇所で保持
-    # 既存 consent（"本人合意済み"）は温存、新規は別フィールド privacy_policy_agreed（混同しない）
-    assert "本人合意済み" in b and "privacy_policy_agreed" in b
+    # 同意は別フィールド privacy_policy_agreed（①の出力の consent と混同しない）。
+    # "本人合意済み" は v4 プロンプトの _meta にあった値で、v5 の文面（2026-10-06）には無い。
+    assert "privacy_policy_agreed" in b
 
 
 # ── 同意の証跡記録（別テーブル・既存 consent 非改変）─────────────────────────

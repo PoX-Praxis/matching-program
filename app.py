@@ -385,22 +385,9 @@ def ledger_anchor():
     return jsonify(anchor.run_daily(db_path=DB)), 200
 
 
-@app.post("/ledger/admin/purge-accounts")
-def ledger_admin_purge_accounts():
-    """アカウント整理（指示書55-3 §2。scripts/purge_accounts.py と同じ）。**対象は固定の 4 id のみ**。
-
-    認証は X-Anchor-Token（一致しなければ 404）。**既定は dry-run**（消える行数と、消せない理由を返す）。
-    body {"apply": true} のときだけ削除する（1 トランザクション）。実行時に台帳参照を再確認し、0 でない id は
-    消さない。**実行前に pg_dump を取る**（docs/account_purge.md）。**使用後はルートを閉じる**。
-    """
-    if not (_debug_enabled() or _anchor_token_ok()):
-        abort(404)
-    _root = os.path.dirname(os.path.abspath(__file__))
-    if _root not in sys.path:
-        sys.path.insert(0, _root)
-    from scripts.purge_accounts import run_purge
-    body = request.get_json(force=True, silent=True) or {}
-    return jsonify(run_purge(apply=body.get("apply") is True, db_path=DB)), 200
+# 一時的に開けていた /ledger/admin/purge-accounts・/ledger/audit/inventory・/ledger/audit/match は
+# 使用後に閉じた（指示書58 §2-4）。同じ処理はリポジトリ直下から CLI で実行できる:
+#   scripts/purge_accounts.py・scripts/audit_inventory.py（照合の内部値は scripts/manual_pairs.py）。
 
 
 @app.get("/ledger/audit/legacy-boundary")
@@ -434,101 +421,6 @@ def ledger_audit_legacy_boundary():
         "unresolved": ids(r["unresolved"]),
         "verdict": r["verdict"],
     }), 200
-
-
-@app.get("/ledger/audit/inventory")
-def ledger_audit_inventory():
-    """埋め込みとアカウントの棚卸し（指示書55 段階0-2 E-1〜E-3・B-2・B-5。scripts/audit_inventory.py と同じ）。
-
-    読み取りのみ。認証は /ledger/audit/legacy-boundary と同じ（X-Anchor-Token が一致しなければ 404）。
-    返すのは設定値・件数・id ごとの所在と表示名まで。本文・スコア・照合の結果は返さない。
-    """
-    if not (_debug_enabled() or _anchor_token_ok()):
-        abort(404)
-    _root = os.path.dirname(os.path.abspath(__file__))
-    if _root not in sys.path:
-        sys.path.insert(0, _root)
-    from scripts.audit_inventory import run_inventory
-    return app.response_class(json.dumps(run_inventory(db_path=DB), ensure_ascii=False, default=str),
-                              mimetype="application/json"), 200
-
-
-@app.get("/ledger/audit/match")
-def ledger_audit_match():
-    """指定ペアの照合の内部値（指示書55-4 §2。閾値の校正の証拠として取る）。
-
-    認証は inventory と同じ（X-Anchor-Token が一致しなければ 404）。**指定した 2 人だけ**を返し、
-    一覧・横断はしない。**本文は返さない**（類似度・ゲート・寄与・総合と入口の判定だけ）。画面と
-    /v4/match には引き続き数値を出さない。inventory と同時に閉じる。記録は校正の証拠で、指標にしない。
-    ?pair=<id_a>,<id_b> → a_to_b（a が照合したときの b）と b_to_a（その逆）。
-    """
-    if not (_debug_enabled() or _anchor_token_ok()):
-        abort(404)
-    ids = [x.strip() for x in (request.args.get("pair") or "").split(",") if x.strip()]
-    if len(ids) != 2 or ids[0] == ids[1]:
-        return jsonify({"error": "pair=<id_a>,<id_b>（異なる 2 人）が必要です"}), 400
-    if not is_postgres():
-        return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
-    from embedding_config import MODEL_TAG
-    from match_config import MATCH_ENTRY_THRESHOLD
-    store = _v4_store()
-    a, b = ids
-    return jsonify({
-        "pair": ids, "model_tag": MODEL_TAG,
-        "entry_threshold": MATCH_ENTRY_THRESHOLD,
-        "threshold_scale": "g(cos) = (1 + cos) / 2 の加重べき乗平均（総合）に対する閾値。cos そのものではない",
-        "a_to_b": _pair_detail(store, a, b, MODEL_TAG),
-        "b_to_a": _pair_detail(store, b, a, MODEL_TAG),
-    }), 200
-
-
-def _pair_detail(store, seeker, other, model_tag):
-    """seeker が照合したときの other の内部値（/v4/match と同じ経路・同じ式。台帳・ledger_v4 に書かない）。"""
-    from db_v4 import match_v4
-    from matcher_v4 import effective_axis, passes_entry, public_axis
-    from ledger import engaged_counterparts
-    nec_id = _seeker_live_necessity_id(seeker, db_path=DB)
-    out, numbers = None, {}
-    if nec_id:
-        try:
-            out = _match_by_necessity(store, nec_id, model_tag=model_tag, write_ledger=False)
-            from necessities import get_necessity
-            n = get_necessity(nec_id, db_path=DB) or {}
-            numbers = {k: n.get(k) for k in ("gate_s", "gate_u", "p_sharpness", "alpha", "beta")}
-        except LookupError:
-            out = None
-    if out is None:
-        try:
-            out = match_v4(store, seeker, model_tag=model_tag, write_ledger=False)
-            out["query_unit"] = "person"
-            n = (store.get_bundle(seeker, model_tag) or {}).get("necessity") or {}
-            numbers = {k: n.get(k) for k in ("gate_s", "gate_u", "gamma", "p_sharpness", "alpha", "beta")}
-        except ValueError:
-            return {"error": "照合する側の v4 ベクトルがありません"}
-    r = next((x for x in out.get("results", []) if x["candidate_id"] == other), None)
-    if r is None:
-        return {"query_unit": out.get("query_unit"), "numbers": numbers,
-                "error": "相手が照合の母集団にいません（同じ model_tag の有効なベクトルが無い）"}
-    at = r["attribution"]
-    keys = ("a_sim", "b_sim", "d_sim", "ga", "gb", "gd",
-            "a_log_contrib", "b_log_contrib", "limiting_axis")   # c・γ は廃止（指示書56）
-    # 「照合の結果」から外れる理由（入口以外）。値は bool だけ。
-    bundle = (store.get_bundles([other], model_tag) or {}).get(other) or {}
-    return {
-        "query_unit": out.get("query_unit"),
-        "numbers": numbers,
-        "channels": {k: at.get(k) for k in keys},
-        "score_A": r["score"],
-        "score_B": r.get("score_b"),
-        "passes_entry": passes_entry(r),
-        "effective_axis": effective_axis(at),
-        "public_axis": public_axis(at),
-        "excluded": {
-            "engaged": other in engaged_counterparts(seeker, db_path=DB),
-            "not_linked": other not in _linked_ids([other]),
-            "no_necessity": not ((bundle.get("necessity") or {}).get("necessity_text") or "").strip(),
-        },
-    }
 
 
 def _agreement_hash_at(seq):

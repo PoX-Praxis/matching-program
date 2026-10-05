@@ -12,7 +12,7 @@ from ledger_events import append_event
 from scripts.purge_accounts import PURGE_IDS, run_purge
 
 TOKEN = "test-anchor-token"
-URL = "/ledger/admin/purge-accounts"
+URL = "/ledger/admin/purge-accounts"   # 指示書58 §2-4 で閉じた。処理は CLI（run_purge）で検証する
 
 
 @pytest.fixture
@@ -33,19 +33,26 @@ def _seekers(db):
         return sorted(r[0] for r in con.execute("SELECT id FROM seekers").fetchall())
 
 
-def _post(body=None, token=TOKEN):
-    h = {"X-Anchor-Token": token} if token is not None else {}
-    return appmod.app.test_client().post(URL, json=body or {}, headers=h)
+class _R:
+    def __init__(self, d):
+        self._d = d
+
+    def get_json(self):
+        return self._d
+
+
+def _post(body=None):
+    """閉じる前のルートと同じ解釈（明示の true だけが実行）で run_purge を呼ぶ。"""
+    return _R(run_purge(apply=(body or {}).get("apply") is True, db_path=appmod.DB))
 
 
 def test_targets_are_fixed_to_four():
     assert PURGE_IDS == ("kaoru", "smoke_test", "u_5672a380", "u_9fa00efa")
 
 
-def test_requires_token(db):
-    assert _post(token=None).status_code == 404
-    assert _post(token="wrong").status_code == 404
-    assert appmod.app.test_client().get(URL, headers={"X-Anchor-Token": TOKEN}).status_code == 405
+def test_http_route_is_closed(db):
+    for m in ("get", "post"):
+        assert getattr(appmod.app.test_client(), m)(URL, headers={"X-Anchor-Token": TOKEN}).status_code == 404
 
 
 def test_dry_run_by_default_deletes_nothing(db):

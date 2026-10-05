@@ -1,6 +1,6 @@
 """指示書55-4 — 内部値の実測（/ledger/audit/match）と 55-3 の残り。
 
-- GET /ledger/audit/match?pair=a,b: トークン必須・指定ペアのみ・本文なし・読み取りのみ
+- GET /ledger/audit/match は閉じた（指示書58 §2-4。他の一時ルートと一緒に 404）
 - 185: ベクトル化済みなのに現行タグを持たない人がいる間は照合しない（他タグの存在では止めない）
 - necessities.model_tag: どのタグで作ったベクトルかを残し、別タグのものは照合に使わない
 - POX_TEST_ALLOW_STUB は Render（本番）で立っていたら起動しない
@@ -50,43 +50,19 @@ def v4(monkeypatch):
     return store
 
 
-def _get(q, token=TOKEN):
-    h = {"X-Anchor-Token": token} if token is not None else {}
-    return appmod.app.test_client().get("/ledger/audit/match" + q, headers=h)
-
-
-# ── 内部値の実測 ──────────────────────────────────────────────────────────────
-def test_audit_match_requires_token_and_pair(v4):
-    assert _get("?pair=u_k,u_p", token=None).status_code == 404
-    assert _get("?pair=u_k,u_p", token="wrong").status_code == 404
-    assert _get("?pair=u_k").status_code == 400
-    assert _get("?pair=u_k,u_k").status_code == 400
-    assert _get("?pair=u_k,u_p,u_x").status_code == 400                      # 指定ペアのみ（一覧にしない）
-    assert appmod.app.test_client().post("/ledger/audit/match?pair=u_k,u_p",
-                                         headers={"X-Anchor-Token": TOKEN}).status_code == 405
-
-
-def test_audit_match_returns_both_directions_without_text(v4):
-    d = _get("?pair=u_k,u_p").get_json()
-    assert d["entry_threshold"] == 0.70 and "g(cos)" in d["threshold_scale"]
-    for side in ("a_to_b", "b_to_a"):
-        x = d[side]
-        assert set(x["channels"]) >= {"a_sim", "b_sim", "d_sim", "ga", "gb", "gd",
-                                      "a_log_contrib", "b_log_contrib"}
-        assert not ({"c_sim", "gc", "c_log_contrib"} & set(x["channels"]))   # c は廃止（指示書56）
-        assert 0 < x["score_A"] <= 1 and 0 < x["score_B"] <= 1
-        assert x["numbers"]["alpha"] == 1.0 and x["query_unit"] == "person"
-        assert set(x["excluded"]) == {"engaged", "not_linked", "no_necessity"}
-    # cos 0.8 のペア: g=0.9 なので入口（0.70）を通る
-    assert d["a_to_b"]["channels"]["a_sim"] == pytest.approx(0.8)
-    assert d["a_to_b"]["passes_entry"] is True
-    blob = json.dumps(d, ensure_ascii=False)
-    assert "秘密" not in blob                                                # 本文を返さない
-
-
-def test_audit_match_writes_nothing(v4):
-    _get("?pair=u_k,u_p")
-    assert v4.ledger == []                                                    # ledger_v4 に書かない
+# ── 一時的に開けていた監査・整理のルートは閉じた（指示書58 §2-4）────────────────────────
+@pytest.mark.parametrize("method,url", [
+    ("get", "/ledger/audit/match?pair=u_k,u_p"),
+    ("get", "/ledger/audit/inventory"),
+    ("post", "/ledger/admin/purge-accounts"),
+])
+def test_temporary_audit_routes_are_closed(v4, method, url):
+    c = appmod.app.test_client()
+    r = getattr(c, method)(url, headers={"X-Anchor-Token": TOKEN}, json={"apply": True})
+    assert r.status_code == 404                                   # トークンがあっても存在しない
+    assert not any(str(rule) in url.split("?")[0] for rule in appmod.app.url_map.iter_rules()
+                   if str(rule).startswith(("/ledger/audit/match", "/ledger/audit/inventory",
+                                            "/ledger/admin/purge")))
 
 
 # ── 185 モデルの切替が済むまで照合しない ─────────────────────────────────────────

@@ -64,6 +64,9 @@
 
   <!-- 照合の準備状態（所有者のみ・指示書08） -->
   <div id="v4Status" class="v4status" style="display:none"></div>
+  <!-- v4 互換（指示書57）: 与え像が無い間はマイページに 1 行常設＋再構造化の導線 -->
+  <div id="offerNotice" class="v4status" style="display:none">与え像が未設定のため、現状で照合しています。
+    <a href="/register">再構造化する →</a></div>
 
   <!-- ProfileView 本体（表示名編集・背景〜必要としている相手〜本人より・編集リンク）。
        PoXProfileView.render() が owner モードで流し込む。 -->
@@ -182,6 +185,7 @@ async function init() {
 
     try { renderConnections(vessels, myId); } catch (_) {}
     loadV4Status(myId);        // 照合の準備状態（所有者のみ）
+    loadOfferNotice();         // 与え像が無い間の 1 行（v4 互換・指示書57）
     loadOwnerNecessity(myId);  // 自分の必要像（本文=公開・根拠は本人のみ＝差2）
     loadTimeline(myId, myId);  // 軌跡（本人ビュー）
   } catch (e) {
@@ -189,6 +193,15 @@ async function init() {
       `<span style="color:#c00">読み込みに失敗しました（${escHtml(String(e && e.message || e))}）。`
       + `<a href="#" onclick="location.reload();return false">再読み込み</a></span>`;
   }
+}
+
+async function loadOfferNotice() {
+  try {
+    const r = await fetch("/api/my/purposes");
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById("offerNotice").style.display = d.has_offer ? "none" : "block";
+  } catch (_) { /* 表示しないだけ */ }
 }
 
 /* 自由記述の保存。既存 overrides を取得してマージ（headline/keys/trajectory を消さない）。
@@ -307,7 +320,8 @@ function renderConnections(vessels, myId) {
     } else if (!iApproved && theyApproved) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
-      action = `<button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
+      action = `${PoXReason.composeHtml(`apvMsg_${escHtml(other)}`)}
+                <button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
       // 承認の場面の根拠と申し出の文（55-5 §1・§2）。描画後に非同期で埋める。
       why = `<div class="mr-slot" data-other="${escHtml(other)}"></div>
              <div class="mr-offer-slot" data-other="${escHtml(other)}"></div>`;
@@ -362,7 +376,8 @@ async function doApprove(otherId, btn) {
   try {
     res = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: otherId }),
+      body: JSON.stringify({ to_id: otherId,
+                             message: ((document.getElementById(`apvMsg_${otherId}`) || {}).value || "").trim() }),
     });
   } catch (e) {
     msg.className = "err"; msg.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";

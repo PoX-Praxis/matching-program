@@ -64,13 +64,40 @@ def _content(s, role, necessity_public):
          "state": s.get("state") or {},
          "necessity_text": nec.get("necessity_text", ""),
          "supporting": {k: sup.get(k) for k in DECLARE_SM_KEYS if sup.get(k)}}
+    if nec.get("purposes"):
+        # ①v5（指示書57）: 版のノードに**目的ごとの必要像**と、主体に属する**与え像**が並ぶ。
+        c["purposes"] = [{"purpose_id": p.get("purpose_id"), "label": p.get("向かう先") or "",
+                          "needs": [{"文": x.get("文"), "必須": bool(x.get("必須"))} for x in (p.get("必要像") or [])]}
+                         for p in nec["purposes"]]
+        c["offers"] = [x.get("文") for x in (nec.get("与え像") or [])]
     if role == "third" and not necessity_public:
         del c["necessity_text"]         # 必要像の公開閾値（指示書11・37 の既存の決定を維持）
+        c.pop("purposes", None)         # 目的ごとの必要像・与え像も同じ閾値（生成された仮説の側）
+        c.pop("offers", None)
     if role == "owner":
         c["supporting"] = sup           # raw（生テキスト等）を含む全体は本人のみ
         c["evidence_span"] = nec.get("evidence_span", "")
         c["numbers"] = {k: nec.get(k) for k in NUM_KEYS}
     return c
+
+
+def _purpose_label(subject_id, necessity_event_hash, db_path):
+    """必要像の event_hash → その目的の「向かう先」（v5 の目的が無ければ None）。本文は公開済みの宣言。"""
+    if not necessity_event_hash:
+        return None
+    pid = None
+    for e in le.get_events(type_="necessity.published", db_path=db_path):
+        if e["event_hash"] == necessity_event_hash:
+            pid = e["payload"].get("purpose_id")
+            break
+    if not pid:
+        return None
+    try:
+        import v5
+        doc = v5.get_doc(subject_id, db_path=db_path) or {}
+    except Exception:  # noqa: BLE001
+        return None
+    return next((p.get("向かう先") for p in (doc.get("purposes") or []) if p.get("purpose_id") == pid), None)
 
 
 def _branches(user_id, vessels, names, other_versions, own_version_of, *, db_path):
@@ -84,10 +111,14 @@ def _branches(user_id, vessels, names, other_versions, own_version_of, *, db_pat
             continue
         other = joiner if user_id == founder else founder
         snaps = v.get("snapshots") or {}
+        refs = v.get("refs") or {}
         out.append({"kind": "connection", "at": join["established_at"],
                     "other": other, "other_name": names.get(other) or UNNAMED,
                     "self_version": own_version_of(snaps.get(user_id)),
                     "other_version": other_versions(other, snaps.get(other)),
+                    # 接続の枝は目的ごと（指示書57）: 根拠の necessity_hash がどの目的の必要像か
+                    "self_purpose": _purpose_label(user_id, (refs.get(user_id) or {}).get("necessity_hash"), db_path),
+                    "other_purpose": _purpose_label(other, (refs.get(other) or {}).get("necessity_hash"), db_path),
                     "url": f"/profile/{other}"})
         ts = join.get("terminal_state")
         if ts and ts not in ("active", None) and join.get("closed_at"):

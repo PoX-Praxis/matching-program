@@ -253,6 +253,35 @@ _SQLITE_DDL = [
         changed_at TEXT NOT NULL,
         note       TEXT
     )""",
+    # 指示書57（①v5）: 目的（サーバーが振る不変の id）・与え像（版ごと）・文単位のベクトル・v5 の本文。
+    """CREATE TABLE IF NOT EXISTS purposes (
+        purpose_id  TEXT PRIMARY KEY,
+        subject_id  TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS offers (
+        offer_id    TEXT PRIMARY KEY,
+        subject_id  TEXT NOT NULL,
+        n           INTEGER NOT NULL,
+        body_json   TEXT NOT NULL,
+        offer_hash  TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS sentence_vectors (
+        ref_kind    TEXT NOT NULL,
+        ref_id      TEXT NOT NULL,
+        idx         INTEGER NOT NULL,
+        model_tag   TEXT NOT NULL,
+        text        TEXT NOT NULL,
+        vec         TEXT NOT NULL,
+        PRIMARY KEY (ref_kind, ref_id, idx, model_tag)
+    )""",
+    """CREATE TABLE IF NOT EXISTS profile_v5 (
+        subject_id  TEXT PRIMARY KEY,
+        doc_json    TEXT NOT NULL,
+        narrative   TEXT,
+        updated_at  TEXT NOT NULL
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -505,6 +534,35 @@ _PG_DDL = [
         changed_at TEXT NOT NULL,
         note       TEXT
     )""",
+    # 指示書57（①v5）: 目的（サーバーが振る不変の id）・与え像（版ごと）・文単位のベクトル・v5 の本文。
+    """CREATE TABLE IF NOT EXISTS purposes (
+        purpose_id  TEXT PRIMARY KEY,
+        subject_id  TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS offers (
+        offer_id    TEXT PRIMARY KEY,
+        subject_id  TEXT NOT NULL,
+        n           INTEGER NOT NULL,
+        body_json   TEXT NOT NULL,
+        offer_hash  TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS sentence_vectors (
+        ref_kind    TEXT NOT NULL,
+        ref_id      TEXT NOT NULL,
+        idx         INTEGER NOT NULL,
+        model_tag   TEXT NOT NULL,
+        text        TEXT NOT NULL,
+        vec         TEXT NOT NULL,
+        PRIMARY KEY (ref_kind, ref_id, idx, model_tag)
+    )""",
+    """CREATE TABLE IF NOT EXISTS profile_v5 (
+        subject_id  TEXT PRIMARY KEY,
+        doc_json    TEXT NOT NULL,
+        narrative   TEXT,
+        updated_at  TEXT NOT NULL
+    )""",
 ]
 
 
@@ -577,7 +635,8 @@ def _migrate_columns(con) -> None:
     # 追加: 後から DDL/コードに入ったが Postgres 側に自己修復が無かった列。
     # connection_requests のチャネル来歴（指示書18 §3。ledger.py は SQLite のみ ALTER していた）。
     # offer_message（申し出の文・指示書55 §3-5）も同じく後付け。
-    for col in ("predicted_role", "channel", "match_run_id", "offer_message"):
+    for col in ("predicted_role", "channel", "match_run_id", "offer_message",
+                "purpose_id", "necessity_ref", "offer_ref"):      # 後ろの 3 つは指示書57
         _add_column_if_missing(con, "connection_requests", col, "TEXT")
     # profiles の後付け列（db.py は SQLite のみ自己修復）。
     _add_column_if_missing(con, "profiles", "view_overrides", "TEXT NOT NULL DEFAULT '{}'")
@@ -591,6 +650,9 @@ def _migrate_columns(con) -> None:
     # necessities の model_tag（指示書55-3 §3-3）。どのモデルのタグで作ったベクトルかを残し、
     # モデルの切替で古いものだけを作り直せるようにする（必要像の再生成は LLM を呼ぶので高い）。
     _add_column_if_missing(con, "necessities", "model_tag", "TEXT")
+    # 指示書57（①v5）: 目的ごとの必要像（purpose_id）・必要像の文の配列（body_json）・与え像のピン留め。
+    for col in ("purpose_id", "body_json", "offer_hash"):
+        _add_column_if_missing(con, "necessities", col, "TEXT")
     # talk_posts の挿入順（指示書45B §2: discussion_hash v1 は挿入順で連結）。既存行は created_at 順で補完。
     _add_column_if_missing(con, "talk_posts", "ins_seq", "INTEGER")
     from talks import ensure_post_order

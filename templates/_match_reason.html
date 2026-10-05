@@ -24,16 +24,12 @@ window.PoXReason = (function () {
     fill:   "足りないところを埋める",
     mutual: "足りないところを互いに埋める",
   };
-  const LABELS = {
-    will:        ["あなたの意志", "相手の意志"],
-    fill_mine:   ["あなたの必要像", "相手の現状"],
-    fill_theirs: ["相手の必要像", "あなたの現状"],
-  };
+  /* 引用の対（指示書57）: 「◯◯の『…』に、△△の『…』が応えています」。数値は出さない。
+     need_label / offer_label はサーバーが付ける（与え像が無い側は「現状」）。 */
   function line(x) {
-    const [l1, l2] = LABELS[x.kind] || ["", ""];
-    const [a, b] = x.kind === "fill_theirs" ? [x.theirs, x.mine] : [x.mine, x.theirs];
-    if (!a || !b) return "";
-    return `<div class="mr-line clamp-2">${l1}『${esc(a)}』× ${l2}『${esc(b)}』</div>`;
+    if (!x || !x.need || !x.offer) return "";
+    return `<div class="mr-line clamp-2">${esc(x.need_label)}の『${esc(x.need)}』に、`
+         + `${esc(x.offer_label)}の『${esc(x.offer)}』が応えています</div>`;
   }
   /* 根拠（axis と reasons）を HTML にする。無ければ空文字。 */
   function reasonHtml(r) {

@@ -13,6 +13,7 @@
           display: flex; flex-direction: column; gap: 4px; }
   .card .cname { font-size: 15px; font-weight: bold; text-decoration: none; }
   .card .reason { font-size: 13px; color: #333; line-height: 1.6; }
+  h3.grp { font-size: 14px; color: #1f3a5f; margin: 18px 0 8px; }
   .btn-offer { margin-top: 6px; cursor: pointer; font-size: 13px; padding: 6px 14px; border-radius: var(--radius);
                border: 1px solid #1a3a5c; background: #fff; color: #1a3a5c; }
   .btn-offer:disabled { cursor: default; opacity: .7; }
@@ -101,6 +102,7 @@ async function loadRecommendations() {
     status.innerHTML = `<div class="notice warn">照合できませんでした。下の一覧から探してみてください。</div>`;
     return;
   }
+  const groups = Array.isArray(data.groups) ? data.groups : [];
   const results = Array.isArray(data.results) ? data.results : [];
   if (!results.length) {
     // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
@@ -109,17 +111,26 @@ async function loadRecommendations() {
     return;
   }
   status.innerHTML = "";
-  cards.innerHTML = results.map((r, i) => {
-    const cid = String(r.candidate_id);
-    const one = r.one_liner ? `<div class="oneliner clamp-2">${escHtml(r.one_liner)}</div>` : "";
-    // 申し出の文の入力欄はプロフィールからの申し出と同じ（任意・400 字。経路で有無が変わらない）
-    return `<div class="card">
-      <a class="cname" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
-      ${one}
-      ${PoXReason.reasonHtml(r)}
-      ${PoXReason.composeHtml(`offerMsg_${i}`)}
-      <div><button class="btn-offer" data-to="${escHtml(cid)}" data-msg="offerMsg_${i}" onclick="offer(this)">つながりたいと伝える</button></div>
-    </div>`;
+  // 目的ごとにグループ化する（指示書57）。「この目的にはこの人／別の目的には別の人」。
+  let k = 0;
+  cards.innerHTML = groups.map(g => {
+    const head = g.purpose_id === "_theirs" ? `<h3 class="grp">あなたを必要としている相手</h3>`
+               : (g.label ? `<h3 class="grp">目的: ${escHtml(g.label)}</h3>` : "");
+    return head + (g.results || []).map(r => {
+      const i = k++;
+      const cid = String(r.candidate_id);
+      const one = r.one_liner ? `<div class="oneliner clamp-2">${escHtml(r.one_liner)}</div>` : "";
+      const pur = (r.purpose_id && r.purpose_id !== "_theirs") ? r.purpose_id : "";
+      // 申し出の文の入力欄はプロフィールからの申し出と同じ（任意・400 字。経路で有無が変わらない）
+      return `<div class="card">
+        <a class="cname" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
+        ${one}
+        ${PoXReason.reasonHtml(r)}
+        ${PoXReason.composeHtml(`offerMsg_${i}`)}
+        <div><button class="btn-offer" data-to="${escHtml(cid)}" data-purpose="${escHtml(pur)}"
+             data-msg="offerMsg_${i}" onclick="offer(this)">つながりたいと伝える</button></div>
+      </div>`;
+    }).join("");
   }).join("");
 }
 
@@ -130,6 +141,7 @@ async function offer(btn) {
     const box = document.getElementById(btn.dataset.msg);
     const r = await fetch("/approve", {method: "POST", headers: {"Content-Type": "application/json"},
                                        body: JSON.stringify({ to_id: btn.dataset.to,
+                                                              purpose_id: btn.dataset.purpose || null,
                                                               message: ((box && box.value) || "").trim() })});
     if (PoX.handle(r)) { btn.disabled = false; return; }
     const d = await r.json().catch(() => ({}));

@@ -29,6 +29,8 @@ from canon import canonicalize, sha256_hex, CANON_VERSION
 import ledger_events as le
 
 _NUM_KEYS = ("gate_s", "gate_u", "p_sharpness", "alpha", "beta")
+C3 = "c3"                                              # 指示書57（①v5 の目的ごとの必要像）
+C3_NUM_KEYS = ("gate_s", "gate_u", "alpha", "beta")    # p_sharpness は含めない
 SELF_DECLARED_MIN_GATE_U = 0.6   # §1-5・§7-4
 
 
@@ -50,7 +52,9 @@ def _connect(db_path: str = "pox.db"):
             "seeking TEXT, canon_version TEXT)"    # 指示書28 §3-3/§3-4
         )
         # 既存 SQLite DB への後付け（冪等・本番 Postgres は schema._migrate_columns）。
-        for col in ("seeking TEXT", "canon_version TEXT", "model_tag TEXT"):   # model_tag: 55-3 §3-3
+        # model_tag: 55-3 §3-3／purpose_id・body_json・offer_hash: 指示書57（v5・目的ごとの必要像）
+        for col in ("seeking TEXT", "canon_version TEXT", "model_tag TEXT",
+                    "purpose_id TEXT", "body_json TEXT", "offer_hash TEXT"):
             try:
                 con.execute(f"ALTER TABLE necessities ADD COLUMN {col}")
             except Exception:  # noqa: BLE001（既存なら無視）
@@ -110,17 +114,29 @@ def evidence_commitment(evidence_span: str, salt: str) -> str:
 
 
 def compute_content_hash(necessity_text: str, numbers: dict, ev_commit: str,
-                         seeking: str = "", *, canon_version: str = None) -> str:
-    """content_hash（§7-2 / 指示書28 §3-3）。版で規則が変わる:
+                         seeking: str = "", *, canon_version: str = None,
+                         sentences=None, offer_hash: str = None) -> str:
+    """content_hash（§7-2 / 指示書28 §3-3 / 指示書57）。版で規則が変わる:
 
     - c1: H(necessity_text ‖ 数値素材 ‖ commit(evidence_span, salt))
     - c2: 上に **seeking(求めている) を平文で追加**（表示され照合材料になる本人語を凍結する）。
+    - c3（指示書57・①v5）: H(必要像の文の配列 [{文, 必須, 型}] ‖ 数値 {gate_s, gate_u, alpha, beta}
+      ‖ commit(根拠, salt) ‖ offer_hash)。p_sharpness は含めない（①が出さない）。offer_hash は同じ①の
+      出力の与え像のハッシュ（ピン留め＝与え像が変われば各目的の必要像のハッシュも変わる）。
 
     数値素材は平文でハッシュに含める（含めないと第三者が再計算できず検証が成立しない）。
     evidence_span 本文は入れず、その **コミットメント** を束ねる（束縛は切らさない）。
     canon_version=None のときは現行版（CANON_VERSION）。過去 c1 の再計算は "c1" を渡す。
     """
-    v = canon_version or CANON_VERSION
+    v = canon_version or (C3 if sentences is not None else CANON_VERSION)
+    if v == C3:
+        return sha256_hex(canonicalize({
+            "sentences": [{"文": str(x.get("文") or ""), "必須": bool(x.get("必須")),
+                           "型": str(x.get("型") or "")} for x in (sentences or [])],
+            "numbers": {k: numbers.get(k) for k in C3_NUM_KEYS},
+            "evidence_commit": ev_commit or "",
+            "offer_hash": offer_hash or "",
+        }))
     nums = {k: numbers.get(k) for k in _NUM_KEYS}
     if v == "c1":
         # c1 の形は凍結（過去イベントの再導出をビット単位で再現するため変えない）。
@@ -152,8 +168,14 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
                       seeking: str = "", source_snapshot_hash: str = None,
                       generator_tag: str = None, attempt_n: int = None,
                       actor: str = None, skip_if_unchanged: bool = True,
+                      purpose_id: str = None, sentences=None, offer_hash: str = None,
                       db_path: str = "pox.db") -> dict:
     """必要像を1件発行する。necessities 行を書き、necessity.published を台帳へ追記する。
+
+    v5（指示書57）: purpose_id・sentences（[{文, 必須, 型}]）・offer_hash を渡すと c3 で記録する。
+    - 必要像は**目的ごと**。n は owner ごとの単調カウンタのまま、prev_necessity（置換の鎖）と churn の
+      比較は**同じ owner・同じ purpose_id の直前**を見る（別の目的の必要像を置換しない）。
+    - payload に任意キー purpose_id・offer_hash を足す（None なら載せない＝前例どおり）。
 
     - owner_kind: 'subject' | 'intent'
     - origin: 'generated' | 'self_declared'（self_declared は gate_u をクランプ）
@@ -170,8 +192,13 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
     necessity_id = f"nec_{uuid.uuid4().hex[:12]}"
     gate_u = clamp_gate_u(origin, necessity.get("gate_u"))
     numbers = {k: (gate_u if k == "gate_u" else necessity.get(k)) for k in _NUM_KEYS}
+    v5 = sentences is not None
+    if v5:
+        numbers["p_sharpness"] = None                  # ①v5 は出さない（c3 にも含めない）
     will_text = necessity.get("will_text") or necessity.get("意志") or ""
     necessity_text = necessity.get("necessity_text") or ""
+    if v5 and not necessity_text:
+        necessity_text = "\n".join(str(x.get("文") or "") for x in sentences)
     evidence_span = necessity.get("evidence_span") or ""
     gen = normalize_generator(generator or necessity.get("generator_name") or "")
     # seeking(求めている) は c2 で content_hash に平文で含める（§3-3）。"未取得"/空は空に落とす。
@@ -181,13 +208,21 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
 
     salt = make_salt()
     ev_commit = evidence_commitment(evidence_span, salt)
-    content_hash = compute_content_hash(necessity_text, numbers, ev_commit, seeking)
+    content_hash = compute_content_hash(necessity_text, numbers, ev_commit, seeking,
+                                        sentences=sentences if v5 else None, offer_hash=offer_hash)
 
     with _connect(db_path) as con:
-        latest = con.execute(
-            "SELECT necessity_id, n, content_hash, canon_version FROM necessities WHERE owner_ref=%s "
-            "ORDER BY n DESC LIMIT 1", (owner_ref,),
-        ).fetchone()
+        if purpose_id is not None:
+            latest = con.execute(
+                "SELECT necessity_id, n, content_hash, canon_version FROM necessities "
+                "WHERE owner_ref=%s AND purpose_id=%s ORDER BY n DESC LIMIT 1", (owner_ref, purpose_id),
+            ).fetchone()
+        else:
+            latest = con.execute(
+                "SELECT necessity_id, n, content_hash, canon_version FROM necessities WHERE owner_ref=%s "
+                "ORDER BY n DESC LIMIT 1", (owner_ref,),
+            ).fetchone()
+        n_max = con.execute("SELECT max(n) FROM necessities WHERE owner_ref=%s", (owner_ref,)).fetchone()[0]
         # churn 判定: salt はレコード毎に乱数のため content_hash 直比較はできない。
         # 「直前レコードの salt」で新内容のハッシュを再計算し、一致＝同一内容として弾く。
         # 直前レコードの canon_version の規則で再計算する（c1 行なら seeking を無視して比較）。
@@ -200,23 +235,25 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
                 same = compute_content_hash(
                     necessity_text, numbers,
                     evidence_commitment(evidence_span, prev_salt[0]),
-                    seeking, canon_version=prev_canon) == latest[2]
+                    seeking, canon_version=prev_canon,
+                    sentences=sentences if v5 else None, offer_hash=offer_hash) == latest[2]
                 if same:
                     return {"necessity_id": latest[0], "n": latest[1],
                             "content_hash": latest[2], "prev_necessity": None,
                             "skipped": True}
         prev_id = latest[0] if latest else None
-        n = (latest[1] + 1) if latest else 1
+        n = (n_max or 0) + 1
         con.execute(
             "INSERT INTO necessities (necessity_id, owner_ref, owner_kind, n, will_text, "
             "will_vec, necessity_text, necessity_vec, gate_s, gate_u, p_sharpness, alpha, beta, "
             "evidence_commit, content_hash, origin, generator, prev_necessity, created_at, "
-            "seeking, canon_version) "
-            "VALUES (%s,%s,%s,%s,%s,NULL,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "seeking, canon_version, purpose_id, body_json, offer_hash) "
+            "VALUES (%s,%s,%s,%s,%s,NULL,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (necessity_id, owner_ref, owner_kind, n, will_text, necessity_text,
              numbers["gate_s"], numbers["gate_u"], numbers["p_sharpness"],
              numbers["alpha"], numbers["beta"], ev_commit, content_hash,
-             origin, gen, prev_id, _now(), seeking, CANON_VERSION),
+             origin, gen, prev_id, _now(), seeking, C3 if v5 else CANON_VERSION,
+             purpose_id, json.dumps(sentences, ensure_ascii=False) if v5 else None, offer_hash),
         )
         # 平文・salt は削除可能な別テーブル（§7-2）。
         con.execute(
@@ -238,6 +275,10 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
         payload["generator_tag"] = generator_tag
     if attempt_n is not None:
         payload["attempt_n"] = attempt_n
+    if purpose_id is not None:                         # 指示書57: 任意キー（無い＝v4 の 1 目的）
+        payload["purpose_id"] = purpose_id
+    if offer_hash is not None:                         # 指示書57: 与え像のピン留め
+        payload["offer_hash"] = offer_hash
     le.append_event(actor or owner_ref, "necessity.published", payload, db_path=db_path)
 
     return {"necessity_id": necessity_id, "n": n,

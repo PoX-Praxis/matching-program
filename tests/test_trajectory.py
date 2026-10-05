@@ -104,7 +104,8 @@ def test_t126_connection_shows_both_versions():
     b2 = _tl("u_b")["versions"][0]["branches"][0]
     assert (b2["self_version"], b2["other_version"]) == (1, 1)
     html = open(os.path.join(ROOT, "templates", "_trajectory.html"), encoding="utf-8").read()
-    assert "（自分 第${ver(b.self_version)}版 × ${esc(b.other_name)} 第${ver(b.other_version)}版）" in html
+    assert "（自分 第${ver(b.self_version)}版" in html and "第${ver(b.other_version)}版" in html
+    assert "目的: ${esc(b.self_purpose)}" in html          # 指示書57: 接続の枝は目的ごと
 
 
 # 127・128: 伏せると第三者に本文が出ず、接続の相手には出る。事実（日付・種別・枝）は残る

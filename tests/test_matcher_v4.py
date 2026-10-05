@@ -2,7 +2,7 @@
 Step 5 DoD 検証テスト — 照合エンジン（E章）
 
 DoD: power_mean 数学的性質（幾何/算術/調和/単調性）、
-     nested complement スコア（γ ゲート・チャネル寄与）、
+     総合 = M_0([g(a), g(b)], [α, β])（指示書56: γ・c は廃止、p は 0 固定）、
      attribution 律速軸判定、shortlist 順序、rank_candidates 統合。
 """
 import sys, os, math
@@ -12,7 +12,6 @@ from matcher_v4 import (
     power_mean, score_candidate, attribution, shortlist, rank_candidates,
 )
 from embedding_config import FULL_DIM, SHORT_DIM
-from match_config import GAMMA_EPS
 
 
 # ── テストベクトルヘルパ ──────────────────────────────────────────────────────
@@ -90,22 +89,6 @@ def test_score_self_high():
     assert abs(score_candidate(_seeker(), _candidate(), gamma=0.3) - 1.0) < 1e-9
 
 
-def test_score_gamma_zero_ignores_c():
-    """γ=0 のとき c チャネルを変えてもスコアが不変"""
-    sv = _seeker()
-    s0 = score_candidate(sv, _candidate(will_pas=_vec_cos(0.0)), gamma=0.0)
-    s1 = score_candidate(sv, _candidate(will_pas=_e1()),          gamma=0.0)
-    assert abs(s0 - s1) < 1e-12
-
-
-def test_score_gamma_positive_uses_c():
-    """γ>0 のとき c が良い候補の方が高スコア"""
-    sv = _seeker()
-    s_bad  = score_candidate(sv, _candidate(will_pas=_vec_cos(0.0)), gamma=0.4)
-    s_good = score_candidate(sv, _candidate(will_pas=_e1()),          gamma=0.4)
-    assert s_good > s_bad
-
-
 def test_score_good_beats_bad():
     """全チャネルで優る候補の方が高スコア"""
     sv = _seeker()
@@ -122,23 +105,14 @@ def test_score_bounded():
     assert 0.0 < s <= 1.0 + 1e-12
 
 
-def test_score_higher_gamma_amplifies_c_effect():
-    """γ が高いほど c チャネル不一致のペナルティが大きい"""
-    sv  = _seeker()
-    cv  = _candidate(will_pas=_vec_cos(0.1))   # c が弱い
-    s_low_gamma  = score_candidate(sv, cv, gamma=0.1)
-    s_high_gamma = score_candidate(sv, cv, gamma=0.5)
-    assert s_low_gamma > s_high_gamma
-
-
 # ── attribution ───────────────────────────────────────────────────────────────
 def test_attribution_keys():
     """attribution dict に E-3 必須キーが揃う"""
     attr = attribution(_seeker(), _candidate(_vec_cos(0.7), _vec_cos(0.5), _vec_cos(0.8)), gamma=0.3)
-    for k in ("a_sim", "b_sim", "c_sim", "ga", "gb", "gc",
-              "complement", "final", "a_log_contrib", "b_log_contrib",
-              "c_log_contrib", "limiting_axis"):
+    for k in ("a_sim", "b_sim", "ga", "gb", "final", "a_log_contrib", "b_log_contrib", "limiting_axis"):
         assert k in attr, f"キー欠落: {k}"
+    for k in ("c_sim", "gc", "c_log_contrib", "complement"):     # c・γ は廃止（指示書56）
+        assert k not in attr, k
 
 
 def test_attribution_limiting_axis_a():
@@ -157,13 +131,6 @@ def test_attribution_score_matches_score_candidate():
     """attribution の final == score_candidate の戻り値"""
     sv, cv, gamma = _seeker(), _candidate(_vec_cos(0.6), _vec_cos(0.7), _vec_cos(0.5)), 0.3
     assert abs(attribution(sv, cv, gamma)["final"] - score_candidate(sv, cv, gamma)) < 1e-12
-
-
-def test_attribution_c_log_zero_when_gamma_eps():
-    """γ ≤ GAMMA_EPS のとき c_log_contrib = 0（c が律速軸に上がらない）"""
-    cv = _candidate(will_sym=_e1(), state_pas=_e1(), will_pas=_vec_cos(0.0))
-    attr = attribution(_seeker(), cv, gamma=0.0)
-    assert attr["c_log_contrib"] == 0.0
 
 
 # ── shortlist ─────────────────────────────────────────────────────────────────

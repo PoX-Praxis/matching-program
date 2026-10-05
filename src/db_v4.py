@@ -157,8 +157,6 @@ def match_v4(store, seeker_id, *, model_tag=MODEL_TAG,
         raise ValueError(f"seeker_id={seeker_id!r} の v4 ベクトルが見つかりません")
 
     nec = seeker["necessity"]
-    gamma = nec.get("gamma", 0.0)
-    p     = nec.get("p_sharpness", 0.0)
     alpha = nec.get("alpha", 1.0)
     beta  = nec.get("beta", 1.0)
 
@@ -167,7 +165,7 @@ def match_v4(store, seeker_id, *, model_tag=MODEL_TAG,
     cand_list = [(cid, b["vectors"]) for cid, b in candidate_bundles.items()]
 
     results = rank_candidates(
-        seeker["vectors"], cand_list, gamma, p=p, alpha=alpha, beta=beta, top_k=top_k,
+        seeker["vectors"], cand_list, alpha=alpha, beta=beta, top_k=top_k,   # γ 廃止・p=0 固定（指示書56）
     )
 
     if write_ledger:
@@ -176,8 +174,8 @@ def match_v4(store, seeker_id, *, model_tag=MODEL_TAG,
             store.write_ledger(seeker_id, r["candidate_id"], "match_ranked", {
                 "score": r["score"],
                 "limiting_axis": attr["limiting_axis"],
-                "a_sim": attr["a_sim"], "b_sim": attr["b_sim"], "c_sim": attr["c_sim"],
-                "gamma": gamma, "p_sharpness": p, "alpha": alpha, "beta": beta,
+                "a_sim": attr["a_sim"], "b_sim": attr["b_sim"], "d_sim": attr.get("d_sim"),
+                "alpha": alpha, "beta": beta,
                 "model_tag": model_tag,
             })
 

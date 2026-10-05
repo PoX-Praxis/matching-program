@@ -107,10 +107,9 @@ def test_t162_legacy_match_returns_ids_only(monkeypatch):
 # ── 165: 最も効いた軸（律速軸の逆） ─────────────────────────────────────────
 def test_t165_effective_axis_is_strongest_not_limiting():
     # a（意志）が弱く、b（補完）が強い相手: 律速軸は a、最も効いた軸は b
-    attr = {"ga": 0.55, "gb": 0.95, "gc": 0.9, "c_log_contrib": 0.0}
+    attr = {"ga": 0.55, "gb": 0.95}
     assert effective_axis(attr) == "b"
-    # γ が効いていれば c も候補になる
-    assert effective_axis({**attr, "c_log_contrib": -0.01, "gc": 0.99}) == "c"
+    assert effective_axis({"ga": 0.9, "gb": 0.6}) == "a"        # c は候補にしない（指示書56）
     # 実際の attribution でも律速軸とは異なる軸を返しうる（同じ値にならないことを確認）
     import math
     v = lambda x: [x, math.sqrt(1 - x * x)]

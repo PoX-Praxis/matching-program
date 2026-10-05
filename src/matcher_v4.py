@@ -1,27 +1,29 @@
 """
-PoX v4 照合エンジン（E章 / Step 5）
+PoX v4 照合エンジン（E章 / Step 5。指示書56 段1 で計算を整理）
 
-E-1: 256-dim shortlist（Step 6 で DB HNSW クエリに置換）
-E-2: 全次元 nested complement power mean でスコア算出
-E-3: 律速軸・寄与率 attribution
+チャネル（B-2 混同禁止）:
+  a : will_symmetric  対 will_symmetric   — 共鳴（意志どうし）
+  b : necessity_query 対 相手の state_passage — 補完A（自分の必要像 × 相手の現状）
+  d : 相手の necessity_query 対 自分の state_passage — 補完B（相手の必要像 × 自分の現状）
 
-チャネル定義（B-2 混同禁止）:
-  a : will_symmetric 対 will_symmetric  — 共鳴（同じ方向への意志）
-  b : necessity_query 対 state_passage  — 主補完（必要像 vs 候補の現状）
-  c : will_passage   対 will_passage    — 意志補完（γ でゲート）
-
-ネスト公式（Sakana #5）:
-  complement = M_p([guard(b), guard(c)], [1.0, γ], p)
-  final      = M_p([guard(a), complement], [α, β],  p)
+総合（指示書56）:
+  score   （A）= M_0([g(a), g(b)], [α, β])     幾何平均（p = 0 固定）
+  score_b （B）= M_0([g(a), g(d)], [α, β])
+  - 補完は**方向ごとに別々に**判定する（A と B を平均しない）。入口はどちらかが閾値以上。
+  - **γ は廃止**（上限 0.5 で総合にほぼ効かず、意味が二重だった）。
+  - **c（will_passage どうし）は判定から外した**。Embedding v4 の設計では c は「必要像 × 意志」
+    だったが、実装は意志 passage どうしの対称な類似度で、実測でも両方向が同値だった（設計からのずれ）。
+    無関係なペアで最も高く出るなど識別力も無い。段3 では「向かう先」の文どうしの比較が役割を引き継ぐ。
+  - **p_sharpness は使わない**（必須文が無いので段2 まで p = 0）。
+  - 全文 cos は「文体・話題・書き手の近さ」に反応し、意味の一致を測れていない（56 §0）。
+    閾値 0.70 は暫定で、判定の再設計は段2〜3（文単位・与え像）で行う。
 """
 import math
 
 from embedding_service import cosine, guard
-from match_config import (
-    GAMMA_EPS, P_SHARPNESS_DEFAULT, ALPHA_DEFAULT, BETA_DEFAULT, SHORTLIST_K,
-    MATCH_ENTRY_THRESHOLD, WILL_REQUIREMENT_MIN,
-)
-import match_config
+from match_config import ALPHA_DEFAULT, BETA_DEFAULT, SHORTLIST_K, MATCH_ENTRY_THRESHOLD
+
+P_FIXED = 0.0   # 幾何平均（指示書56 §1-4。p_sharpness は段2 まで使わない）
 
 
 # ── E-2: power mean ─────────────────────────────────────────────────────────
@@ -44,93 +46,46 @@ def power_mean(values, weights, p):
     return (sum(wi * (v ** p) for wi, v in zip(w, values))) ** (1.0 / p)
 
 
-# ── E-2: nested complement スコア ────────────────────────────────────────────
-def score_candidate(seeker_vecs, candidate_vecs, gamma,
-                    p=P_SHARPNESS_DEFAULT, alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT):
-    """
-    全次元 nested complement power mean で最終スコアを計算（E-2）。
+# ── 総合（方向 A・B を別々に）────────────────────────────────────────────────
+def _num(x, default):
+    return default if x is None else x
 
-    seeker_vecs    : {"will_symmetric", "will_passage", "necessity_query", ...}
-    candidate_vecs : {"will_symmetric", "will_passage", "state_passage", ...}
-    gamma          : c チャネルのゲート重み（necessity_gen が算出）
-    """
+
+def score_candidate(seeker_vecs, candidate_vecs, gamma=None, p=None,
+                    alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT):
+    """総合A = M_0([g(a), g(b)], [α, β])。gamma・p は**廃止**（互換のため受け取るが使わない）。"""
+    ga = guard(cosine(seeker_vecs["will_symmetric"], candidate_vecs["will_symmetric"]))
+    gb = guard(cosine(seeker_vecs["necessity_query"], candidate_vecs["state_passage"]))
+    return power_mean([ga, gb], [_num(alpha, ALPHA_DEFAULT), _num(beta, BETA_DEFAULT)], P_FIXED)
+
+
+def attribution(seeker_vecs, candidate_vecs, gamma=None, p=None,
+                alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT):
+    """各チャネルの値と律速軸（a・b のうち加重 log 寄与が小さい方）。内部でのみ使う。"""
+    alpha, beta = _num(alpha, ALPHA_DEFAULT), _num(beta, BETA_DEFAULT)
     a_sim = cosine(seeker_vecs["will_symmetric"], candidate_vecs["will_symmetric"])
     b_sim = cosine(seeker_vecs["necessity_query"], candidate_vecs["state_passage"])
-    c_sim = cosine(seeker_vecs["will_passage"],    candidate_vecs["will_passage"])
-
-    ga = guard(a_sim)
-    gb = guard(b_sim)
-    gc = guard(c_sim)
-
-    complement = power_mean([gb, gc], [1.0, gamma], p)
-    return power_mean([ga, complement], [alpha, beta], p)
-
-
-# ── E-3: 律速軸・寄与率 attribution ─────────────────────────────────────────
-def attribution(seeker_vecs, candidate_vecs, gamma,
-                p=P_SHARPNESS_DEFAULT, alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT):
-    """
-    各チャネルの寄与と律速軸を返す（E-3）。
-
-    log 寄与は p=0 幾何平均の分解で解釈する（p 非依存の安定した軸判定）。
-    律速軸: 加重 log 寄与が最も小さい（最も足を引っ張る）チャネル。
-    gamma <= GAMMA_EPS のとき c チャネルを律速候補から外す。
-    """
-    a_sim = cosine(seeker_vecs["will_symmetric"], candidate_vecs["will_symmetric"])
-    b_sim = cosine(seeker_vecs["necessity_query"], candidate_vecs["state_passage"])
-    c_sim = cosine(seeker_vecs["will_passage"],    candidate_vecs["will_passage"])
-
-    ga = guard(a_sim)
-    gb = guard(b_sim)
-    gc = guard(c_sim)
-
-    complement = power_mean([gb, gc], [1.0, gamma], p)
-    final = power_mean([ga, complement], [alpha, beta], p)
-
-    # p=0 対数分解: log(final) = a_log + b_log + c_log
-    ab_w   = alpha + beta
-    comp_w = 1.0 + gamma
-    a_log = (alpha / ab_w) * math.log(ga)
-    b_log = (beta  / ab_w) * (1.0   / comp_w) * math.log(gb)
-    c_log = (beta  / ab_w) * (gamma / comp_w) * math.log(gc) if gamma > GAMMA_EPS else 0.0
-
-    contribs = {"a": a_log, "b": b_log, "c": c_log}
-    limiting = min(contribs, key=lambda k: contribs[k])
-
+    ga, gb = guard(a_sim), guard(b_sim)
+    w = alpha + beta
+    a_log = (alpha / w) * math.log(ga)
+    b_log = (beta / w) * math.log(gb)
     return {
-        "a_sim": a_sim, "b_sim": b_sim, "c_sim": c_sim,
-        "ga": ga, "gb": gb, "gc": gc,
-        "complement": complement,
-        "final": final,
-        "a_log_contrib": a_log,
-        "b_log_contrib": b_log,
-        "c_log_contrib": c_log,
-        "limiting_axis": limiting,
+        "a_sim": a_sim, "b_sim": b_sim, "ga": ga, "gb": gb,
+        "final": power_mean([ga, gb], [alpha, beta], P_FIXED),
+        "a_log_contrib": a_log, "b_log_contrib": b_log,
+        "limiting_axis": "a" if a_log < b_log else "b",
     }
 
 
 def effective_axis(attr):
-    """最も効いた軸（指示書55 §1-2）。**律速軸（最も足を引っ張る軸）の逆**。
-
-    有効なチャネル（a・b、c は γ が効いているときだけ）のうち、類似度（guard 後の値）が
-    最も高いものを返す。重み付き log 寄与の最大で選ぶと、重みの小さい c が常に 0 に近く
-    「最大」になってしまうため、重みを掛けない類似度で比べる。数値は外に出さない（名前だけ）。
-    """
-    cands = {"a": attr["ga"], "b": attr["gb"]}
-    if attr.get("c_log_contrib", 0.0) != 0.0:
-        cands["c"] = attr["gc"]
-    return max(cands, key=lambda k: cands[k])
+    """最も効いた軸（指示書55 §1-2。律速軸の逆）。a・b のうち類似度（g）が高い方。名前だけ使う。"""
+    return "a" if attr["ga"] >= attr["gb"] else "b"
 
 
-# ── 方向 B（指示書55 §4-3）─────────────────────────────────────────────────
-def add_direction_b(result, seeker_vecs, candidate_vecs, gamma,
-                    p=P_SHARPNESS_DEFAULT, alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT):
-    """方向 B（**相手の必要像 × 自分の現状**）を結果に足す。既存ベクトルだけで計算する。
-
-    方向 A（b: 自分の必要像 × 相手の現状）の b を d に置き換えた同じ式を score_b とする
-    （a・c と自分の α・β・γ・p はそのまま）。どちらかのベクトルが無ければ何もしない。
-    数値は内部でのみ使う（入口の判定と軸の要約。外には出さない）。
-    """
+def add_direction_b(result, seeker_vecs, candidate_vecs, gamma=None, p=None,
+                    alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT):
+    """補完B（**相手の必要像 × 自分の現状**）と総合B を足す。既存ベクトルだけで計算する。
+    総合B = M_0([g(a), g(d)], [α, β])（α・β は照合した側＝自分の値）。ベクトルが無ければ何もしない。"""
     mine, theirs = seeker_vecs.get("state_passage"), candidate_vecs.get("necessity_query")
     if mine is None or theirs is None:
         return result
@@ -138,60 +93,29 @@ def add_direction_b(result, seeker_vecs, candidate_vecs, gamma,
     d_sim = cosine(theirs, mine)
     gd = guard(d_sim)
     attr["d_sim"], attr["gd"] = d_sim, gd
-    complement_b = power_mean([gd, attr["gc"]], [1.0, gamma], p)
-    result["score_b"] = power_mean([attr["ga"], complement_b], [alpha, beta], p)
+    result["score_b"] = power_mean([attr["ga"], gd],
+                                   [_num(alpha, ALPHA_DEFAULT), _num(beta, BETA_DEFAULT)], P_FIXED)
     return result
 
 
-def will_requirement(gate_s, gate_u):
-    """志の一致の要求の強さ（指示書55-5 §4）。gate_s × (1 − gate_u)。0〜1。"""
-    s = max(0.0, min(1.0, float(gate_s or 0.0)))
-    u = max(0.0, min(1.0, float(gate_u or 0.0)))
-    return s * (1.0 - u)
-
-
-def will_required(gate_s, gate_u):
-    """「志を必須と申告し、かつ確信が高い」か。gate_u が高い人には立てない（不確実なら広げる）。"""
-    return will_requirement(gate_s, gate_u) >= WILL_REQUIREMENT_MIN
-
-
-def will_floor(gate_s, gate_u):
-    """意志の軸（ga）の下限。必須かつ確信ありの人だけ。値が未確定（None）の間は下限なし。"""
-    floor = match_config.WILL_FLOOR_G
-    if floor is None or not will_required(gate_s, gate_u):
-        return None
-    return floor
-
-
-def passes_entry(result, threshold=MATCH_ENTRY_THRESHOLD, floor=None):
-    """「照合の結果」に入れるか（指示書55 §4-1）。**総合が内部閾値以上**。
-
-    総合は自分の α・β に沿う（共鳴型なら意志の近さが、補完型なら補完が効く）。b 単独では切らない。
-    方向 B（相手が自分を必要としている）も同じ式の総合で評価し、どちらかが閾値以上なら入れる。
-    floor（will_floor）があれば、意志の軸がそれ未満の相手は入れない（総合が高くても）。
-    """
-    if floor is not None and result["attribution"]["ga"] < floor:
-        return False
+def passes_entry(result, threshold=MATCH_ENTRY_THRESHOLD):
+    """「照合の結果」に入れるか。**総合A か総合B のどちらかが閾値以上**（平均しない。指示書56 §1-3）。
+    「私はあなたが必要だが、あなたは私を必要としていない」という片方向の組も落とさない。
+    閾値は暫定（段2〜3 で再設計）。意志の下限などのゲートは置かない（56 §1-5）。"""
     return max(result["score"], result.get("score_b", 0.0)) >= threshold
 
 
-def public_axis(attr, level=MATCH_ENTRY_THRESHOLD, require_will=False):
-    """利用者に見せる軸（指示書55 §0-4。**2 つに要約**＋双方向の補完）。数値は返さない。
+def public_axis(attr, level=MATCH_ENTRY_THRESHOLD):
+    """利用者に見せる軸。数値は返さない。
 
-    - "mutual": 足りないところを互いに埋める（自分の必要像×相手の現状、相手の必要像×自分の現状の
-      両方が効いている）。require_will（志を必須と申告し確信が高い人）のときは、**意志の軸（ga）も
-      同じ水準以上**でなければ "mutual" にしない（意志が噛み合わない相手を「互いに」と出さない）
+    - "mutual": 足りないところを互いに埋める — 補完A（gb）と補完B（gd）の**両方**が水準以上のときだけ
     - "fill_mine" / "fill_theirs": 足りないところを埋める（どちら向きか）
-    - "will": 意志が近い（a 共鳴と c 意志補完はどちらも意志どうしなので 1 つにまとめる）
-    最も効いた軸（effective_axis と同じく重みを掛けない類似度の最大）で選ぶ。律速軸ではない。
+    - "will": 意志が近い（a のみ。c は外した）
     """
     gb, gd = attr["gb"], attr.get("gd")
-    if gd is not None and gb >= level and gd >= level and (not require_will or attr["ga"] >= level):
+    if gd is not None and gb >= level and gd >= level:
         return "mutual"
-    will = attr["ga"]
-    if attr.get("c_log_contrib", 0.0) != 0.0:
-        will = max(will, attr["gc"])
-    cands = {"will": will, "fill_mine": gb}
+    cands = {"will": attr["ga"], "fill_mine": gb}
     if gd is not None:
         cands["fill_theirs"] = gd
     return max(cands, key=lambda k: cands[k])
@@ -211,24 +135,20 @@ def shortlist(seeker_q256, candidates_256, k=SHORTLIST_K):
     return [cid for cid, _ in scored[:k]]
 
 
-# ── E-1+E-2: shortlist → full-dim re-rank ─────────────────────────────────
-def rank_candidates(seeker_vecs, candidate_vecs_list, gamma,
-                    p=P_SHARPNESS_DEFAULT, alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT,
-                    top_k=None):
-    """
-    全次元スコアで候補をランキングして返す（E-1+E-2 統合）。
+# ── 候補の総当たり ─────────────────────────────────────────────────────────
+def rank_candidates(seeker_vecs, candidate_vecs_list, gamma=None, p=None,
+                    alpha=ALPHA_DEFAULT, beta=BETA_DEFAULT, top_k=None):
+    """全候補について総合A・総合B を計算して返す（gamma・p は廃止。互換のため受け取るが使わない）。
 
-    seeker_vecs         : build_vectors 戻り dict（necessity_query 含む）
-    candidate_vecs_list : [(candidate_id, vecs_dict), ...]
-    top_k               : 上位 N 件に絞る（None = 全件）
-    戻り値              : [{"candidate_id", "score", "attribution"}, ...] 降順
+    戻り値: [{"candidate_id", "score"（総合A）, "score_b"（総合B）, "attribution"}, ...]（総合A の降順。
+    並びは内部用で、外に出す順は中立＝id 順）。
     """
     results = []
     for cid, cvecs in candidate_vecs_list:
-        sc   = score_candidate(seeker_vecs, cvecs, gamma, p, alpha, beta)
-        attr = attribution(seeker_vecs, cvecs, gamma, p, alpha, beta)
-        r = {"candidate_id": cid, "score": sc, "attribution": attr}
-        add_direction_b(r, seeker_vecs, cvecs, gamma, p, alpha, beta)
+        r = {"candidate_id": cid,
+             "score": score_candidate(seeker_vecs, cvecs, alpha=alpha, beta=beta),
+             "attribution": attribution(seeker_vecs, cvecs, alpha=alpha, beta=beta)}
+        add_direction_b(r, seeker_vecs, cvecs, alpha=alpha, beta=beta)
         results.append(r)
     results.sort(key=lambda x: x["score"], reverse=True)
     if top_k is not None:

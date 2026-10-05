@@ -130,8 +130,9 @@ def test_match_writes_ledger_audit():
     assert len(store.ledger) >= 1
     ev = store.ledger[0]
     assert ev["seeker_id"] == "seeker" and ev["event"] == "match_ranked"
-    for k in ("score", "limiting_axis", "gamma", "alpha", "beta", "model_tag"):
+    for k in ("score", "limiting_axis", "alpha", "beta", "model_tag"):
         assert k in ev["payload"]
+    assert "gamma" not in ev["payload"] and "c_sim" not in ev["payload"]   # γ・c は廃止（指示書56）
 
 
 def test_match_no_ledger_when_disabled():
@@ -142,7 +143,7 @@ def test_match_no_ledger_when_disabled():
     assert store.ledger == []
 
 
-def test_match_gamma_flows_from_necessity():
+def test_match_gamma_is_not_used():
     store = MemoryStore()
     def gamma_zero(inputs):
         return {"necessity_text": "必要", "gate_s": 0.0, "gate_u": 0.0,
@@ -150,7 +151,7 @@ def test_match_gamma_flows_from_necessity():
     ingest_profile_v4(store, "seeker", _profile("意志"), generator_fn=gamma_zero)
     _seed_pool(store, 2)
     match_v4(store, "seeker")
-    assert store.ledger[0]["payload"]["gamma"] == 0.0
+    assert "gamma" not in store.ledger[0]["payload"]      # γ は照合に使わない（指示書56）
 
 
 def test_match_unknown_seeker_raises():

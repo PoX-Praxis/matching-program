@@ -43,14 +43,11 @@ def rank_for_necessity(necessity_numbers: dict, nec_query_vectors: dict,
     nec_query_vectors: {will_symmetric, necessity_query}
     candidate_list   : [(candidate_id, vecs_dict), ...]
     """
-    gamma = compute_gamma(necessity_numbers.get("gate_s") or 0.0,
-                          necessity_numbers.get("gate_u") or 0.0)
-    p = necessity_numbers.get("p_sharpness") or 0.0
+    # γ・p_sharpness は照合に使わない（指示書56 §1: γ は廃止・p は 0 固定）。
     alpha = necessity_numbers.get("alpha")
     beta = necessity_numbers.get("beta")
     alpha = 1.0 if alpha is None else alpha
     beta = 1.0 if beta is None else beta
     seeker_vecs = seeker_vecs_from_necessity(nec_query_vectors, owner_will_passage,
                                              owner_state_passage)
-    return rank_candidates(seeker_vecs, candidate_list, gamma,
-                           p=p, alpha=alpha, beta=beta, top_k=top_k)
+    return rank_candidates(seeker_vecs, candidate_list, alpha=alpha, beta=beta, top_k=top_k)

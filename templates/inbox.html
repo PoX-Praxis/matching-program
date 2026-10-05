@@ -1,6 +1,5 @@
 {% extends "_base.html" %}
-{% block title %}インボックス — PoX{% include "_match_reason.html" %}
-{% endblock %}
+{% block title %}インボックス — PoX{% endblock %}
 {% block head %}
 <style>
   /* h1/h2 は共通規格（_base.html §5）に委譲。下線見出しは廃止。 */
@@ -13,6 +12,9 @@
   .subject-id { color: #999; font-size: 12px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
   #loading { color: #888; margin-top: 40px; }
 </style>
+{# 共通部品（PoXReason）は head に置く。title ブロックの中に置くと <title> の文字列になり、
+   script が実行されず承認待ちの一覧が「なし」のまま止まる（指示書58 1-2）。 #}
+{% include "_match_reason.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-prose">
@@ -36,15 +38,16 @@
 
 <script>
 const params = new URLSearchParams(location.search);
-const myId = params.get("id");
-
-if (!myId) {
-  document.getElementById("loading").innerHTML =
-    '<span style="color:#c00">URL に ?id= が指定されていません。</span>';
-}
+let myId = params.get("id");
 
 async function init() {
-  if (!myId) return;
+  // 同一性はセッション（マイページと同じ）。URL の id が無い・古い場合も自分の受信箱を開く。
+  const sid = await PoX.me();
+  if (!sid) { PoX.loginRedirect(); return; }
+  if (myId !== sid) {
+    myId = sid;
+    try { history.replaceState(null, "", `/inbox?id=${encodeURIComponent(sid)}`); } catch (_) {}
+  }
 
   const [ledgerRes, inboxRes] = await Promise.all([
     fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`),   // 当事者分のみ（全台帳公開の廃止）

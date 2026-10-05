@@ -301,4 +301,15 @@
 | 218 | `test_t218_wording` |
 | 219 | `test_t219_types_do_not_partition_comparison` |
 | 220 | `test_t220_one_per_person_assumptions_removed` |
-| 57 受理後（番号なし） | `test_t57f_approval_does_not_carry_message`（#5）, `test_t57f_exclusion_is_per_purpose`（#4）, `test_t57f_register_prompt_is_v5`（プロンプト v5） |
+| 221 | `test_t57f_approval_does_not_carry_message` |
+| 222 | `test_t57f_exclusion_is_per_purpose` |
+| 223 | `test_t57f_register_prompt_is_v5` |
+
+## 指示書58（テスト4の不整合の解消）— `tests/test_t58.py`
+
+| 項目 | テスト |
+|---|---|
+| 224 | `test_t224_offer_side_is_never_a_necessity`, `test_t224_offer_half_is_clamped_separately` |
+| 225 | `test_t225_inbox_loads_reason_component_outside_title`, `test_t225_inbox_uses_session_identity_like_mypage` |
+| 226 | `test_t226_zero_results_links_to_inbox_when_offers_pending` |
+| 1-3（番号なし） | `test_t58_connect_header_wording` |

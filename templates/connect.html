@@ -39,7 +39,7 @@
 <main class="l-wide">
 
 <h1>つながる</h1>
-<p class="sub">あなたの必要像と意志から、いま噛み合う相手を照合します。詳細・承認は各プロフィールから。</p>
+<p class="sub">あなたの目的ごとの必要像から、いま噛み合いそうな相手を照合します。詳細・承認は各プロフィールから。</p>
 
 <h2>照合の結果</h2>
 <div id="recStatus"></div>
@@ -108,6 +108,12 @@ async function loadRecommendations() {
     // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
     status.innerHTML = `<div class="notice">まだ照合できる相手がいません。
       <a href="#directory">登録者一覧を見る →</a></div>`;
+    // 自分宛ての未承認の申し出があれば受信箱へ（本人の未処理の通知。相手ごとの除外理由ではない。指示書58 1-4）
+    const offers = await PoXReason.fetchOffers();
+    if (Object.keys(offers).length) {
+      status.insertAdjacentHTML("beforeend", `<div class="notice" id="pendingInNotice">未承認の接続の申し出が届いています。
+        <a href="/inbox?id=${encodeURIComponent(sid)}">受信箱を確認する →</a></div>`);
+    }
     return;
   }
   status.innerHTML = "";

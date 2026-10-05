@@ -267,3 +267,17 @@
 | 55-5 §3 | `t55f_approval_context::test_connect_card_has_offer_message_box` |
 | 55-5 §4 | `t55f_approval_context::test_will_requirement_combines_s_and_u`, `t55f_approval_context::test_will_floor_is_unset_until_measured`, `t55f_approval_context::test_will_floor_excludes_when_set` |
 | 55-5 §5 | `t55f_approval_context::test_mutual_requires_will_for_required_people` |
+
+## 照合の段1（指示書56 v3・196〜204）
+
+| 項目 | テスト |
+|---|---|
+| 196 | `t56_matching_stage1::test_t196_gamma_not_used`, `calibration_v4::test_h2_1_gamma_no_longer_affects_score` |
+| 197 | `t56_matching_stage1::test_t197_c_not_used_resonance_is_a_only`, `calibration_v4::test_h2_3_c_channel_no_longer_moves_score` |
+| 198 | `t56_matching_stage1::test_t198_directions_judged_separately` |
+| 199 | `t56_matching_stage1::test_t199_mutual_only_when_both_directions_pass` |
+| 200 | `t56_matching_stage1::test_t200_p_fixed_at_zero`, `calibration_v4::test_h2_3_p_is_fixed_at_zero` |
+| 201 | `t56_matching_stage1::test_t201_will_floor_removed` |
+| 202 | `t56_matching_stage1::test_t202_no_numbers_in_api_or_screen` |
+| 203 | `t56_matching_stage1::test_t203_zero_result_reason_is_own_side_only` |
+| 204 | `t56_matching_stage1::test_t204_c_deviation_recorded_in_docs` |

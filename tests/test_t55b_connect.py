@@ -143,7 +143,7 @@ def test_t170_no_counts(v4):
     assert "pool_size" not in _match()
     html = _tpl("connect.html")
     assert "プール" not in html and "pool_size" not in html
-    assert "いま噛み合う相手は見つかっていません" in html
+    assert "まだ照合できる相手がいません" in html
 
 
 # ── 172 生 id を画面に出さない ────────────────────────────────────────────────

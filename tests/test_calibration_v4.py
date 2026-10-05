@@ -59,19 +59,13 @@ def test_h2_1_gamma_strictly_increasing_in_u():
     assert gammas[-1] > gammas[0], "u 増加で γ は実際に上がること"
 
 
-def test_h2_1_higher_u_penalizes_will_misalignment_more():
-    """
-    不確実性が高い seeker ほど、意志がずれた候補（c 低）をより強く減点する。
-    γ(u_high) > γ(u_low) → 同じ c 不一致でも高 u 側のスコアが低い。
-    """
+def test_h2_1_gamma_no_longer_affects_score():
+    """指示書56（196）: γ は廃止。γ を変えても総合は変わらない（以前は u→γ で c の減点を強めていた）。"""
     sv = _seeker()
-    cand_will_misaligned = _cand(a=0.7, b=0.7, c=0.1)
+    cand = _cand(a=0.7, b=0.7, c=0.1)
     g_low  = compute_gamma(0.2, 0.1, GAMMA_MAX)
     g_high = compute_gamma(0.2, 0.9, GAMMA_MAX)
-    s_low  = score_candidate(sv, cand_will_misaligned, g_low)
-    s_high = score_candidate(sv, cand_will_misaligned, g_high)
-    assert g_high > g_low
-    assert s_high < s_low, "迷いが強いほど意志ズレ候補を強く減点（取りこぼし保護）"
+    assert score_candidate(sv, cand, g_low) == score_candidate(sv, cand, g_high)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -95,7 +89,7 @@ def test_h2_2_c_irrelevant_does_not_leak_into_limiting_axis():
     """γ=0 のとき c は律速軸に上がらない（寄与ゼロ）。"""
     sv = _seeker()
     attr = attribution(sv, _cand(a=0.6, b=0.6, c=0.01), gamma=0.0)
-    assert attr["c_log_contrib"] == 0.0
+    assert "c_log_contrib" not in attr                     # c は判定から外した（指示書56）
     assert attr["limiting_axis"] in ("a", "b")
 
 
@@ -111,13 +105,13 @@ def test_h2_3_b_channel_moves_rank():
     assert ranked[0]["candidate_id"] == "fills", "必要を埋められる候補が上位"
 
 
-def test_h2_3_c_channel_moves_rank_when_gamma_positive():
-    """γ>0 のとき c（意志相補）だけ違う 2 候補で、c が高い方が上位。"""
+def test_h2_3_c_channel_no_longer_moves_score():
+    """指示書56（197）: c（will_passage どうし）は判定に使わない。c だけ違う 2 候補は同じ総合。"""
     sv = _seeker()
     aligned    = ("aligned",  _cand(a=0.5, b=0.5, c=0.9))
     misaligned = ("misaligned", _cand(a=0.5, b=0.5, c=0.1))
     ranked = rank_candidates(sv, [misaligned, aligned], gamma=0.5)
-    assert ranked[0]["candidate_id"] == "aligned"
+    assert ranked[0]["score"] == ranked[1]["score"]
 
 
 def test_h2_3_complement_not_dominated_by_resonance():
@@ -132,19 +126,14 @@ def test_h2_3_complement_not_dominated_by_resonance():
     assert ranked[0]["candidate_id"] == "balanced", "補完が共鳴に埋もれない"
 
 
-def test_h2_3_sharper_p_penalizes_imbalance_more():
-    """p をより負（鋭い AND）にすると、片チャネルが弱い候補の相対順位が下がる。"""
+def test_h2_3_p_is_fixed_at_zero():
+    """指示書56（200）: p は 0 固定（幾何平均）。p_sharpness を渡しても結果は変わらない。"""
     sv = _seeker()
     imbalanced = ("imbalanced", _cand(a=0.95, b=0.3, c=0.5))
     balanced   = ("balanced",   _cand(a=0.7,  b=0.7, c=0.5))
     soft  = rank_candidates(sv, [imbalanced, balanced], gamma=0.3, p=0.0)
     sharp = rank_candidates(sv, [imbalanced, balanced], gamma=0.3, p=-3.0)
-    # soft では拮抗しうるが、sharp では均衡候補が明確に上位
-    assert sharp[0]["candidate_id"] == "balanced"
-    # imbalanced のスコアは p を鋭くするほど（相対的に）下がる
-    s_soft  = next(r["score"] for r in soft  if r["candidate_id"] == "imbalanced")
-    s_sharp = next(r["score"] for r in sharp if r["candidate_id"] == "imbalanced")
-    assert s_sharp < s_soft
+    assert [(r["candidate_id"], r["score"]) for r in soft] == [(r["candidate_id"], r["score"]) for r in sharp]
 
 
 # ════════════════════════════════════════════════════════════════════════════

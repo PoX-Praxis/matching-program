@@ -71,8 +71,9 @@ def test_audit_match_returns_both_directions_without_text(v4):
     assert d["entry_threshold"] == 0.70 and "g(cos)" in d["threshold_scale"]
     for side in ("a_to_b", "b_to_a"):
         x = d[side]
-        assert set(x["channels"]) >= {"a_sim", "b_sim", "c_sim", "d_sim", "ga", "gb", "gc", "gd",
-                                      "a_log_contrib", "b_log_contrib", "c_log_contrib"}
+        assert set(x["channels"]) >= {"a_sim", "b_sim", "d_sim", "ga", "gb", "gd",
+                                      "a_log_contrib", "b_log_contrib"}
+        assert not ({"c_sim", "gc", "c_log_contrib"} & set(x["channels"]))   # c は廃止（指示書56）
         assert 0 < x["score_A"] <= 1 and 0 < x["score_B"] <= 1
         assert x["numbers"]["alpha"] == 1.0 and x["query_unit"] == "person"
         assert set(x["excluded"]) == {"engaged", "not_linked", "no_necessity"}

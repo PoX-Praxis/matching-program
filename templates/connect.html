@@ -103,7 +103,8 @@ async function loadRecommendations() {
   }
   const results = Array.isArray(data.results) ? data.results : [];
   if (!results.length) {
-    status.innerHTML = `<div class="notice">いま噛み合う相手は見つかっていません。
+    // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
+    status.innerHTML = `<div class="notice">まだ照合できる相手がいません。
       <a href="#directory">登録者一覧を見る →</a></div>`;
     return;
   }

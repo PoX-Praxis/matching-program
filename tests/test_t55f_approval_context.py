@@ -1,4 +1,4 @@
-"""指示書55-5 — 承認の場面の根拠・申し出の文の表示・入力欄の統一・意志の下限・「互いに埋める」。"""
+"""指示書55-5 — 承認の場面の根拠・申し出の文の表示・入力欄の統一（意志の下限は指示書56 で撤去）。"""
 import json, os, sys, tempfile
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -10,8 +10,7 @@ import ledger
 import match_config
 from db_v4 import MemoryStore
 from embedding_config import MODEL_TAG
-from matcher_v4 import (will_requirement, will_required, will_floor, passes_entry, public_axis,
-                        rank_candidates)
+from matcher_v4 import passes_entry, public_axis
 from necessity_gen import compute_gamma
 
 
@@ -102,31 +101,4 @@ def test_connect_card_has_offer_message_box():
     assert 'maxlength="400"' in part and "任意・400字まで" in part
 
 
-# ── §4 意志の下限（gate_s × (1 − gate_u)）──────────────────────────────────────────
-def test_will_requirement_combines_s_and_u():
-    assert will_requirement(0.9, 0.3) == pytest.approx(0.63)
-    assert will_required(0.9, 0.3) is True
-    assert will_required(0.9, 0.6) is False          # 不確実性が高い人には立てない（広げる設計と逆行しない）
-    assert will_required(0.0, 0.0) is False and will_required(0.3, 0.0) is False
-
-
-def test_will_floor_is_unset_until_measured(monkeypatch):
-    assert match_config.WILL_FLOOR_G is None and will_floor(0.9, 0.3) is None
-    monkeypatch.setattr(match_config, "WILL_FLOOR_G", 0.8)
-    assert will_floor(0.9, 0.3) == 0.8 and will_floor(0.9, 0.6) is None
-
-
-def test_will_floor_excludes_when_set(v4, monkeypatch):
-    assert [r["candidate_id"] for r in _cli("me").post("/v4/match", json={}).get_json()["results"]] == ["c1", "c2"]
-    monkeypatch.setattr(match_config, "WILL_FLOOR_G", 0.95)                    # ga=0.9 の相手は下限未満
-    assert _cli("me").post("/v4/match", json={}).get_json()["results"] == []
-    r = {"score": 0.9, "score_b": 0.9, "attribution": {"ga": 0.9}}
-    assert passes_entry(r) and not passes_entry(r, floor=0.95)
-
-
-# ── §5 「足りないところを互いに埋める」は意志も見る ───────────────────────────────
-def test_mutual_requires_will_for_required_people():
-    attr = {"ga": 0.6, "gb": 0.8, "gc": 0.6, "gd": 0.8, "c_log_contrib": 0.0}
-    assert public_axis(attr) == "mutual"                                       # 必須でない人は従来どおり
-    assert public_axis(attr, require_will=True) != "mutual"                    # 必須の人では意志が低いと出さない
-    assert public_axis({**attr, "ga": 0.75}, require_will=True) == "mutual"
+# §4（意志の下限）・§5 の「意志も見る相互」は指示書56 で撤去（tests/test_t56_matching_stage1.py の 201・199）

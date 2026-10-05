@@ -23,6 +23,7 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
 ## 完了済みタスク
 - v4 スキーマ全面移行（`src/profile_view.py`, `src/db.py`, `app.py`, 全テンプレート）
 - 構造化プロンプト v4「判断しない採集者」を `templates/register.html` に反映
+- 構造化プロンプト v5（2026-10-06 の文面）に差し替え（v4 の JSON も受け付ける）
 - iOS スマートクォート（`“` `”`）によるJSON登録エラー修正
   - `src/profile_view.py`: `strip_code_fence()` でUnicodeエスケープ正規化
   - `templates/register.html`: 送信前にJS側でも正規化
@@ -46,11 +47,12 @@ src/
   profile_view.py             # seeker → profile_view 変換（v3/v4 両対応）
   db_connect.py               # SQLite/Postgres 接続切替
 templates/
-  register.html               # 登録フォーム（v4 構造化プロンプト内蔵）
+  register.html               # 登録フォーム（v5 構造化プロンプト内蔵・v4 JSON も受付）
   mypage.html                 # マイページ（v4/v3 分岐表示）
   profile.html                # 公開プロフィール
   edit.html                   # 編集フォーム（意志 + 現状4スロット）
 qwen3_server/                 # Qwen3-Embedding ローカル推論サーバー
 spec/
-  structuring_prompt_v4_interview.md  # ① 構造化プロンプト仕様書
+  structuring_prompt_v5.md            # ① 構造化プロンプト v5 の文面（現行）
+  structuring_prompt_v4_interview.md  # ① 構造化プロンプト v4 仕様書（旧）
 ```

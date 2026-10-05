@@ -121,7 +121,7 @@ async function refreshConnectState() {
   $("btnOffer").disabled = false;
   $("btnOffer").textContent = state === "pending_in" ? "承認する" : "つながりたいと伝える";
   show("btnOffer", state === "none" || state === "pending_in");
-  show("offerBox", state === "none" || state === "pending_in");   // 申し出の文は承認でも添えられる（指示書57）
+  show("offerBox", state === "none");   // 承認欄は申し出の文を「表示する」場所（入力欄は申し出る側だけ）
   if (state === "none") loadMyPurposes();
   show("btnWithdraw", state === "pending_out");
   show("btnDm", state === "connected");
@@ -148,9 +148,12 @@ async function doConnect(btn) {
   try {
     const aRes = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: profileId,
-                             purpose_id: document.getElementById("offerPurpose").value || null,
-                             message: (document.getElementById("offerMsg").value || "").trim() }),
+      // 承認（pending_in）は状態の遷移だけ。申し出の文は申し出る側（offerBox が出ているとき）だけが送る。
+      body: JSON.stringify(document.getElementById("offerBox").style.display === "none"
+        ? { to_id: profileId }
+        : { to_id: profileId,
+            purpose_id: document.getElementById("offerPurpose").value || null,
+            message: (document.getElementById("offerMsg").value || "").trim() }),
     });
     if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
     const aData = await aRes.json();

@@ -454,6 +454,38 @@ def engaged_counterparts(subject_id: str, db_path: str = "pox.db") -> set:
     return out
 
 
+def engaged_by_purpose(subject_id: str, db_path: str = "pox.db"):
+    """照合の結果から外す相手を目的ごとに返す（指示書57 受理時の推奨 #4）。
+
+    戻り値: (全部の目的から外す相手 set, {相手: 自分が申し出中の purpose_id の set})
+      - 全部から外す: 接続済み（終了していない）／相手から申し出が来ている／目的を指定しない申し出（v4）
+      - 目的ごと: 自分がその目的で申し出中の相手は、**その目的のグループからだけ**外す
+    """
+    blocked = set()
+    for v in _derive_from_events(db_path=db_path).values():
+        j = v["joins"][0]
+        if j["closed_at"] is None:
+            ids = {a["from"] for a in j["approvals"]} | {a["to"] for a in j["approvals"]}
+            if subject_id in ids:
+                blocked |= ids
+    out_by = {}
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT from_subject, to_subject, purpose_id FROM connection_requests "
+            "WHERE status='pending' AND (from_subject=%s OR to_subject=%s)",
+            (subject_id, subject_id),
+        ).fetchall()
+    for frm, to, pid in rows:
+        if to == subject_id:
+            blocked.add(frm)                       # 相手から来ている申し出は承認の面で扱う
+        elif pid:
+            out_by.setdefault(to, set()).add(pid)
+        else:
+            blocked.add(to)
+    blocked.discard(subject_id)
+    return blocked, out_by
+
+
 def request_refs(from_id: str, to_id: str, db_path: str = "pox.db"):
     """from → to の申し出（pending か成立済みのうち最新）に保存した目的と版の参照（指示書57）。無ければ None。"""
     with _connect(db_path) as con:

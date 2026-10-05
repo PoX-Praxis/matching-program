@@ -295,9 +295,10 @@
 | 211・212 | `test_t211_t212_results_grouped_by_purpose_with_quote_pairs` |
 | 213 | `test_t213_approval_reason_recomputed_from_refs` |
 | 214 | `test_t214_offer_stores_purpose_and_refs_idempotent_per_purpose`, `test_t214_establish_uses_purpose_event_hash` |
-| 215 | `test_t215_offer_message_box_on_all_paths` |
+| 215 | `test_t215_offer_message_box_only_for_offerer`（57 受理時の訂正 #5: 入力欄は申し出る側だけ） |
 | 216 | `test_t216_v4_counterpart_matched_by_state` |
 | 217 | `test_t217_trajectory_purposes_and_branch` |
 | 218 | `test_t218_wording` |
 | 219 | `test_t219_types_do_not_partition_comparison` |
 | 220 | `test_t220_one_per_person_assumptions_removed` |
+| 57 受理後（番号なし） | `test_t57f_approval_does_not_carry_message`（#5）, `test_t57f_exclusion_is_per_purpose`（#4）, `test_t57f_register_prompt_is_v5`（プロンプト v5） |

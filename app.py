@@ -1717,17 +1717,18 @@ def _reason_items(pairs, mine_side, their_side):
 def _v5_match_response(store, me, model_tag):
     """照合の結果（目的ごとにグループ化）。数値・順位・件数は出さない。並びは中立（id 順）。
 
-    除外: 必要像が無い人／本人と紐づいていない id／既に接続済み・申し出中の相手（相手ごとの理由は出さない）。
+    除外: 必要像が無い人／本人と紐づいていない id／既に接続済みの相手／相手から申し出が来ている相手／
+    **その目的で**申し出中の相手（別の目的のグループには出る）。相手ごとの理由は出さない。
     """
     from matcher_v5 import match_pair
-    from ledger import engaged_counterparts
+    from ledger import engaged_by_purpose
     mine = _side_of(store, me, model_tag)
     if not mine["purposes"]:
         return {"status": "no_necessity", "groups": [], "results": []}
     ids = [i for i in store.candidate_ids(me, model_tag)]
     linked = _linked_ids(ids)
-    engaged = engaged_counterparts(me, db_path=DB)
-    ids = sorted(i for i in ids if i in linked and i not in engaged)
+    blocked, offered = engaged_by_purpose(me, db_path=DB)
+    ids = sorted(i for i in ids if i in linked and i not in blocked)
     bundles = store.get_bundles(ids, model_tag) if ids else {}
     names = _resolve_names(ids, fallback=UNNAMED_LABEL)
     import handles
@@ -1741,10 +1742,13 @@ def _v5_match_response(store, me, model_tag):
             continue                                     # 必要像の無い人は出さない
         r = match_pair(mine, theirs)
         pv = None
+        done = offered.get(cid, set())
         for pid, res in r["by_purpose"].items():
+            if pid in done:
+                continue                                 # その目的では申し出中
             pv = pv or (get_profile_view(cid, db_path=DB) or {})
             groups[pid]["results"].append(_card(cid, names, hs, pv, res, mine, theirs, pid))
-        if r["theirs_need_me"]:
+        if r["theirs_need_me"] and not done:
             pv = pv or (get_profile_view(cid, db_path=DB) or {})
             them_need_me["results"].append(_card(cid, names, hs, pv, r["theirs_need_me"], mine, theirs, None))
     out_groups = [g for g in groups.values() if g["results"]]
@@ -1793,6 +1797,11 @@ def post_approve():
     message = (body.get("message") or "").strip()
     if len(message) > OFFER_MESSAGE_MAX:
         return jsonify({"error": f"申し出の文は {OFFER_MESSAGE_MAX} 字までです"}), 400
+    # 承認（相手から申し出が来ている）は状態の遷移だけ。文は申し出る側の意思表示なので、承認では受け取らない
+    # （DM は成立後だけ・テスト 177 との整合。指示書57 受理時の訂正）。
+    from ledger import connection_state
+    if message and connection_state(from_id, to_id, db_path=DB) == "pending_in":
+        message = ""
     # 指示書57: どの目的の申し出か（自分の目的に限る）と、申し出た時点の自分の版の参照。
     import v5
     purpose_id = (body.get("purpose_id") or "").strip() or None

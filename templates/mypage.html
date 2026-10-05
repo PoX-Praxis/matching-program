@@ -320,8 +320,7 @@ function renderConnections(vessels, myId) {
     } else if (!iApproved && theyApproved) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
-      action = `${PoXReason.composeHtml(`apvMsg_${escHtml(other)}`)}
-                <button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
+      action = `<button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
       // 承認の場面の根拠と申し出の文（55-5 §1・§2）。描画後に非同期で埋める。
       why = `<div class="mr-slot" data-other="${escHtml(other)}"></div>
              <div class="mr-offer-slot" data-other="${escHtml(other)}"></div>`;
@@ -376,8 +375,7 @@ async function doApprove(otherId, btn) {
   try {
     res = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: otherId,
-                             message: ((document.getElementById(`apvMsg_${otherId}`) || {}).value || "").trim() }),
+      body: JSON.stringify({ to_id: otherId }),    // 承認は状態の遷移だけ（申し出の文は申し出る側だけが書く）
     });
   } catch (e) {
     msg.className = "err"; msg.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";

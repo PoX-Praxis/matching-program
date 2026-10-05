@@ -5,7 +5,8 @@
 <style>
   .mr-axis { font-size: 12px; font-weight: bold; }
   .mr-axis.will { color: #1a56bb; } .mr-axis.fill { color: #1a6a3a; } .mr-axis.mutual { color: #7a4a1a; }
-  .mr-line { font-size: 13px; color: #333; line-height: 1.6; }
+  .mr-line { font-size: 13px; color: #333; line-height: 1.6; margin-top: 2px; }
+  .mr-line .mr-give { padding-left: 1em; }
   .mr-offer { font-size: 12.5px; color: #444; margin-top: 4px; white-space: pre-wrap;
               border-left: 3px solid #d5dae1; padding-left: 8px; }
   .mr-offer .k { display: block; font-size: 11px; color: #888; }
@@ -26,10 +27,12 @@ window.PoXReason = (function () {
   };
   /* 引用の対（指示書57）: 「◯◯の『…』に、△△の『…』が応えています」。数値は出さない。
      need_label / offer_label はサーバーが付ける（与え像が無い側は「現状」）。 */
+  /* 必要像の側と応える側（与え像／現状）を**別々に** 2 行で丸める。1 つの塊で丸めると、長い必要像（v4 の全文）で
+     後半の「…が応えています」が切れ、必要像どうしが並んで見えていた（指示書58 1-1）。 */
   function line(x) {
     if (!x || !x.need || !x.offer) return "";
-    return `<div class="mr-line clamp-2">${esc(x.need_label)}の『${esc(x.need)}』に、`
-         + `${esc(x.offer_label)}の『${esc(x.offer)}』が応えています</div>`;
+    return `<div class="mr-line"><div class="mr-need clamp-2">${esc(x.need_label)}の『${esc(x.need)}』に、</div>`
+         + `<div class="mr-give clamp-2">${esc(x.offer_label)}の『${esc(x.offer)}』が応えています</div></div>`;
   }
   /* 根拠（axis と reasons）を HTML にする。無ければ空文字。 */
   function reasonHtml(r) {

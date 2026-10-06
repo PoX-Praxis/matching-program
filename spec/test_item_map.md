@@ -309,7 +309,8 @@
 
 | 項目 | テスト |
 |---|---|
-| 224 | `test_t224_offer_side_is_never_a_necessity`, `test_t224_offer_half_is_clamped_separately` |
+| 224 | `test_t224_offer_side_is_never_a_necessity`, `test_t224_offer_half_is_its_own_block` |
 | 225 | `test_t225_inbox_loads_reason_component_outside_title`, `test_t225_inbox_uses_session_identity_like_mypage` |
 | 226 | `test_t226_zero_results_links_to_inbox_when_offers_pending` |
 | 1-3（番号なし） | `test_t58_connect_header_wording` |
+| 227 | `test_t227_quote_is_cut_at_sentence_boundary`, `test_t227_no_line_clamp_on_quotes_and_fold_exists` |

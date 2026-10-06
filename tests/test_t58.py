@@ -27,13 +27,46 @@ def test_t224_offer_side_is_never_a_necessity():
         assert all("必要像" not in x["offer_label"] for x in items)
 
 
-def test_t224_offer_half_is_clamped_separately():
-    """必要像と応える側を別々に丸める（1 つの塊だと長い必要像で「…が応えています」が切れていた）。"""
+def test_t224_offer_half_is_its_own_block():
+    """必要像の側と応える側を別の塊にする（1 つの塊だと長い必要像で「…が応えています」が見えなかった）。"""
     part = TPL("_match_reason.html")
     body = part[part.index("function line(x)"):part.index("function reasonHtml")]
-    assert 'class="mr-need clamp-2"' in body and 'class="mr-give clamp-2"' in body
-    assert 'class="mr-line clamp-2"' not in body
+    assert 'class="mr-need"' in body and 'class="mr-give"' in body
     assert "が応えています" in body
+
+
+# ── 227 引用は語・句の途中で切らない（文の区切りまで。残りは「続きを見る」）───────────────────
+def _run_cut(samples):
+    import json as _j
+    import shutil
+    import subprocess
+    import pytest
+    if not shutil.which("node"):
+        pytest.skip("node が無い環境")
+    part = TPL("_match_reason.html")
+    js = part[part.index("<script>") + len("<script>"):part.index("</script>")]
+    prog = ("const window = {};\n" + js +
+            f"\nconsole.log(JSON.stringify({_j.dumps(samples, ensure_ascii=False)}.map(window.PoXReason.cut)));")
+    out = subprocess.run(["node", "-e", prog], capture_output=True, text=True, check=True).stdout
+    return _j.loads(out)
+
+
+def test_t227_quote_is_cut_at_sentence_boundary():
+    a = "能力の提供だけでなく共に事業を育てる立場として関わってきた人。構造的アプローチに関心があり、議論を形にできる人。"
+    v4 = "設計の経験がある / 構造的アプローチに関心があり、検証まで回せる / 時間が限られている"
+    r = _run_cut([a, v4, "区切りの無い一文", "一文だけ。"])
+    assert r[0] == {"head": "能力の提供だけでなく共に事業を育てる立場として関わってきた人。",
+                    "rest": "構造的アプローチに関心があり、議論を形にできる人。"}
+    assert r[1] == {"head": "設計の経験がある", "rest": "構造的アプローチに関心があり、検証まで回せる / 時間が限られている"}
+    assert r[2] == {"head": "区切りの無い一文", "rest": ""}               # 区切りが無ければ丸ごと（語の途中で切らない）
+    assert r[3] == {"head": "一文だけ。", "rest": ""}
+
+
+def test_t227_no_line_clamp_on_quotes_and_fold_exists():
+    part = TPL("_match_reason.html")
+    body = part[part.index("function cut(t)"):part.index("function reasonHtml")]
+    assert "clamp-2" not in body                                        # 行数の丸めを使わない
+    assert "<details" in body and "続きを見る" in body                  # 全文は折りたたみで
 
 
 # ── 225 受信箱にもマイページと同じ承認待ちが出る ───────────────────────────────────────

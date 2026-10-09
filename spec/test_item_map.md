@@ -398,3 +398,14 @@
 | 280 | `test_t280_v4_edit_and_retry_unchanged` |
 | 281 | `test_t281_mypage_shows_rebuild_for_v5` |
 | 番号なし | `test_t63a_v4_json_paste_refused_for_v5` |
+
+### PR-B（監査ルートに文単位の対）— `tests/test_t63b_audit_sentences.py`
+
+| 項目 | テスト |
+|---|---|
+| 282 | `test_t282_sentences_cover_all_needs_and_match_judgement` |
+| 283 | `test_t283_top3_sorted_desc_at_most_three` |
+| 284 | `test_t284_no_raw_text_evidence_or_generator` |
+| 285 | `test_t285_token_required` |
+| 286 | `test_t286_without_detail_unchanged` |
+| 番号なし | `test_t63b_v4_counterpart_full_state_and_display_field` |

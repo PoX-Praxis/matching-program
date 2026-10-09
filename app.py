@@ -451,11 +451,12 @@ def ledger_audit_match():
         "threshold_scale": "g(cos) = (1 + cos) / 2 の加重べき乗平均（総合）に対する閾値。cos そのものではない",
         "a_to_b": _pair_detail(store, a, b, MODEL_TAG),
         "b_to_a": _pair_detail(store, b, a, MODEL_TAG),
-        "v5": _pair_detail_v5(store, a, b, MODEL_TAG),
+        "v5": _pair_detail_v5(store, a, b, MODEL_TAG,
+                              sentences=(request.args.get("detail") == "sentences")),
     }), 200
 
 
-def _pair_detail_v5(store, a, b, model_tag):
+def _pair_detail_v5(store, a, b, model_tag, sentences=False):
     """段3（目的ごと・文単位）と共鳴の門の内部値（指示書61 §2-5）。本文は返さない。
     a_to_b: a の各目的が b を求める方向（補完A）／b_to_a: b の各目的が a を求める方向。
     各方向: purpose_id・resonance（向かう先どうしの g(cos) の最大）・gate_strength（gate_s×(1−gate_u)）・
@@ -464,10 +465,40 @@ def _pair_detail_v5(store, a, b, model_tag):
     from match_config import RES_GATE_MIN, RES_THRESHOLD
     from matcher_v5 import SENTENCE_JUDGE_THRESHOLD
     sa, sb = _side_of(store, a, model_tag), _side_of(store, b, model_tag)
-    return {"res_gate_min": RES_GATE_MIN, "res_threshold": RES_THRESHOLD,
-            "sentence_threshold": SENTENCE_JUDGE_THRESHOLD,
-            "has_offer": {"a": sa["has_offer"], "b": sb["has_offer"]},
-            **audit_pair(sa, sb)}
+    out = {"res_gate_min": RES_GATE_MIN, "res_threshold": RES_THRESHOLD,
+           "sentence_threshold": SENTENCE_JUDGE_THRESHOLD,
+           "has_offer": {"a": sa["has_offer"], "b": sb["has_offer"]},
+           **audit_pair(sa, sb)}
+    if sentences:
+        out["sentences"] = _sentence_audit(sa, sb)
+    return out
+
+
+def _sentence_audit(sa, sb):
+    """detail=sentences（指示書63 段階1 PR-B）: 目的ごと・方向ごとの文単位の対。運営者がトークンで確かめるためだけの窓口
+    （利用者の画面・公開 API は変えない）。必要像・与え像・現状の文は公開の範囲なので返す。生テキスト・根拠・
+    evidence_span・generator は返さない。v4 の相手（与え像なし）は判定の単位が現状の全文なので best_source は
+    「現状（全文）」で、g も全文に対する値。表示用に最も近い欄があれば display_field として**別に**添える。"""
+    from matcher_v5 import judge_direction, sentence_detail
+    out = []
+    for direction, mine, other in (("a_to_b", sa, sb), ("b_to_a", sb, sa)):
+        for p in mine["purposes"]:
+            ok, _, info = judge_direction(p, other)
+            d = sentence_detail(p, other)
+            src = "与え像" if other.get("has_offer") else "現状（全文）"
+            for row in d["sentences"]:
+                row["best_source"] = src if row["best"] is not None else None
+                if not other.get("has_offer"):
+                    n = next((x for x in p.get("needs") or [] if x.get("text") == row["need"]), None)
+                    slot = _state_slot_for(n.get("vec") if n else None, other)
+                    if slot:
+                        row["display_field"] = {"field": slot["label"], "text": slot["text"]}
+            out.append({"purpose_id": p.get("purpose_id"), "direction": direction,
+                        "sentences": d["sentences"], "top3": d["top3"],
+                        "must_all_paired": d["must_all_paired"],
+                        "gate": {k: info[k] for k in ("resonance", "gate_strength", "gate", "gate_passed")},
+                        "complement": info["complement"], "passed": ok})
+    return out
 
 
 def _pair_detail(store, seeker, other, model_tag):

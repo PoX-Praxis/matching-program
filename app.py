@@ -782,6 +782,22 @@ def _run_with_retry(fn, *, tries=3, base_delay=2.0):
     raise last
 
 
+# ── v5 の人を v4 の編集経路から守る（指示書63 段階1 PR-A）────────────────────────────
+# v5 のプロフィールは「AI で作り直した JSON を貼る（新しい版になる）」でだけ変える。v4 の編集・再試行は、v5 の本文を
+# 持たない入力で宣言（c1）と目的の無い必要像を書き、最後の目的の必要像を置き換えて照合から消していた（段階0 §0-1）。
+V5_EDIT_BLOCKED = {"error": "v5_profile",
+                   "message": "このプロフィールは、AI で作り直した JSON を貼ると新しい版になります。"}
+
+
+def _is_v5_subject(sid) -> bool:
+    """いまのプロフィールが v5 か（v5 の本文があるか、目的の付いた生きている必要像があるか）。"""
+    try:
+        import v5
+        return bool(v5.get_doc(sid, db_path=DB)) or bool(v5.live_necessities_v5(sid, db_path=DB))
+    except Exception:  # noqa: BLE001（判定できなければ v4 として扱う＝従来どおり）
+        return False
+
+
 def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
                   final_status=None, publish_ledger=True):
     """
@@ -795,6 +811,11 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
     _ingest_v4_from_flat が同期・必須で保存済み。ベクトル化の失敗は本文の記録に影響しない。
     """
     from db_v4 import vectorize_profile_v4, GEN_ERROR
+    if publish_ledger and _is_v5_subject(profile_id):
+        # 防壁: v4 の編集・再試行の経路（台帳に書く）が v5 の人に届いたら、何も書かずに終える。
+        # v5 の確定（publish_ledger=False）は全文ベクトルを作るためにこの処理を使うので通す。
+        app.logger.warning(f"[v4-job] v5 のプロフィールには v4 の経路で書かない: {profile_id}")
+        return
     store = _v4_store()
     try:
         if is_fallback or necessity is None:
@@ -1067,6 +1088,8 @@ def retry_v4_seeker(profile_id):
     本人限定（指示書22 / 27 §2-4）: 他人の id で再試行を起動できないようゲートする。
     """
     require_self(profile_id)   # セッション本人と不一致は 403（401 は login_required が担保）
+    if _is_v5_subject(profile_id):
+        return jsonify(V5_EDIT_BLOCKED), 409
     if not is_postgres():
         return jsonify({"error": "v4 は Postgres（DATABASE_URL）が必要です"}), 503
     store = _v4_store()
@@ -1390,6 +1413,10 @@ def confirm_draft(draft_id):
             return jsonify({"error": why}), 400
         flat = v5.to_flat(v5_doc)
     else:
+        if _is_v5_subject(d["subject_id"]):
+            # v5 の人が v4 の JSON で作り直すと、目的の無い必要像が目的の必要像を置き換えてしまう（PR-A の防壁）。
+            return jsonify({"error": "v5_profile",
+                            "message": "このプロフィールは v5 です。AI で作り直した v5 の JSON を貼ってください。"}), 409
         flat = _normalize_v4_body(d["payload"])
     if not (flat.get("will_text") or "").strip():
         return jsonify({"error": "will_text が空です。①をやり直してください"}), 400
@@ -1980,7 +2007,8 @@ def my_purposes():
     live = [n["purpose_id"] for n in v5.live_necessities_v5(me, db_path=DB)]
     _mark_noindex()
     return jsonify({"purposes": [{"purpose_id": p, "label": labels.get(p, "")} for p in live],
-                    "has_offer": bool((v5.latest_offer(me, db_path=DB) or {}).get("sentences"))}), 200
+                    "has_offer": bool((v5.latest_offer(me, db_path=DB) or {}).get("sentences")),
+                    "is_v5": _is_v5_subject(me)}), 200
 
 
 @app.get("/api/connections/state")
@@ -2373,6 +2401,8 @@ def api_profile_core(user_id):
     """「中身を編集」。v4（意志/現状4スロット）対応。profile_view を再生成する。
     **本人のみ**（指示書55 PR-A: 以前は未認証で誰のプロフィールでも書き換えられた）。"""
     user_id = require_self(user_id)
+    if _is_v5_subject(user_id):
+        return jsonify(V5_EDIT_BLOCKED), 409
     body = request.get_json(force=True, silent=True) or {}
     fields = {}
     if "意志" in body:

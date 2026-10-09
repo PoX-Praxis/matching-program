@@ -72,6 +72,7 @@ def test_evidence_joined_by_newlines_is_checked_per_part():
     ok, why = v5.validate(json.loads(json.dumps(d)))
     # p1 は改行でつないだ各引用が生テキストにある。p2 の 2 つ目は生テキストに無い（AI が入れ忘れた実例と同じ）ので、
     # どの引用かを示して止める。
-    assert not ok and why == "目的 2: 根拠「五つ目の語り。」が生テキストに見つかりません（引用は原文のまま）"
+    assert not ok and why == ("目的 2: 根拠の引用「五つ目の語り。」が生テキストにありません。"
+                              "AI に『根拠に使った言葉を生テキストにも入れて出し直して』と頼んでください。")
     d["supporting_material"]["生テキスト"].append("五つ目の語り。")
     assert v5.validate(d)[0] is True

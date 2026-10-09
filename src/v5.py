@@ -26,10 +26,10 @@ FORBIDDEN = ("年以上", "必須スキル", "ができる方", "を募集")
 MEANS_MARKERS = ("そのために", "手段として")
 DROP_KEYS = ("p_sharpness", "gamma", "alpha", "beta")   # 規則 7: あれば捨てる（alpha・beta は指示書61 で追加）
 # 規則 14: どのプロンプトで作ったか（_meta.source）。無いもの＝改訂2（"v5r2"）として扱う（拒否しない）。
-SOURCES = ("v5r3-A", "v5r3-B", "v5r2-A", "v5r2-B")
+SOURCES = ("v5r4-A", "v5r4-B", "v5r3-A", "v5r3-B", "v5r2-A", "v5r2-B")   # v5r4 は指示書62 で追加
 SOURCE_DEFAULT = "v5r2"
 # 規則 9: 根拠が「／」「/」・改行でつながれていたら、比較のときだけ分ける（保存は原文のまま）。
-# 改行は、AI が複数の引用を "\n" でつないで出した実例（2026-10）による。各部分が生テキストにあれば通す。
+# 改行は、AI が複数の引用を "\n" でつないで出した実例（2026-10）による。rev4 は「／」でつなぐ（指示書62）。
 _EVIDENCE_SPLIT = re.compile(r"[／/\r\n]")
 
 
@@ -60,10 +60,10 @@ def is_v5(doc) -> bool:
 
 # ── 受信の検証（改訂2 §3。指示書60）──────────────────────────────────────────────
 def _norm(s: str) -> str:
-    """検証9 の比較用の派生キー（**比較のときだけ**使う。保存はしない＝指示書39 §1-2）。
-    Unicode NFKC（全角半角の統一）→ 空白・改行・タブの除去 → 句読点（Unicode の P 類）の除去。"""
-    t = unicodedata.normalize("NFKC", str(s or ""))
-    return "".join(c for c in t if not c.isspace() and not unicodedata.category(c).startswith("P"))
+    """検証9 の比較用（**比較のときだけ**使う。保存はしない＝指示書39 §1-2）。
+    Unicode NFC と前後の空白の除去だけ（指示書62 §1-3。句読点・全角半角・途中の空白は変えない）。
+    指示書60 §4-1（NFKC・空白の除去）と、60 で足した句読点の除去は、62 で取りやめた。"""
+    return unicodedata.normalize("NFC", str(s or "")).strip()
 
 
 def raw_texts(doc: dict) -> list:
@@ -103,7 +103,7 @@ def validate(doc: dict):
     purposes = doc.get("purposes")
     if not isinstance(purposes, list) or not (1 <= len(purposes) <= MAX_PURPOSES):
         return False, f"目的（purposes）は 1〜{MAX_PURPOSES} 件にしてください"
-    story = _norm("".join(texts))
+    elements = [_norm(t) for t in texts]          # 各引用は、生テキストの**いずれかの要素**にそのまま含まれること
     for k in DROP_KEYS:                                   # 規則 7: どこにあっても捨てる
         doc.pop(k, None)
     for i, p in enumerate(purposes, 1):
@@ -126,10 +126,11 @@ def validate(doc: dict):
                 return False, f"目的 {i}: 型は {'／'.join(TYPES)} のいずれかです"
         ev = str(p.get("根拠") or "").strip()
         for part in (_EVIDENCE_SPLIT.split(ev) if ev else []):
-            if _norm(part) and _norm(part) not in story:
-                head = part.strip()
-                head = head[:20] + ("…" if len(head) > 20 else "")
-                return False, f"目的 {i}: 根拠「{head}」が生テキストに見つかりません（引用は原文のまま）"
+            q = _norm(part)
+            if q and not any(q in e for e in elements):
+                head = q[:40] + ("…" if len(q) > 40 else "")
+                return False, (f"目的 {i}: 根拠の引用「{head}」が生テキストにありません。"
+                               "AI に『根拠に使った言葉を生テキストにも入れて出し直して』と頼んでください。")
         for k in DROP_KEYS:
             p.pop(k, None)
             if isinstance(p.get("数値"), dict):

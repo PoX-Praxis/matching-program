@@ -100,6 +100,7 @@
 <p>AI が最後に出力した JSON を、<code>{</code> から <code>}</code> までそのまま貼り付けてください。
 <code>```</code> や前置きが付いていても自動で取り除きます。</p>
 
+<p id="copyNote" style="font-size:13px;color:#1f3a5f;margin:6px 0">AI が出したコードブロックの<b>右上のコピーボタン</b>でコピーして、そのまま貼ってください。画面に表示された文字を選択してコピーすると、記号が欠けることがあります。</p>
 <p id="handleNote" style="font-size:13px;color:#8a4a00;margin:6px 0">ハンドルは後から変更できません。実名ではなく、公開されて構わない名前を選んでください。</p>
 <textarea id="seekerJson" placeholder='{
   "id": "alice_2025",
@@ -192,6 +193,22 @@ async function register(btn) {
   if (btn) btn.disabled = false;
 }
 
+/* 形式を自動で補正したときの告知（指示書62 §1-2。黙って直さない）。配列の要素数も見せる（区切りを推測しているため）。 */
+function repairNoticeHtml(draft) {
+  const r = draft.repairs || [];
+  if (!r.length) return "";
+  const c = draft.array_counts || {};
+  const fmt = v => (v === null || v === undefined) ? "—" : String(v);
+  const counts = [
+    `目的 ${fmt(c.purposes)}`,
+    `必要像 ${(c["必要像"] || []).map(fmt).join("・") || "—"}`,
+    `与え像 ${fmt(c["与え像"])}`, `関心 ${fmt(c["関心"])}`, `生テキスト ${fmt(c["生テキスト"])}`,
+  ].join(" ／ ");
+  return `<div id="repairNotice" style="border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:10px 12px;margin:0 0 10px;font-size:13px">
+    形式を自動で補正しました：${r.map(esc).join("、")}。内容に変わりがないか確認してください。
+    <div style="font-size:12px;color:#555;margin-top:4px">読み取った数: ${esc(counts)}</div></div>`;
+}
+
 /* 下書きの内容を確認してから確定する（意志・現状・必要像・数値を表示）。 */
 function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
@@ -205,6 +222,7 @@ function renderV5Preview(draft) {
   const mapping = draft.purpose_mapping || {};
   let h = `<div class="draft-preview" style="text-align:left;border:1px solid #cfd3d9;border-radius:8px;padding:14px 16px;margin-top:8px">`;
   h += `<p style="font-weight:700;margin:0 0 8px">下書きを作成しました（${draft.attempt_n}回目・v5）。内容を確認して確定してください。</p>`;
+  h += repairNoticeHtml(draft);
   (p.purposes || []).forEach((pu, i) => {
     const hint = pu.purpose_id || `p${i + 1}`;
     h += `<div style="border-top:1px solid #eee;padding-top:8px;margin-top:8px">`;
@@ -260,6 +278,7 @@ function renderDraftPreview(draft) {
 
   let h = `<div class="draft-preview" style="text-align:left;border:1px solid #cfd3d9;border-radius:8px;padding:14px 16px;margin-top:8px">`;
   h += `<p style="font-weight:700;margin:0 0 8px">下書きを作成しました（${attempt}回目）。内容を確認して確定してください。</p>`;
+  h += repairNoticeHtml(draft);
   h += `<p style="font-size:12px;color:#666;margin:0 0 12px">確定するまで台帳に記録されず、第三者にも公開されません。</p>`;
   if (will) h += `<p style="margin:6px 0"><b>意志</b><br>${esc(will)}</p>`;
   const slots = [["持っているもの","持っているもの"],["できること_型","できること（型）"],["縛られているもの","縛られているもの"],["未分類","未分類"]];

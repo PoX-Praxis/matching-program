@@ -368,3 +368,20 @@
 | 番号なし | `test_t61_verify_c3_rows_written_with_integer_numbers`（c3 の整数値の検証） |
 
 既存のテストの書き換え（指示書61）: 207（新しい版は c4）・209（v5 の宣言は p3）・218（見出しの文言）・224（見出し）・227（「全文を見る」）
+
+## 指示書62（登録不能の再発防止）— `tests/test_t62_registration.py`
+
+| 項目 | テスト |
+|---|---|
+| 268 | `test_t268_rev4_code_block_registers` |
+| 269 | `test_t269_rev3_without_code_block_registers` |
+| 270 | `test_t270_meta_source_values[*]` |
+| 271 | `test_t271_slash_separated_quotes_all_present` |
+| 272 | `test_t272_newline_separated_quotes_still_pass` |
+| 273 | `test_t273_missing_quote_rejected_without_auto_add` |
+| 274 | `test_t274_format_repaired_with_notice_and_counts` |
+| 275 | `test_t275_no_notice_for_valid_json` |
+| 276 | `test_t276_repair_does_not_affect_ledger` |
+| 番号なし | `test_t62_copy_guidance_and_parse_error_next_step`、`tests/test_json_repair.py`（#135） |
+
+既存のテストの書き換え（指示書62）: 238（比較の正規化を NFC と前後の空白だけに）・267（rev4）・205・239・260（根拠の文言）

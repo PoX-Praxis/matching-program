@@ -41,6 +41,8 @@ def strip_code_fence(text: str) -> str:
 # なったりして、コピーした JSON が壊れる（2026-10 の実例）。厳密に読めなかったときだけ、この範囲で直す。
 _ARRAY_KEYS = ("purposes", "必要像", "与え像", "関心", "生テキスト")
 _PARSE_ERROR = "JSONとして読めませんでした。AIの出力の { から } までを貼り付けてください。"
+# 読めなかったときに本人が次にすること（指示書62 §3-1）
+_PARSE_NEXT = "AI に『コードブロックの中に1行で出し直して』と頼んでください。"
 
 
 def _skip_string(s: str, i: int) -> int:
@@ -89,7 +91,7 @@ def _skip_value(s: str, i: int) -> int:
 
 
 def _wrap_missing_array(s: str):
-    """配列のはずのキーの値が `[` で始まっていない最初の箇所に `[` `]` を補う。直したら新しい文字列、無ければ None。
+    """配列のはずのキーの値が `[` で始まっていない最初の箇所に `[` `]` を補う。直したら (新しい文字列, キー)、無ければ None。
     要素は「, の後が `"キー":` でない値」が続く限り同じ配列とみなす（`}` `]` か次のキーで閉じる）。"""
     i = 0
     while i < len(s):
@@ -116,42 +118,66 @@ def _wrap_missing_array(s: str):
                             p = r
                             continue
                     break
-                return s[:k] + "[" + s[k:p] + "]" + s[p:]
+                return s[:k] + "[" + s[k:p] + "]" + s[p:], key
         i = end
     return None
 
 
-def repair_ai_json(text: str) -> str:
-    """AI の出力をコピーしたときに起きる壊れ方を直す（厳密に読めなかったときだけ使う）。
-    - Markdown のエスケープ `\[` `\]` `\_` `\*`（JSON には無いエスケープなので、元の JSON を変えない）
-    - 配列のはずのキー（_ARRAY_KEYS）の `[` `]` の欠落"""
+def repair_ai_json_report(text: str):
+    r"""AI の出力をコピーしたときに起きる**形式の**壊れ方を直す（厳密に読めなかったときだけ使う）。
+    戻り値: (直した文字列, 直した種類の一覧)。**内容には触れない**（指示書62 §1-1）:
+    - Markdown のエスケープ `\[` `\]` `\_` `\*`（JSON には無いエスケープなので、元が正しい JSON なら現れない）
+    - 配列のはずのキー（_ARRAY_KEYS）の `[` `]` の欠落（要素の区切りを推測しているので、確認画面で要素数を見せる）
+    引用・数値・キーの欠けは直さない。"""
+    kinds = []
+    if re.search(r"\\[\[\]]", text):
+        kinds.append("バックスラッシュ付きの括弧（\\[ \\]）を [ ] に戻した")
+    if re.search(r"\\[_*]", text):
+        kinds.append("Markdown のエスケープ（\\_ \\*）を戻した")
     s = re.sub(r"\\([\[\]_*])", r"\1", text)
+    wrapped = []
     for _ in range(200):
         fixed = _wrap_missing_array(s)
         if fixed is None:
             break
-        s = fixed
-    return s
+        s, key = fixed
+        if key not in wrapped:
+            wrapped.append(key)
+    if wrapped:
+        kinds.append("配列の [ ] を補った（" + "・".join(wrapped) + "）")
+    return s, kinds
 
 
-def parse_registration_text(text: str) -> dict:
-    """登録テキストを dict にする。失敗時は ValueError（読めなかった位置を 1 行で添える）。
-    厳密に読めなければ repair_ai_json で直してから読み直す（直しても読めなければ元の位置を返す）。"""
+def repair_ai_json(text: str) -> str:
+    """repair_ai_json_report の文字列だけを返す。"""
+    return repair_ai_json_report(text)[0]
+
+
+def parse_registration_text_report(text: str):
+    """登録テキストを dict にする。戻り値: (dict, 形式の補正の種類の一覧)。失敗時は ValueError（読めなかった位置と、
+    次にすることを 1 行で）。厳密に読めなければ repair_ai_json_report で形式を直してから読み直す。
+    ``` の除去と全角の引用符の正規化は、①の出力の包み・端末の自動変換なので補正の一覧には入れない。"""
     cleaned = strip_code_fence(text)
     try:
-        data = json.loads(cleaned)
+        data, kinds = json.loads(cleaned), []
     except (json.JSONDecodeError, TypeError) as e:
         try:
-            data = json.loads(repair_ai_json(cleaned))
+            fixed, kinds = repair_ai_json_report(cleaned)
+            data = json.loads(fixed)
         except (json.JSONDecodeError, TypeError):
             pos = getattr(e, "pos", None)
             if pos is None:
-                raise ValueError(_PARSE_ERROR)
+                raise ValueError(f"{_PARSE_ERROR}{_PARSE_NEXT}")
             near = cleaned[max(0, pos - 20):pos + 20].replace("\n", " ")
-            raise ValueError(f"{_PARSE_ERROR}（{pos} 文字目付近:「{near}」）")
+            raise ValueError(f"{_PARSE_ERROR}（{pos} 文字目付近:「{near}」）{_PARSE_NEXT}")
     if not isinstance(data, dict):
-        raise ValueError(_PARSE_ERROR)
-    return data
+        raise ValueError(f"{_PARSE_ERROR}{_PARSE_NEXT}")
+    return data, kinds
+
+
+def parse_registration_text(text: str) -> dict:
+    """登録テキストを dict にする（補正の種類は捨てる）。失敗時は ValueError。"""
+    return parse_registration_text_report(text)[0]
 
 
 # ── ② seeker 標準形への正規化 ─────────────────────────────────

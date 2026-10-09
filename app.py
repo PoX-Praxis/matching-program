@@ -745,6 +745,68 @@ def get_owner_necessity(user_id):
     return {"necessity_text": n["necessity_text"], "evidence_span": n.get("evidence_span") or ""}
 
 
+# ── プロフィールの v5 の本文（指示書63 段階1 PR-C）─────────────────────────────────
+# 第三者に出す: 一行紹介・目的ごとの向かう先・手段・必要像（文・欠かせない要素）・関心。
+# 目的ごとの必要像は、必要像と同じ公開の日時の閾値に従う（閾値より前の版は第三者に出さない。本人には出す）。
+# 根拠・数値・生テキスト・generator は返さない。与え像（画面名「力になれること」）は本人だけ：
+# プライバシーポリシー §2 は AI が生成する情報を「必要像」とだけ書き、§4 にも与え像の行が無く、公開の対象として
+# 読めないため（指示書63 §4-1。文言は変えない）。
+def _public_since_passed(ts) -> bool:
+    from datetime import datetime, timezone
+    if not ts:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt >= _necessity_public_since()
+
+
+def _texts(items):
+    out = []
+    for x in items or []:
+        t = str((x.get("文") if isinstance(x, dict) else x) or "").strip()
+        if t:
+            out.append(t)
+    return out
+
+
+def _v5_profile_block(user_id, owner=False):
+    """v5 の人のプロフィールの本文。v5 でなければ None。
+    owner=True は本人用（閾値に関わらず必要像・目的ごとの根拠・力になれること。数値は出さない）。"""
+    try:
+        import v5
+        import necessities as _nec
+        doc = v5.get_doc(user_id, db_path=DB)
+        if not doc:
+            return None
+        live = {n["purpose_id"]: n for n in v5.live_necessities_v5(user_id, db_path=DB)}
+    except Exception:  # noqa: BLE001（表示は best-effort・照合や保存には影響させない）
+        return None
+    purposes = []
+    for p in doc.get("purposes") or []:
+        n = live.get(p.get("purpose_id"))
+        if n is None:
+            continue                                   # 取り下げた目的は出さない
+        needs = [{"text": str(x.get("文") or "").strip(), "must": bool(x.get("必須"))}
+                 for x in (n.get("sentences") or []) if str(x.get("文") or "").strip()]
+        public = _public_since_passed(n.get("created_at"))
+        item = {"dest": str(p.get("向かう先") or ""), "means": str(p.get("手段") or "")}
+        if owner:
+            item.update(needs=needs, needs_public=public,
+                        evidence=_nec.open_evidence(n["necessity_id"], db_path=DB) or "")
+        else:
+            item["needs"] = needs if public else None
+        purposes.append(item)
+    sm = doc.get("supporting_material") or {}
+    out = {"one_liner": str(sm.get("一行紹介") or ""), "purposes": purposes, "interests": _texts(doc.get("関心"))}
+    if owner:
+        out["offers"] = _texts((v5.latest_offer(user_id, db_path=DB) or {}).get("sentences"))
+    return out
+
+
 def _v4_profile_input(body):
     """body から profiles_v4 の flat フィールド＋supporting_raw を組む。"""
     return {
@@ -2324,6 +2386,9 @@ def api_profile(user_id):
     pub_nec = get_public_necessity(user_id)   # None なら足さない（既存分・未生成は出ない）
     if pub_nec:
         pv["necessity_text"] = pub_nec["necessity_text"]
+    v5_block = _v5_profile_block(user_id)      # v5 の人だけ（目的ごと・関心。力になれることは本人の API だけ）
+    if v5_block:
+        pv["v5"] = v5_block
     # 表示名（指示書30）。生 id は画面に出さない（指示書55 172）。未設定なら「表示名未設定」。
     # subject_id は画面の遷移用（URL）に返すだけで、表示には使わない。
     pv["subject_id"] = user_id
@@ -2347,6 +2412,16 @@ def api_my_necessity():
         return jsonify({"error": "id が必要です"}), 400
     nec = get_owner_necessity(my_id)
     return jsonify(nec or {})
+
+
+@app.get("/api/my/profile_v5")
+@login_required
+def api_my_profile_v5():
+    """本人向けの v5 の本文（目的ごとの必要像と根拠・力になれること・関心）。数値は出さない。v5 でなければ {}。
+    閾値より前の版の必要像も本人には出す（needs_public で「他の人には表示されない」と示す）。"""
+    me = require_self(request.args.get("id"))
+    _mark_noindex()
+    return jsonify(_v5_profile_block(me, owner=True) or {}), 200
 
 
 @app.get("/api/profile/<user_id>/edit")

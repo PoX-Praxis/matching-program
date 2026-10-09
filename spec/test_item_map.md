@@ -409,3 +409,17 @@
 | 285 | `test_t285_token_required` |
 | 286 | `test_t286_without_detail_unchanged` |
 | 番号なし | `test_t63b_v4_counterpart_full_state_and_display_field` |
+
+### PR-C（プロフィールの v5 表示）— `tests/test_t63c_profile_v5.py`
+
+| 項目 | テスト |
+|---|---|
+| 287 | `test_t287_purposes_interest_means_for_both_offers_owner_only` |
+| 288 | `test_t288_must_mark` |
+| 289 | `test_t289_threshold_hides_needs_from_third_parties` |
+| 290 | `test_t290_v4_profile_unchanged` |
+| 291 | `test_t291_no_evidence_numbers_raw_for_third_parties` |
+| 292 | `test_t292_trajectory_offers_not_for_third_parties` |
+| 293 | `test_t293_order_and_owner_page` |
+
+既存のテストの書き換え（指示書63 段階1 PR-C）: 216（マイページの 1 行の文言を「力になれること」の画面名に）

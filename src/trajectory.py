@@ -74,6 +74,10 @@ def _content(s, role, necessity_public):
         del c["necessity_text"]         # 必要像の公開閾値（指示書11・37 の既存の決定を維持）
         c.pop("purposes", None)         # 目的ごとの必要像・与え像も同じ閾値（生成された仮説の側）
         c.pop("offers", None)
+    if role == "third":
+        # 与え像（力になれること）は第三者に出さない（指示書63 段階1 PR-C）。プライバシーポリシー §2・§4 に
+        # 公開の対象として読める記述が無いため。本人・接続の相手には従来どおり出す。
+        c.pop("offers", None)
     if role == "owner":
         c["supporting"] = sup           # raw（生テキスト等）を含む全体は本人のみ
         c["evidence_span"] = nec.get("evidence_span", "")

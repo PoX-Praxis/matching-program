@@ -129,3 +129,29 @@ def audit_pair(mine, theirs):
         "a_to_b": [{"purpose_id": p.get("purpose_id"), **judge_direction(p, theirs)[2]} for p in mine["purposes"]],
         "b_to_a": [{"purpose_id": q.get("purpose_id"), **judge_direction(q, mine)[2]} for q in theirs["purposes"]],
     }
+
+
+def sentence_detail(purpose, other):
+    """監査用（指示書63 段階1 PR-B）: ある方向の文単位の対。判定は judge と同じ（数値は監査ルートにだけ出す）。
+
+    戻り値: {"sentences": [{need, must, best, g, passed}], "top3": [{need, best, g}], "must_all_paired"}
+      best は必要像の文に最も近い相手の文（与え像の文、v4・0 文の相手は現状の全文）。passed は judge(need, best)。
+      top3 は必要像の文 × 相手の文の全対のうち g の上位 3。g は g(cos)=(1+cos)/2 の小数 2 桁。
+    """
+    offers = other.get("offers") or []
+    rows, pairs = [], []
+    for n in purpose.get("needs") or []:
+        scored = [(o, guard(cosine(n["vec"], o["vec"]))) for o in offers]
+        for o, g in scored:
+            pairs.append((n["text"], o["text"], g))
+        if scored:
+            o, g = max(scored, key=lambda x: x[1])
+            rows.append({"need": n["text"], "must": bool(n.get("required")), "best": o["text"],
+                         "g": round(g, 2), "passed": judge(n["vec"], o["vec"])})
+        else:
+            rows.append({"need": n["text"], "must": bool(n.get("required")), "best": None, "g": None,
+                         "passed": False})
+    pairs.sort(key=lambda x: x[2], reverse=True)
+    return {"sentences": rows,
+            "top3": [{"need": a, "best": b, "g": round(g, 2)} for a, b, g in pairs[:3]],
+            "must_all_paired": all(r["passed"] for r in rows if r["must"])}

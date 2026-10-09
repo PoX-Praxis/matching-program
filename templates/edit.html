@@ -146,6 +146,15 @@ function switchTab(name) {
 
 async function init() {
   if (!myId) return;
+  // v5 のプロフィールは、AI で作り直した JSON を貼ると新しい版になる（ここでは編集しない。指示書63 段階1 PR-A）。
+  try {
+    const pr = await fetch("/api/my/purposes");
+    if (pr.ok && (await pr.json()).is_v5) {
+      document.getElementById("loading").innerHTML = `<p id="v5EditNotice">このプロフィールは、AI で作り直した JSON を貼ると、新しい版として記録されます。</p>
+        <a class="btn" href="/register">作り直す</a>`;
+      return;
+    }
+  } catch (_) { /* 判定できなければ従来どおり */ }
   const res = await fetch(`/api/profile/${encodeURIComponent(myId)}/edit`);
   // 401 → /login、403 → 権限表示（§4）。共通ハンドラで処理。
   if (PoX.handle(res, { on403: m => { document.getElementById("loading").innerHTML =

@@ -192,6 +192,15 @@ def verify_content_hash(necessity_id: str, db_path: str = "pox.db") -> dict:
     return {"ok": ok, "canon_version": canon}
 
 
+def _has_live_purpose_necessity(owner_ref: str, db_path: str) -> bool:
+    """目的（purpose_id）の付いた生きている必要像があるか。"""
+    with _connect(db_path) as con:
+        ids = [r[0] for r in con.execute(
+            "SELECT necessity_id FROM necessities WHERE owner_ref=%s AND purpose_id IS NOT NULL",
+            (owner_ref,)).fetchall()]
+    return any(is_live(i, db_path=db_path) for i in ids)
+
+
 # ── 発行（necessities 行 ＋ necessity.published イベント）────────────────────
 
 def _latest_for_owner(con, owner_ref: str):
@@ -227,6 +236,10 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
     if origin not in ("generated", "self_declared"):
         raise ValueError("origin は 'generated' | 'self_declared'")
 
+    if purpose_id is None and owner_kind == "subject" and _has_live_purpose_necessity(owner_ref, db_path):
+        # 防壁（指示書63 段階1 PR-A）: 目的の付いた必要像を持つ人に、目的の無い必要像を書かない。
+        # 書くと「持ち主の直前」を置き換え、最後の目的の必要像が照合から消える（段階0 §0-1）。
+        raise ValueError("目的の付いた必要像を持つ人に、目的の無い必要像は書けません（v5 は作り直した JSON を貼る）")
     necessity_id = f"nec_{uuid.uuid4().hex[:12]}"
     gate_u = clamp_gate_u(origin, necessity.get("gate_u"))
     numbers = {k: (gate_u if k == "gate_u" else necessity.get(k)) for k in _NUM_KEYS}

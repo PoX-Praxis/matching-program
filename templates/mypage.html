@@ -195,13 +195,27 @@ async function init() {
   }
 }
 
+/* 自分の目的・与え像の有無・v5 かどうか（本人のみ）。一度だけ取りに行く。 */
+let myPurposesP = null;
+function myPurposes() {
+  if (!myPurposesP) myPurposesP = fetch("/api/my/purposes").then(r => r.ok ? r.json() : null).catch(() => null);
+  return myPurposesP;
+}
+
 async function loadOfferNotice() {
-  try {
-    const r = await fetch("/api/my/purposes");
-    if (!r.ok) return;
-    const d = await r.json();
-    document.getElementById("offerNotice").style.display = d.has_offer ? "none" : "block";
-  } catch (_) { /* 表示しないだけ */ }
+  const d = await myPurposes();
+  if (!d) return;
+  document.getElementById("offerNotice").style.display = d.has_offer ? "none" : "block";
+  if (d.is_v5) applyV5Owner();
+}
+
+/* v5 の人には v4 の編集・再試行・見せ方の編集を出さない。変えるのは「作り直す」（JSON を貼ると新しい版）だけ
+   （指示書63 段階1 PR-A）。「本人より」の編集はそのまま（版を作らない）。 */
+const REBUILD_HTML = `<a id="rebuildLink" class="pv-btn" href="/register">作り直す</a>
+  <p class="pv-blkcap" id="rebuildNote">AI で作り直した JSON を貼ると、新しい版として記録されます。</p>`;
+function applyV5Owner() {
+  const a = document.getElementById("editLink");
+  if (a) a.outerHTML = REBUILD_HTML;
 }
 
 /* 自由記述の保存。既存 overrides を取得してマージ（headline/keys/trajectory を消さない）。
@@ -263,8 +277,15 @@ async function loadV4Status(id) {
   }
   if (s === "error") {
     el.className = "v4status err";
-    el.innerHTML = "準備に失敗しました。もう一度お試しください。"
-      + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">再試行</button>';
+    const mp = await myPurposes();
+    if (mp && mp.is_v5) {
+      // v5 は再試行（v4 の経路）を使わない。同じ JSON を貼り直すと準備をやり直せる。
+      el.innerHTML = "準備に失敗しました。AI で作り直した JSON をもう一度貼ると、やり直せます。"
+        + '<a class="restructure" href="/register">作り直す</a>';
+    } else {
+      el.innerHTML = "準備に失敗しました。もう一度お試しください。"
+        + '<button class="restructure" style="cursor:pointer" onclick="retryGeneration(\'' + id + '\', this)">再試行</button>';
+    }
     el.style.display = "block";
     return;
   }

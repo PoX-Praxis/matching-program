@@ -385,3 +385,16 @@
 | 番号なし | `test_t62_copy_guidance_and_parse_error_next_step`、`tests/test_json_repair.py`（#135） |
 
 既存のテストの書き換え（指示書62）: 238（比較の正規化を NFC と前後の空白だけに）・267（rev4）・205・239・260（根拠の文言）
+
+## 指示書63 段階1（v5 表示の整理）
+
+### PR-A（v5 の人の編集・再試行を止める）— `tests/test_t63a_v5_edit_guard.py`
+
+| 項目 | テスト |
+|---|---|
+| 277 | `test_t277_v5_edit_and_retry_blocked` |
+| 278 | `test_t278_v4_job_writes_nothing_for_v5` |
+| 279 | `test_t279_purposeless_necessity_refused_for_v5` |
+| 280 | `test_t280_v4_edit_and_retry_unchanged` |
+| 281 | `test_t281_mypage_shows_rebuild_for_v5` |
+| 番号なし | `test_t63a_v4_json_paste_refused_for_v5` |

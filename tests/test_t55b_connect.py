@@ -131,8 +131,9 @@ def test_t169_t171_directory_no_status_no_truncation(monkeypatch):
                         lambda i, db_path=None: {"headline": "h", "pursuing": long_will})
     monkeypatch.setattr(appmod, "get_public_necessity", lambda i: {"necessity_text": "い" * 300})
     r = _cli().get("/seekers").get_json()[0]
-    assert set(r) == {"id", "handle", "name", "one_liner", "will", "necessity"}
+    assert set(r) == {"id", "handle", "name", "one_liner", "will", "necessity", "purposes"}   # purposes は指示書63 段階1
     assert r["will"] == long_will and r["necessity"] == "い" * 300          # 171
+    assert r["purposes"] == [{"dest": long_will, "needs": [{"text": "い" * 300, "must": False}]}]   # 切り詰めない
     blob = json.dumps(r, ensure_ascii=False)
     assert "generation_status" not in blob and "preparing" not in blob and "error" not in blob   # 169
     html = _tpl("connect.html")

@@ -581,7 +581,8 @@ def post_seeker():
 def get_seekers():
     """登録者一覧（公開）。**母集団は v4（profiles_v4）**で、本人と紐づいている人だけ（指示書55 §4-4）。
 
-    返すのは id・表示名・一行紹介・意志・公開条件を満たす必要像の本文だけ（seeker 原文・数値は返さない）。
+    返すのは id・表示名・一行紹介・意志・公開条件を満たす必要像の本文と、目的ごとの向かう先・必要像の文
+    （v5。プロフィールと同じ公開の日時の閾値。指示書63 段階1）だけ（seeker 原文・数値・与え像は返さない）。
     - **本文をサーバーで切り詰めない**（以前の 40 文字切断をやめた。見た目の丸めは CSS 側）
     - **generation_status を返さない**（非本人に生成状態を出さない。指示書27）
     - ログイン中なら**自分を除く**（照合の結果と同じく、一覧も他の人の面）
@@ -596,13 +597,15 @@ def get_seekers():
     for i in ids:
         pv = get_profile_view(i, db_path=DB) or {}
         pub = get_public_necessity(i)          # 数値なし・日時閾値ゲート済み
+        prof = _card_profile(i, pv)            # 目的ごと（v5）・プロフィールと同じ閾値（指示書63 段階1 §4-5）
         rows.append({
             "id": i,
             "handle": hs.get(i),
             "name": names.get(i) or UNNAMED_LABEL,
-            "one_liner": _text_of(pv.get("headline")),
+            "one_liner": prof["one_liner"],
             "will": _text_of(pv.get("pursuing")),
             "necessity": (pub or {}).get("necessity_text") or "",
+            "purposes": prof["purposes"],
         })
     return jsonify(rows)
 
@@ -2036,7 +2039,10 @@ def _v5_match_response(store, me, model_tag):
     names = _resolve_names(ids, fallback=UNNAMED_LABEL)
     import handles
     hs = handles.get_many(ids, db_path=DB)
-    groups = {p["purpose_id"]: {"purpose_id": p["purpose_id"], "label": p["label"], "results": []}
+    # 「あなたの目的 N」（プロフィールの番号と同じ。指示書63 段階1 §4-5）。v4 の人（目的なし）は付けない。
+    plabel = {p["purpose_id"]: (_my_purpose_label(me, p) if p["purpose_id"] else None) for p in mine["purposes"]}
+    groups = {p["purpose_id"]: {"purpose_id": p["purpose_id"], "label": p["label"],
+                                "purpose_label": plabel[p["purpose_id"]], "results": []}
               for p in mine["purposes"]}
     them_need_me = {"purpose_id": "_theirs", "label": "", "results": []}
     for cid in ids:
@@ -2044,16 +2050,17 @@ def _v5_match_response(store, me, model_tag):
         if not theirs["purposes"]:
             continue                                     # 必要像の無い人は出さない
         r = match_pair(mine, theirs)
-        pv = None
+        prof = None
         done = offered.get(cid, set())
         for pid, res in r["by_purpose"].items():
             if pid in done:
                 continue                                 # その目的では申し出中
-            pv = pv or (get_profile_view(cid, db_path=DB) or {})
-            groups[pid]["results"].append(_card(cid, names, hs, pv, res, mine, theirs, pid))
+            prof = prof or _card_profile(cid)
+            groups[pid]["results"].append(_card(cid, names, hs, prof, res, mine, theirs, pid,
+                                                for_purpose=(f"{plabel[pid]}に" if plabel.get(pid) else None)))
         if r["theirs_need_me"] and not done:
-            pv = pv or (get_profile_view(cid, db_path=DB) or {})
-            them_need_me["results"].append(_card(cid, names, hs, pv, r["theirs_need_me"], mine, theirs, None))
+            prof = prof or _card_profile(cid)
+            them_need_me["results"].append(_card(cid, names, hs, prof, r["theirs_need_me"], mine, theirs, None))
     out_groups = [g for g in groups.values() if g["results"]]
     if them_need_me["results"]:
         out_groups.append(them_need_me)
@@ -2062,10 +2069,26 @@ def _v5_match_response(store, me, model_tag):
             "has_offer": mine["has_offer"], "match_run_id": f"run_{uuid.uuid4().hex[:8]}"}
 
 
-def _card(cid, names, hs, pv, res, mine, theirs, purpose_id):
+def _card(cid, names, hs, prof, res, mine, theirs, purpose_id, for_purpose=None):
     return {"candidate_id": cid, "handle": hs.get(cid), "name": names.get(cid) or UNNAMED_LABEL,
-            "one_liner": _text_of(pv.get("headline")), "purpose_id": purpose_id,
+            "one_liner": prof["one_liner"], "purposes": prof["purposes"], "purpose_id": purpose_id,
+            "for_purpose": for_purpose,
             "axis": res["axis"], "reasons": _reason_items(res["pairs"], mine, theirs)}
+
+
+def _card_profile(sid, pv=None):
+    """つながるのカード・登録者一覧の段（指示書63 段階1 §4-5）。第三者向けの公開の範囲だけ:
+    一行紹介（v5）／要約文（v4）、目的ごとの向かう先（v4 は意志）と必要像の文（欠かせない要素の印つき。
+    プロフィールと同じ公開の日時の閾値に従う）。力になれること（与え像）は出さない（PR-C のポリシーの確認による）。"""
+    pv = pv if pv is not None else (get_profile_view(sid, db_path=DB) or {})
+    v = _v5_profile_block(sid)
+    if v:
+        return {"one_liner": v["one_liner"] or _text_of(pv.get("headline")),
+                "purposes": [{"dest": p["dest"], "needs": p["needs"] or []} for p in v["purposes"]]}
+    pub = get_public_necessity(sid)              # 数値なし・日時閾値ゲート済み
+    return {"one_liner": _text_of(pv.get("headline")),
+            "purposes": [{"dest": _text_of(pv.get("pursuing")),
+                          "needs": [{"text": pub["necessity_text"], "must": False}] if pub else []}]}
 
 
 def _can_use_necessity(necessity_id, sid):

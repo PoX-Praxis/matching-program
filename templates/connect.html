@@ -29,8 +29,17 @@
   .dir-row { padding: 12px 4px; min-height: 76px; box-sizing: border-box; border-bottom: 1px solid #eee; font-size: 13px; }
   .dir-row .dname { text-decoration: none; font-weight: bold; }
   .dir-row .one { color: #333; margin-left: 8px; }
-  .dir-row .will { color: #777; margin-top: 2px; }
-  .dir-nec, .rec-nec { color: #1a6a3a; font-size: 12px; margin-top: 3px; }
+  /* カードの段（指示書63 段階1 §4-5）: すべての段にラベル。色だけで区別しない。 */
+  .cf { font-size: 13px; color: #333; line-height: 1.7; margin-top: 4px; }
+  .cf-k { display: block; font-size: 11.5px; font-weight: 700; color: #555; letter-spacing: .04em; }
+  .cf-needs { list-style: none; margin: 0; padding: 0; }
+  .cf-needs li { padding: 1px 0; }
+  .cf-must { display: inline-block; font-size: 11px; font-weight: 700; color: #1f3a5f; border: 1px solid #b9c6d6;
+             border-radius: 3px; padding: 0 5px; margin-right: 6px; line-height: 1.6; }
+  .cf-more { font-size: 12.5px; color: #555; }
+  .cf-more > summary { cursor: pointer; color: #1a3a5c; }
+  .cf-for { font-size: 12px; font-weight: 700; color: #1f3a5f; }
+  .inbox-note { font-size: 12.5px; color: #555; margin: 6px 0 0; }
   .muted { color: #888; font-size: 13px; }
 </style>
 {% include "_match_reason.html" %}
@@ -44,6 +53,9 @@
 <h2>照合の結果</h2>
 <div id="recStatus"></div>
 <div id="recCards"></div>
+<!-- 照合の結果の下に常に出す（指示書63 段階1 §4-5。申し出が届いている相手は照合の結果から外している）。 -->
+<p class="inbox-note" id="inboxNote" style="display:none">申し出が届いている相手は、ここではなく
+  <a href="/inbox">受信箱</a>に出ます。</p>
 
 <h2>登録者一覧</h2>
 <p class="sub">気になる人のプロフィールから直接つながれます。</p>
@@ -66,11 +78,36 @@ function profileHref(id, handle) {
   return handle ? `/u/${encodeURIComponent(handle)}` : `/profile/${encodeURIComponent(id)}`;
 }
 
+/* ── カードの段（照合の結果・登録者一覧とも。指示書63 段階1 §4-5）──────────────
+   目指していること（目的ごと。v4 は意志）・必要としている相手（欠かせない要素の文を先に、最大 2 文。残りは全文で）。
+   力になれること（与え像）は出さない（プライバシーポリシーの確認により、本人の画面だけ）。 */
+const MUST_TAG = `<span class="cf-must">欠かせない要素</span>`;
+function needsHtml(needs) {
+  const xs = [...needs].sort((a, b) => (b.must ? 1 : 0) - (a.must ? 1 : 0));   // 欠かせない要素を先に（同じ印の中は元の順）
+  const li = (n, t) => `<li>${n.must ? MUST_TAG : ""}${escHtml(t)}</li>`;
+  if (xs.length === 1) {                                     // v4 は必要像の全文が 1 つ: 文の区切りまでを出し、残りは全文で
+    const q = PoXReason.cut(xs[0].text);
+    return `<ul class="cf-needs">${li(xs[0], q.head + (q.rest ? "…" : ""))}</ul>`
+      + (q.rest ? `<details class="cf-more"><summary>全文を見る</summary>${escHtml(q.rest)}</details>` : "");
+  }
+  const head = xs.slice(0, 2), rest = xs.slice(2);
+  return `<ul class="cf-needs">${head.map(n => li(n, n.text)).join("")}</ul>`
+    + (rest.length ? `<details class="cf-more"><summary>全文を見る</summary><ul class="cf-needs">${
+        rest.map(n => li(n, n.text)).join("")}</ul></details>` : "");
+}
+function profileRows(r) {
+  return (r.purposes || []).map(p =>
+    (p.dest ? `<div class="cf"><span class="cf-k">目指していること</span>${escHtml(p.dest)}</div>` : "")
+    + ((p.needs || []).length ? `<div class="cf"><span class="cf-k">必要としている相手</span>${needsHtml(p.needs)}</div>` : "")
+  ).join("");
+}
+
 /* ── 照合の結果（v4 照合）── 4 状態: 未ログイン／必要像なし／該当なし／該当あり */
 async function loadRecommendations() {
   const status = document.getElementById("recStatus");
   const cards = document.getElementById("recCards");
   cards.innerHTML = "";
+  document.getElementById("inboxNote").style.display = sid ? "" : "none";   // 0 件の画面だけでなく常に
   if (!sid) {
     status.innerHTML = `<div class="notice">ログインすると、あなたの必要像から照合できます。
       下の登録者一覧は、ログインしなくても見られます。<a href="/login?next=%2Fconnect">ログイン →</a></div>`;
@@ -121,7 +158,7 @@ async function loadRecommendations() {
   let k = 0;
   cards.innerHTML = groups.map(g => {
     const head = g.purpose_id === "_theirs" ? `<h3 class="grp">あなたを必要としている相手</h3>`
-               : (g.label ? `<h3 class="grp">目的: ${escHtml(g.label)}</h3>` : "");
+               : (g.label ? `<h3 class="grp">${escHtml(g.purpose_label || "目的")}: ${escHtml(g.label)}</h3>` : "");
     return head + (g.results || []).map(r => {
       const i = k++;
       const cid = String(r.candidate_id);
@@ -129,9 +166,11 @@ async function loadRecommendations() {
       const pur = (r.purpose_id && r.purpose_id !== "_theirs") ? r.purpose_id : "";
       // 申し出の文の入力欄はプロフィールからの申し出と同じ（任意・400 字。経路で有無が変わらない）
       return `<div class="card">
+        ${r.for_purpose ? `<div class="cf-for">${escHtml(r.for_purpose)}</div>` : ""}
         <a class="cname" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
         ${one}
-        ${PoXReason.reasonHtml(r)}
+        ${profileRows(r)}
+        <div class="cf"><span class="cf-k">なぜこの人か</span>${PoXReason.reasonHtml(r)}</div>
         ${PoXReason.composeHtml(`offerMsg_${i}`)}
         <div><button class="btn-offer" data-to="${escHtml(cid)}" data-purpose="${escHtml(pur)}"
              data-msg="offerMsg_${i}" onclick="offer(this)">つながりたいと伝える</button></div>
@@ -191,7 +230,7 @@ async function retryGeneration(btn) {
   }
 }
 
-/* ── 登録者一覧（GET /seekers = v4 の登録者。表示名・一行紹介・意志・公開の必要像）── */
+/* ── 登録者一覧（GET /seekers。表示名・一行紹介・目的ごとの向かう先と公開の必要像）── */
 let dirRows = [];
 async function loadDirectory() {
   const el = document.getElementById("directory");
@@ -214,8 +253,7 @@ function renderDirectory() {
   el.innerHTML = rows.map(r => `<div class="dir-row">
       <div><a class="dname" href="${profileHref(r.id, r.handle)}">${escHtml(r.name)}</a>
         ${r.one_liner ? `<span class="one">${escHtml(r.one_liner)}</span>` : ""}</div>
-      ${r.will ? `<div class="will clamp-2">${escHtml(r.will)}</div>` : ""}
-      ${r.necessity ? `<div class="dir-nec clamp-2">必要としている相手: ${escHtml(r.necessity)}</div>` : ""}
+      ${profileRows(r)}
     </div>`).join("");
 }
 

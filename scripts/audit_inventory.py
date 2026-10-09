@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """埋め込みとアカウントの棚卸し（指示書55 段階0-2 E-1〜E-3・B-2・B-5）。読み取りのみ（DB に書かない）。
 
-HTTP からも同じ処理を実行できる: GET /ledger/audit/inventory（X-Anchor-Token ヘッダ必須）。
+HTTP のルート（GET /ledger/audit/inventory）は使用後に閉じた（指示書58 §2-4）。いまは CLI だけ。
 
 返すもの（判定書 §5-1 の条件: 読み取りのみ・スコアを返さない・個人の履歴を横断して並べない）
   embedding    … 実行中の BACKEND / MODEL_TAG / FULL_DIM と、profile_vectors の列の宣言次元
@@ -46,7 +46,7 @@ def _column_dim(db_path):
 
 
 def run_inventory(*, db_path="pox.db") -> dict:
-    """棚卸しの本体（CLI と GET /ledger/audit/inventory の共通）。読み取りのみ。"""
+    """棚卸しの本体（CLI）。読み取りのみ。"""
     out = {"embedding": {
         "backend": EC.BACKEND,
         "backend_env_set": "POX_EMBED_BACKEND" in os.environ,

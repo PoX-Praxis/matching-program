@@ -1,7 +1,7 @@
-"""GET /ledger/audit/inventory — 埋め込みとアカウントの棚卸し（指示書55 段階0-2 E-1〜E-3・B-2・B-5）。
+"""埋め込みとアカウントの棚卸し（scripts/audit_inventory.py。指示書55 段階0-2 E-1〜E-3・B-2・B-5）。
 
 判定書 §5-1 の条件: 読み取りのみ・スコアを返さない・個人の履歴を横断して並べない。
-認証は /ledger/audit/legacy-boundary と同じ（X-Anchor-Token。無し・不一致は 404）。
+HTTP のルート（GET /ledger/audit/inventory）は指示書58 §2-4 で閉じた。処理は CLI の本体で検証する。
 """
 import json, os, sys, tempfile
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -32,17 +32,22 @@ def _setup(monkeypatch):
     return me
 
 
-def _get(token=TOKEN):
-    headers = {"X-Anchor-Token": token} if token is not None else {}
-    return appmod.app.test_client().get(URL, headers=headers)
+class _R:
+    def __init__(self, d):
+        self._d = d
+
+    def get_json(self):
+        return self._d
 
 
-def test_inventory_requires_anchor_token(monkeypatch):
+def _get():
+    from scripts.audit_inventory import run_inventory
+    return _R(json.loads(json.dumps(run_inventory(db_path=appmod.DB), ensure_ascii=False, default=str)))
+
+
+def test_inventory_http_route_is_closed(monkeypatch):
     _setup(monkeypatch)
-    assert _get(token=None).status_code == 404
-    assert _get(token="wrong").status_code == 404
-    assert _get(token=TOKEN).status_code == 200
-    assert appmod.app.test_client().post(URL, headers={"X-Anchor-Token": TOKEN}).status_code == 405  # 読み取りのみ
+    assert appmod.app.test_client().get(URL, headers={"X-Anchor-Token": TOKEN}).status_code == 404
 
 
 def test_inventory_reports_embedding_resolution(monkeypatch):

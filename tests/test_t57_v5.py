@@ -20,6 +20,7 @@ STORY = "私は仕組みを作るのが好きです。事業を一緒に立ち�
 
 def _doc(**over):
     d = {
+        "id": "kaoru_2026",
         "schema_version": "v5",
         "purposes": [
             {"purpose_id": "p1", "向かう先": "自然に辿り着ける状態を実現したい。", "手段": "照合の仕組みを根づかせる。",
@@ -34,7 +35,7 @@ def _doc(**over):
                  {"文": "照合の仕組みと、そこに集まる人と機会という場を提供できる。", "型": "資源"}],
         "関心": [{"文": "生まれた環境の構造が自由なつながりを阻むことに関心がある。"}],
         "現状": {"持っているもの": "試作", "できること_型": "形にする", "縛られているもの": "", "未分類": ""},
-        "supporting_material": {"一行紹介": "つなぐ人", "生テキスト": [STORY]},
+        "supporting_material": {"一行紹介": "つなぐ人", "要約文": "仕組みを作る人。", "生テキスト": [STORY]},
     }
     d.update(over)
     return d
@@ -81,7 +82,7 @@ def _confirm(sid, doc, mapping=None, sync_vectors=True, monkeypatch=None):
     (lambda d: d["purposes"][0].update(手段=""), "別々"),
     (lambda d: d["purposes"][0].update(向かう先="そのために実現したい。"), "手段が混ざって"),
     (lambda d: d["purposes"][0]["必要像"].extend([{"文": "x", "必須": True, "型": "資源"}] * 2), "必須"),
-    (lambda d: d.update(与え像=[]), "与え像"),
+    (lambda d: d.update(与え像=[{"文": f"関われる{i}。", "型": "関わり方"} for i in range(6)]), "与え像は 0〜5"),
     (lambda d: d["与え像"][0].update(型="能力"), "型"),
     (lambda d: d["purposes"][1]["必要像"][0].update(文="分析ができる方。"), "求人票"),
     (lambda d: d["purposes"][0].update(根拠="語りに無い文章。"), "根拠"),
@@ -104,11 +105,11 @@ def test_t205_valid_v5_draft_saved_and_extra_numbers_dropped(db):
     assert d["v5"] is True and "p_sharpness" not in d["payload"]["purposes"][0]["数値"]      # 規則 7
 
 
-def test_t205_narrative_can_be_given_separately(db):
-    d = _doc(supporting_material={"一行紹介": "x"})              # 語りが JSON に無い
-    assert _cli("u_a").post("/v4/drafts", json={"raw_text": json.dumps(d, ensure_ascii=False)}).status_code == 400
+def test_t205_evidence_checked_against_raw_text(db):
+    """根拠の検査は supporting_material.生テキストで行う（「本人の語り」の別欄は廃止。指示書60 §2-2）。"""
+    d = _doc(supporting_material={"一行紹介": "x", "要約文": "y", "生テキスト": ["別の話。"]})
     r = _cli("u_a").post("/v4/drafts", json={"raw_text": json.dumps(d, ensure_ascii=False), "narrative": STORY})
-    assert r.status_code == 201
+    assert r.status_code == 400 and "根拠が生テキストに見つかりません" in r.get_json()["error"]
 
 
 # ── 206 目的の id はサーバーが振る・不変 ───────────────────────────────────────────
@@ -328,12 +329,12 @@ def test_t57f_exclusion_is_per_purpose(world):
     assert all(r["candidate_id"] != "c1" for g in d["groups"] for r in g["results"])
 
 
-def test_t57f_register_prompt_is_v5():
-    """登録画面のプロンプトは v5 の文面（2026-10-06）。v4 の JSON も受け付ける旨を残す。"""
-    reg = TPL("register.html")
-    assert 'id="promptV5"' in reg and '"schema_version": "v5"' in reg and "■ 本人の語り" in reg
-    assert "求人票の文体を禁止" in reg.replace("**", "") and "promptInterview" not in reg
-    assert "v4）で作った JSON も" in reg
+def test_t223_register_prompts_are_v5_revision2():
+    """登録画面のプロンプトは v5 改訂2（A 対話・B 自分で書く。指示書60 で書き換え）。v4 の JSON も受け付ける旨を残す。"""
+    html = appmod.app.test_client().get("/register").get_data(as_text=True)
+    assert 'id="promptA"' in html and 'id="promptB"' in html and "promptV5" not in html
+    assert '"schema_version": "v5"' in html.replace("&#34;", '"')
+    assert "v4 の JSON も今までどおり登録できます" in html
 
 
 # ── 217 軌跡 ──────────────────────────────────────────────────────────────────

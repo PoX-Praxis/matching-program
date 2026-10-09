@@ -2,7 +2,7 @@
 """
 ①v5（目的ごとの必要像・与え像・文単位）の受信・保存（指示書57 段2）。
 
-- 受信の検証規則（文面 2026-10-06 の 10 項目）: validate(doc, narrative)
+- 受信の検証規則（文面 2026-10-06 の 10 項目＋改訂2 の 11・12。指示書60）: validate(doc)
 - 目的の id はサーバーが振る（不変）。①の purpose_id は対応付けのヒントにだけ使う
 - 与え像は版ごとに通常DB（offers）。offer_hash を各目的の必要像の c3 ハッシュに含める（ピン留め・案 A）
 - 文単位のベクトル（sentence_vectors）: 必要像の文（query）と与え像の文（passage）を個別に埋め込む
@@ -10,6 +10,7 @@
 """
 import json
 import re
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -50,34 +51,47 @@ def is_v5(doc) -> bool:
     return isinstance(doc, dict) and str(doc.get("schema_version") or "") == "v5"
 
 
-# ── 受信の検証（文面の 10 項目）────────────────────────────────────────────────
+# ── 受信の検証（改訂2 §3。指示書60）──────────────────────────────────────────────
 def _norm(s: str) -> str:
-    return re.sub(r"\s+", "", str(s or ""))
+    """検証9 の比較用の派生キー（**比較のときだけ**使う。保存はしない＝指示書39 §1-2）。
+    Unicode NFKC（全角半角の統一）→ 空白・改行・タブの除去 → 句読点（Unicode の P 類）の除去。"""
+    t = unicodedata.normalize("NFKC", str(s or ""))
+    return "".join(c for c in t if not c.isspace() and not unicodedata.category(c).startswith("P"))
 
 
-def narrative_of(doc: dict, narrative=None) -> str:
-    """本人の語り（生テキスト）。登録画面で別に貼られた語りを優先し、無ければ supporting_material から。"""
-    if narrative:
-        return str(narrative)
+def raw_texts(doc: dict) -> list:
+    """supporting_material.生テキスト（本人の素の言葉。根拠の検査用・本人のみ）。文字列 1 つでも受ける。"""
     raw = ((doc or {}).get("supporting_material") or {}).get("生テキスト")
-    if isinstance(raw, list):
-        return "\n".join(str(x) for x in raw)
-    return str(raw or "")
+    if isinstance(raw, str):
+        raw = [raw]
+    return [str(x) for x in raw] if isinstance(raw, list) else []
 
 
-def validate(doc: dict, narrative: str = None):
-    """検証規則（文面 §受信側）。通らなければ (False, 理由 1 行)。通れば (True, 正規化した doc)。
+def validate(doc: dict):
+    """検証規則（改訂2 §3）。通らなければ (False, 理由 1 行)。通れば (True, doc)。
 
-    1 schema_version / 2 目的の数 / 3 向かう先と手段（混入）/ 4 必要像の文数・必須の数 / 5 与え像の文数 /
-    6 型 / 7 p_sharpness・gamma は捨てる / 8 求人票の文体 / 9 根拠が語りに実在 /
-    10 purpose_id はヒント（ここでは触らない。assign_purposes が振り直す）
+    1 schema_version / 2 目的の数 / 3 向かう先と手段（混入）/ 4 必要像の文数・必須の数 / 5 与え像の文数（0〜5）/
+    6 型 / 7 p_sharpness・gamma は捨てる（拒否しない）/ 8 求人票の文体（根拠＝本人の引用は対象外）/
+    9 根拠が生テキストに実在（正規化した派生キーで比較）/ 10 purpose_id はヒント（assign_purposes が振り直す）/
+    11 一行紹介・要約文・生テキストが空でない / 12 id（ハンドル）がある
     """
     if not is_v5(doc):
         return False, "schema_version が v5 ではありません"
+    if not str(doc.get("id") or "").strip():
+        return False, "id（ハンドル）がありません"
+    sm = doc.get("supporting_material") if isinstance(doc.get("supporting_material"), dict) else {}
+    texts = raw_texts(doc)
+    for k in ("一行紹介", "要約文"):
+        if not str(sm.get(k) or "").strip():
+            return False, f"supporting_material の「{k}」がありません"
+    if not any(t.strip() for t in texts):
+        return False, "supporting_material の「生テキスト」がありません"
     purposes = doc.get("purposes")
     if not isinstance(purposes, list) or not (1 <= len(purposes) <= MAX_PURPOSES):
         return False, f"目的（purposes）は 1〜{MAX_PURPOSES} 件にしてください"
-    story = _norm(narrative_of(doc, narrative))
+    story = _norm("".join(texts))
+    for k in DROP_KEYS:                                   # 規則 7: どこにあっても捨てる
+        doc.pop(k, None)
     for i, p in enumerate(purposes, 1):
         if not isinstance(p, dict):
             return False, f"目的 {i} の形が正しくありません"
@@ -98,26 +112,40 @@ def validate(doc: dict, narrative: str = None):
                 return False, f"目的 {i}: 型は {'／'.join(TYPES)} のいずれかです"
         ev = str(p.get("根拠") or "").strip()
         if ev and _norm(ev) not in story:
-            return False, f"目的 {i}: 根拠が本人の語りに見つかりません（引用は原文のまま）"
+            return False, f"目的 {i}: 根拠が生テキストに見つかりません（引用は原文のまま）"
         for k in DROP_KEYS:
-            (p.get("数値") or {}).pop(k, None)
-    offers = doc.get("与え像")
-    if not isinstance(offers, list) or not (1 <= len(offers) <= MAX_SENTENCES):
-        return False, f"与え像は 1〜{MAX_SENTENCES} 文にしてください"
+            p.pop(k, None)
+            if isinstance(p.get("数値"), dict):
+                p["数値"].pop(k, None)
+    offers = doc.get("与え像", [])
+    if not isinstance(offers, list) or len(offers) > MAX_SENTENCES:
+        return False, f"与え像は 0〜{MAX_SENTENCES} 文にしてください"
     for x in offers:
         if not isinstance(x, dict) or not str(x.get("文") or "").strip():
             return False, "与え像の文が空です"
         if x.get("型") not in TYPES:
             return False, f"与え像の型は {'／'.join(TYPES)} のいずれかです"
-    blob = json.dumps({"p": purposes, "o": offers}, ensure_ascii=False)
+    # 規則 8 は AI が書いた文（向かう先・手段・必要像・与え像）だけを見る。根拠は本人の言葉の引用なので対象外。
+    written = [{k: v for k, v in p.items() if k not in ("根拠", "数値")} for p in purposes]
+    blob = json.dumps({"p": written, "o": offers}, ensure_ascii=False)
     for w in FORBIDDEN:
         if w in blob:
             return False, f"求人票の文体（「{w}」）は使えません"
     return True, doc
 
 
+def keep_offers(doc: dict, keep) -> dict:
+    """下書きの確認で本人が残した与え像だけにする（指示書60 §3）。keep は残す文の番号（0 始まり）の列。
+    **外すだけ**（足す・書き換えはできない）。範囲外・重複は無視し、①の順を保つ。keep が None なら全部残す。"""
+    if keep is None:
+        return doc
+    offers = list(doc.get("与え像") or [])
+    idx = {int(i) for i in keep if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(offers)}
+    return {**doc, "与え像": [x for i, x in enumerate(offers) if i in idx]}
+
+
 # ── v4 の受付に渡す形（profiles_v4 と全文ベクトルの互換）─────────────────────────
-def to_flat(doc: dict, narrative: str = None) -> dict:
+def to_flat(doc: dict) -> dict:
     """v5 を、既存の v4 受付（profiles_v4・全文ベクトル・スナップショット）に渡すフラットな形にする。
 
     全文ベクトル（互換）は最初の目的の必要像で作る。目的ごとの照合は文単位ベクトルで行う。
@@ -125,10 +153,7 @@ def to_flat(doc: dict, narrative: str = None) -> dict:
     purposes = doc.get("purposes") or []
     first = purposes[0] if purposes else {}
     state = doc.get("現状") or {}
-    sm = dict(doc.get("supporting_material") or {})
-    story = narrative_of(doc, narrative)
-    if story:
-        sm["生テキスト"] = [story]
+    sm = dict(doc.get("supporting_material") or {})       # 生テキスト・一行紹介・要約文などは原文のまま渡す
     nums = first.get("数値") or {}
     return {
         "will_text": "\n".join(str(p.get("向かう先") or "") for p in purposes),

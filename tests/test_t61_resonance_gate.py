@@ -317,7 +317,7 @@ def test_t260_slash_part_missing_rejected(db):
     d = _doc()
     d["purposes"][0]["根拠"] = "仕組みを作るのが好きです／語りに無い一文"
     r = _draft("u_a", d)
-    assert r.status_code == 400 and "根拠が生テキストに見つかりません" in r.get_json()["error"]
+    assert r.status_code == 400 and "が生テキストに見つかりません" in r.get_json()["error"]
 
 
 def test_t261_slash_evidence_saved_verbatim(db):

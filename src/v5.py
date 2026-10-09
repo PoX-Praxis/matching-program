@@ -28,8 +28,9 @@ DROP_KEYS = ("p_sharpness", "gamma", "alpha", "beta")   # 規則 7: あれば捨
 # 規則 14: どのプロンプトで作ったか（_meta.source）。無いもの＝改訂2（"v5r2"）として扱う（拒否しない）。
 SOURCES = ("v5r3-A", "v5r3-B", "v5r2-A", "v5r2-B")
 SOURCE_DEFAULT = "v5r2"
-# 規則 9: 根拠が「／」「/」でつながれていたら、比較のときだけ分ける（保存は原文のまま）
-_EVIDENCE_SPLIT = re.compile(r"[／/]")
+# 規則 9: 根拠が「／」「/」・改行でつながれていたら、比較のときだけ分ける（保存は原文のまま）。
+# 改行は、AI が複数の引用を "\n" でつないで出した実例（2026-10）による。各部分が生テキストにあれば通す。
+_EVIDENCE_SPLIT = re.compile(r"[／/\r\n]")
 
 
 def _now() -> str:
@@ -124,9 +125,11 @@ def validate(doc: dict):
             if x.get("型") not in TYPES:
                 return False, f"目的 {i}: 型は {'／'.join(TYPES)} のいずれかです"
         ev = str(p.get("根拠") or "").strip()
-        parts = [_norm(x) for x in _EVIDENCE_SPLIT.split(ev)] if ev else []
-        if any(x and x not in story for x in parts):
-            return False, f"目的 {i}: 根拠が生テキストに見つかりません（引用は原文のまま）"
+        for part in (_EVIDENCE_SPLIT.split(ev) if ev else []):
+            if _norm(part) and _norm(part) not in story:
+                head = part.strip()
+                head = head[:20] + ("…" if len(head) > 20 else "")
+                return False, f"目的 {i}: 根拠「{head}」が生テキストに見つかりません（引用は原文のまま）"
         for k in DROP_KEYS:
             p.pop(k, None)
             if isinstance(p.get("数値"), dict):

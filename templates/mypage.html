@@ -65,7 +65,7 @@
   <!-- 照合の準備状態（所有者のみ・指示書08） -->
   <div id="v4Status" class="v4status" style="display:none"></div>
   <!-- v4 互換（指示書57）: 与え像が無い間はマイページに 1 行常設＋再構造化の導線 -->
-  <div id="offerNotice" class="v4status" style="display:none">与え像が未設定のため、現状で照合しています。
+  <div id="offerNotice" class="v4status" style="display:none">「力になれること」が未設定のため、現状で照合しています。
     <a href="/register">再構造化する →</a></div>
 
   <!-- ProfileView 本体（表示名編集・背景〜必要としている相手〜本人より・編集リンク）。
@@ -166,6 +166,13 @@ async function init() {
       return;
     }
     const pv = await profileRes.json();
+    // v5 の人は本人用の本文（目的ごとの根拠・閾値より前の必要像・力になれること）に差し替える（指示書63 段階1 PR-C）。
+    if (pv.v5) {
+      try {
+        const r = await fetch(`/api/my/profile_v5?id=${encodeURIComponent(myId)}`);
+        if (r.ok) { const own = await r.json(); if (own && own.purposes) pv.v5 = own; }
+      } catch (_) {}
+    }
 
     // 接続（vessels）は本人限定の付随情報。失敗しても本体表示は止めない。
     let vessels = [];

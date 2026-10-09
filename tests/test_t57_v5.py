@@ -254,7 +254,7 @@ def test_t216_v4_counterpart_matched_by_state(world):
     c1 = next(r for g in d["groups"] for r in g["results"] if r["candidate_id"] == "c1")
     assert c1["reasons"][0]["offer_label"] == "相手の現状"            # 与え像が無い人は現状で照合
     assert _cli("c1").get("/api/my/purposes").get_json() == {"purposes": [], "has_offer": False, "is_v5": False}
-    assert "与え像が未設定のため、現状で照合しています" in TPL("mypage.html")
+    assert "「力になれること」が未設定のため、現状で照合しています" in TPL("mypage.html")   # 画面名（指示書63 段階1 §0-5）
 
 
 def test_t218_wording(world):

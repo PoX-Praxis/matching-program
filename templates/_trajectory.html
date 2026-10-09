@@ -12,6 +12,7 @@
   .tj-vh .src { font-weight:normal; color:#888; margin-left:6px; font-size:11.5px; }
   .tj-body { font-size:13px; line-height:1.7; margin:6px 0; }
   .tj-body .k { color:#666; font-size:12px; margin-right:4px; }
+  .tj-body .tj-must { font-size:11px; font-weight:700; color:#1f3a5f; border:1px solid #b9c6d6; border-radius:3px; padding:0 5px; margin-right:6px; }
   .tj-muted { color:#888; font-size:12.5px; }
   .tj-br { list-style:none; margin:6px 0 0; padding:0; }
   .tj-br li { font-size:12.5px; padding:3px 0 3px 12px; position:relative; }
@@ -63,9 +64,9 @@ window.PoXTrajectory = (function(){
     if (c.purposes && c.purposes.length) {
       // ①v5: 目的ごとの必要像（指示書57）
       c.purposes.forEach(p => rows.push(`<div><span class="k">目的</span>${esc(p.label)}<ul>`
-        + (p.needs || []).map(n => `<li>${n["必須"] ? "必須" : "歓迎"}: ${esc(n["文"])}</li>`).join("") + `</ul></div>`));
+        + (p.needs || []).map(n => `<li>${n["必須"] ? '<span class="tj-must">欠かせない要素</span>' : ""}${esc(n["文"])}</li>`).join("") + `</ul></div>`));
       if (c.offers && c.offers.length)
-        rows.push(`<div><span class="k">与え像</span><ul>${c.offers.map(o => `<li>${esc(o)}</li>`).join("")}</ul></div>`);
+        rows.push(`<div><span class="k">力になれること</span><ul>${c.offers.map(o => `<li>${esc(o)}</li>`).join("")}</ul></div>`);
     } else if (c.necessity_text) rows.push(`<div><span class="k">必要としている相手</span>${esc(c.necessity_text)}</div>`);
     if (opts.owner && c.evidence_span) rows.push(`<div><span class="k">根拠</span>${esc(c.evidence_span)}</div>`);
     return `<div class="tj-body">${rows.join("") || '<span class="tj-muted">—</span>'}</div>`;

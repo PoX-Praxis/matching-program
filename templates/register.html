@@ -212,7 +212,9 @@ function repairNoticeHtml(draft) {
 /* 下書きの内容を確認してから確定する（意志・現状・必要像・数値を表示）。 */
 function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
-/* ①v5 の下書きの確認（指示書57）: 目的ごとの必要像（必須／歓迎）・与え像、前の目的との対応（本人が確認）。 */
+/* ①v5 の下書きの確認（指示書57）: 目的ごとの必要像・与え像、前の目的との対応（本人が確認）。
+   画面では「必須」を「欠かせない要素」の印で示し、「歓迎」には印を付けない（指示書63 段階1 §0-4）。
+   与え像の画面名は「力になれること」（同 §0-5）。JSON のキーは変えない。 */
 let v5PreviewShown = false;   // v5 の確認画面のときだけ、残した与え像の番号を確定に添える
 function renderV5Preview(draft) {
   v5PreviewShown = true;
@@ -228,7 +230,7 @@ function renderV5Preview(draft) {
     h += `<div style="border-top:1px solid #eee;padding-top:8px;margin-top:8px">`;
     h += `<p style="margin:4px 0"><b>目的 ${i + 1}</b>: ${esc(pu["向かう先"] || "")}<br><span style="font-size:12px;color:#666">手段: ${esc(pu["手段"] || "")}</span></p>`;
     h += `<ul style="margin:4px 0 6px">` + (pu["必要像"] || []).map(x =>
-      `<li>${x["必須"] ? "<b>必須</b>" : "歓迎"}: ${esc(x["文"])}</li>`).join("") + `</ul>`;
+      `<li>${x["必須"] ? '<b style="font-size:11px;color:#1f3a5f;border:1px solid #b9c6d6;border-radius:3px;padding:0 5px;margin-right:6px">欠かせない要素</b>' : ""}${esc(x["文"])}</li>`).join("") + `</ul>`;
     if (existing.length) {
       // 再構造化: 前の目的との対応を本人が確かめる（取れなければ新しい目的として追加。古い目的は残る）
       const opts = existing.map(e => `<option value="${esc(e.purpose_id)}" ${mapping[hint] === e.purpose_id ? "selected" : ""}>前の目的: ${esc(e.label || e.purpose_id)}</option>`).join("");
@@ -239,13 +241,13 @@ function renderV5Preview(draft) {
   });
   // 与え像の確認（指示書60 §3）: 各文を示し、提供したくない文は外せる。**外す操作だけ**（足す・書き換える欄は無い）。
   const offers = p["与え像"] || [];
-  h += `<p style="margin:10px 0 4px"><b>与え像</b></p>`;
+  h += `<p style="margin:10px 0 4px"><b>力になれること</b></p>`;
   if (offers.length) {
     h += `<p id="offerNote" style="font-size:12px;color:#555;margin:2px 0 4px">AI があなたの語りから読み取った『力になれること』です。この形で提供したくない文は外してください。文を足すことはできません。</p>`;
     h += `<ul style="margin:4px 0 8px;list-style:none;padding-left:0">` + offers.map((x, i) =>
       `<li><label><input type="checkbox" class="offerKeep" data-i="${i}" checked> ${esc(x["文"])}</label></li>`).join("") + `</ul>`;
   }
-  h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">すべて外した場合（または与え像が無い場合）は、現状で照合します。</p>`;
+  h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">すべて外した場合（または「力になれること」が無い場合）は、現状で照合します。</p>`;
   h += `<p style="font-size:12px;color:#666;margin:6px 0">対応を選ばなかった前の目的は「取り下げ」になり、記録としては残ります。</p>`;
   el.className = "";
   el.innerHTML = h + handleBoxHtml(draft) + confirmButtonHtml(draft) + `</div>`;

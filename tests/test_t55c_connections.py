@@ -1,8 +1,9 @@
-"""指示書55-4 #122-a — 接続のうち台帳に触らない部分: 取り下げ・申し出の文・DM は接続後。
+"""指示書55-2 PR-C — 接続: 取り下げ・申し出の文・DM は接続後・終了（台帳に触る単独 PR）。
 
-173 取り下げ（台帳は増えない）／174 二重申請は 200・画面に「申請済み」／177 接続前は DM を送れない
+173 取り下げ（台帳は増えない）／174 二重申請は 200・画面に「申請済み」／175 終了（reason なし・日付と「終了」のみ）
+176 connection.established／closed が型一覧に載っている／177 接続前は DM を送れない
 180 申し出の文（任意・上限）／181 受けた本人だけが見る／182 取り下げで文も消える
-（終了の API と connection.closed の payload 確定＝175・176・195 は #122-b）
+195 connection.closed の payload は {a, b, by}（過去の行 0 件を確認したうえでの確定）
 """
 import json, os, sys, tempfile
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -86,6 +87,42 @@ def test_t174_double_offer_is_idempotent_and_shows_pending(db):
     assert "申請済み（" in mp and "withdrawReq" in mp
 
 
+# ── 175・195 終了 ─────────────────────────────────────────────────────────────
+def test_t175_t195_close_writes_a_b_by_without_reason(db):
+    _connect("u_a", "u_b")
+    assert _cli("u_c").post("/api/connections/close", json={"with": "u_b"}).status_code == 409   # 当事者でない
+    r = _cli("u_b").post("/api/connections/close", json={"with": "u_a"})
+    assert r.status_code == 200
+    ev = le.get_events(type_="connection.closed", db_path=db)
+    assert len(ev) == 1 and set(ev[0]["payload"]) == {"a", "b", "by"}          # reason は書かない
+    assert ev[0]["payload"]["by"] == "u_b"
+    assert not ledger.is_connected("u_a", "u_b", db_path=db)
+    assert _cli("u_b").post("/api/connections/close", json={"with": "u_a"}).status_code == 409   # 二重は 409
+    assert le.verify_chain(db_path=db)["ok"] is True
+
+
+def test_t175_display_is_date_and_end_only(db):
+    _connect("u_a", "u_b")
+    _cli("u_a").post("/api/connections/close", json={"with": "u_b"})
+    vs = _cli("u_b").get("/api/my/vessels?id=u_b").get_json()
+    blob = json.dumps(vs, ensure_ascii=False)
+    assert "reason" not in blob and '"by"' not in blob                         # 誰が終了したかを返さない
+    mp = open(os.path.join(ROOT, "templates", "mypage.html"), encoding="utf-8").read()
+    assert "終了 ${(j.closed_at" in mp
+
+
+def test_t195_close_connection_has_no_reason_parameter():
+    import inspect
+    assert "reason" not in inspect.signature(ledger.close_connection).parameters
+
+
+# ── 176 型一覧への追記 ────────────────────────────────────────────────────────
+def test_t176_connection_types_are_listed():
+    doc = open(os.path.join(ROOT, "docs", "ledger_limits.md"), encoding="utf-8").read()
+    row = next(l for l in doc.splitlines() if "`connection.closed`" in l and "41 §4" in l)
+    assert "`connection.established`" in row and "{a, b, by}" in row
+
+
 # ── 177 接続前は DM を送れない ────────────────────────────────────────────────
 def test_t177_dm_requires_connection(db):
     r = _cli("u_a").post("/messages", json={"to_id": "u_b", "body": "こんにちは"})
@@ -94,6 +131,8 @@ def test_t177_dm_requires_connection(db):
     assert _cli("u_a").post("/messages", json={"to_id": "u_b", "body": "x"}).status_code == 403   # 申し出中も不可
     _offer("u_b", "u_a")
     assert _cli("u_a").post("/messages", json={"to_id": "u_b", "body": "よろしく"}).status_code == 201
+    _cli("u_a").post("/api/connections/close", json={"with": "u_b"})
+    assert _cli("u_a").post("/messages", json={"to_id": "u_b", "body": "x"}).status_code == 403   # 終了後も不可
 
 
 # ── 180・181 申し出の文 ───────────────────────────────────────────────────────

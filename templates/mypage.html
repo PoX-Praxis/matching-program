@@ -312,8 +312,12 @@ function renderConnections(vessels, myId) {
 
     let badge, action = "", why = "";
     const eo = escHtml(other).replace(/'/g, "\\'");
-    if (v.is_connected) {
+    if (v.is_connected && j.closed_at) {
+      // 終了は日付と「終了」だけ（誰が終了したかは出さない。指示書55 §4-6）
+      badge = `<span class="badge-wait">終了 ${(j.closed_at || "").slice(0, 10)}</span>`;
+    } else if (v.is_connected) {
       badge = `<span class="badge-ok">✅ 接続成立 ${(j.established_at || "").slice(0, 10)}</span>`;
+      action = `<button class="pv-btn" onclick="closeConn('${eo}', this)">接続を終了する</button>`;
     } else if (iApproved && !theyApproved) {
       badge = `<span class="badge-wait">⏳ 申請済み（${escHtml(oname)} の承認待ち）</span>`;
       action = `<button class="pv-btn" onclick="withdrawReq('${eo}', this)">取り下げる</button>`;
@@ -361,6 +365,14 @@ async function withdrawReq(otherId, btn) {
   if (btn) btn.disabled = true;
   const r = await fetch("/api/connections/withdraw", {method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify({ to_id: otherId })}).catch(() => null);
+  if (r && PoX.handle(r)) { if (btn) btn.disabled = false; return; }
+  init();
+}
+
+async function closeConn(otherId, btn) {
+  if (btn) btn.disabled = true;
+  const r = await fetch("/api/connections/close", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({ with: otherId })}).catch(() => null);
   if (r && PoX.handle(r)) { if (btn) btn.disabled = false; return; }
   init();
 }

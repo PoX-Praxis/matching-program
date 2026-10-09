@@ -2011,6 +2011,21 @@ def my_purposes():
                     "has_offer": bool((v5.latest_offer(me, db_path=DB) or {}).get("sentences"))}), 200
 
 
+@app.post("/api/connections/close")
+@login_required
+def close_connection_route():
+    """接続を終了する（指示書55 §3-6）。台帳に connection.closed {a, b, by}（理由は書かない）。
+    成立中の接続が無ければ 409。画面には日付と「終了」だけを出す（誰が終了したかは出さない）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("from_id"))
+    other = _other_id(body)
+    from ledger import close_connection
+    r = close_connection(me, other, by=me, db_path=DB)
+    if not r["closed"]:
+        return jsonify({"error": "成立中の接続がありません"}), 409
+    return jsonify({"closed": True}), 200
+
+
 @app.get("/api/connections/state")
 @login_required
 def connection_state_route():

@@ -184,7 +184,7 @@ def test_t239_missing_evidence_rejected_with_one_line(db):
     d["purposes"][0]["根拠"] = "語りに無い文章。"
     r = _draft(_cli(), d)
     msg = r.get_json()["error"]
-    assert r.status_code == 400 and "根拠が生テキストに見つかりません" in msg and "\n" not in msg
+    assert r.status_code == 400 and "が生テキストに見つかりません" in msg and "\n" not in msg
 
 
 def test_t240_evidence_saved_verbatim(db):

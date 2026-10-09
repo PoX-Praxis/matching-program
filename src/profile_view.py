@@ -37,19 +37,120 @@ def strip_code_fence(text: str) -> str:
     return text.strip()
 
 
+# 値が配列のはずのキー（①v5）。AI の返答が Markdown として表示されると `[` `]` が消えたり `\[` `\]` に
+# なったりして、コピーした JSON が壊れる（2026-10 の実例）。厳密に読めなかったときだけ、この範囲で直す。
+_ARRAY_KEYS = ("purposes", "必要像", "与え像", "関心", "生テキスト")
+_PARSE_ERROR = "JSONとして読めませんでした。AIの出力の { から } までを貼り付けてください。"
+
+
+def _skip_string(s: str, i: int) -> int:
+    """s[i] が '"' の文字列を読み飛ばし、閉じ '"' の次の位置を返す。"""
+    i += 1
+    while i < len(s):
+        if s[i] == "\\":
+            i += 2
+            continue
+        if s[i] == '"':
+            return i + 1
+        i += 1
+    return i
+
+
+def _skip_ws(s: str, i: int) -> int:
+    while i < len(s) and s[i] in " \t\r\n":
+        i += 1
+    return i
+
+
+def _skip_value(s: str, i: int) -> int:
+    """値（文字列・オブジェクト・配列・それ以外）を 1 つ読み飛ばす。括弧は文字列の中を数えない。"""
+    if i >= len(s):
+        return i
+    if s[i] == '"':
+        return _skip_string(s, i)
+    if s[i] in "{[":
+        depth = 0
+        while i < len(s):
+            c = s[i]
+            if c == '"':
+                i = _skip_string(s, i)
+                continue
+            if c in "{[":
+                depth += 1
+            elif c in "}]":
+                depth -= 1
+                if depth == 0:
+                    return i + 1
+            i += 1
+        return i
+    while i < len(s) and s[i] not in ",}]":
+        i += 1
+    return i
+
+
+def _wrap_missing_array(s: str):
+    """配列のはずのキーの値が `[` で始まっていない最初の箇所に `[` `]` を補う。直したら新しい文字列、無ければ None。
+    要素は「, の後が `"キー":` でない値」が続く限り同じ配列とみなす（`}` `]` か次のキーで閉じる）。"""
+    i = 0
+    while i < len(s):
+        if s[i] != '"':
+            i += 1
+            continue
+        end = _skip_string(s, i)
+        key = s[i + 1:end - 1]
+        j = _skip_ws(s, end)
+        if key in _ARRAY_KEYS and j < len(s) and s[j] == ":":
+            k = _skip_ws(s, j + 1)
+            if k < len(s) and s[k] in '{"':
+                p = k
+                while True:
+                    p = _skip_value(s, p)
+                    q = _skip_ws(s, p)
+                    if q < len(s) and s[q] == ",":
+                        r = _skip_ws(s, q + 1)
+                        if r < len(s) and s[r] == '"':
+                            after = _skip_ws(s, _skip_string(s, r))
+                            if after < len(s) and s[after] == ":":
+                                break                      # 次のキー → 配列はここまで
+                        if r < len(s) and s[r] in '{"':
+                            p = r
+                            continue
+                    break
+                return s[:k] + "[" + s[k:p] + "]" + s[p:]
+        i = end
+    return None
+
+
+def repair_ai_json(text: str) -> str:
+    """AI の出力をコピーしたときに起きる壊れ方を直す（厳密に読めなかったときだけ使う）。
+    - Markdown のエスケープ `\[` `\]` `\_` `\*`（JSON には無いエスケープなので、元の JSON を変えない）
+    - 配列のはずのキー（_ARRAY_KEYS）の `[` `]` の欠落"""
+    s = re.sub(r"\\([\[\]_*])", r"\1", text)
+    for _ in range(200):
+        fixed = _wrap_missing_array(s)
+        if fixed is None:
+            break
+        s = fixed
+    return s
+
+
 def parse_registration_text(text: str) -> dict:
-    """登録テキストを dict にする。失敗時は ValueError。"""
+    """登録テキストを dict にする。失敗時は ValueError（読めなかった位置を 1 行で添える）。
+    厳密に読めなければ repair_ai_json で直してから読み直す（直しても読めなければ元の位置を返す）。"""
     cleaned = strip_code_fence(text)
     try:
         data = json.loads(cleaned)
-    except (json.JSONDecodeError, TypeError):
-        raise ValueError(
-            "JSONとして読めませんでした。AIの出力の { から } までを貼り付けてください。"
-        )
+    except (json.JSONDecodeError, TypeError) as e:
+        try:
+            data = json.loads(repair_ai_json(cleaned))
+        except (json.JSONDecodeError, TypeError):
+            pos = getattr(e, "pos", None)
+            if pos is None:
+                raise ValueError(_PARSE_ERROR)
+            near = cleaned[max(0, pos - 20):pos + 20].replace("\n", " ")
+            raise ValueError(f"{_PARSE_ERROR}（{pos} 文字目付近:「{near}」）")
     if not isinstance(data, dict):
-        raise ValueError(
-            "JSONとして読めませんでした。AIの出力の { から } までを貼り付けてください。"
-        )
+        raise ValueError(_PARSE_ERROR)
     return data
 
 

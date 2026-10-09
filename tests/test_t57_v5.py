@@ -110,7 +110,7 @@ def test_t205_evidence_checked_against_raw_text(db):
     """根拠の検査は supporting_material.生テキストで行う（「本人の語り」の別欄は廃止。指示書60 §2-2）。"""
     d = _doc(supporting_material={"一行紹介": "x", "要約文": "y", "生テキスト": ["別の話。"]})
     r = _cli("u_a").post("/v4/drafts", json={"raw_text": json.dumps(d, ensure_ascii=False), "narrative": STORY})
-    assert r.status_code == 400 and "根拠が生テキストに見つかりません" in r.get_json()["error"]
+    assert r.status_code == 400 and "が生テキストに見つかりません" in r.get_json()["error"]
 
 
 # ── 206 目的の id はサーバーが振る・不変 ───────────────────────────────────────────

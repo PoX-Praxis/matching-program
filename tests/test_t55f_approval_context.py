@@ -83,12 +83,14 @@ def test_reason_absent_when_matching_unavailable(v4, monkeypatch):
 
 
 def test_approval_screens_show_reason_and_offer_message():
+    """承認の場面（根拠・申し出の文）は受信箱だけ（指示書63 段階1 §4-3 でマイページ・プロフィールから外した）。"""
     tpl = lambda n: open(os.path.join(ROOT, "templates", n), encoding="utf-8").read()
-    for name in ("inbox.html", "mypage.html", "profile.html"):
+    t = tpl("inbox.html")
+    assert '{% include "_match_reason.html" %}' in t
+    assert "PoXReason.fetchReason" in t and "PoXReason.offerHtml" in t          # §2 申し出の文
+    for name in ("mypage.html", "profile.html"):                                 # 受信箱へ案内するだけ
         t = tpl(name)
-        assert '{% include "_match_reason.html" %}' in t, name
-        assert "PoXReason.fetchReason" in t or "fillReasons" in t, name
-        assert "PoXReason.offerHtml" in t, name                                  # §2 申し出の文
+        assert 'href="/inbox"' in t and "PoXReason.fetchReason" not in t, name
     part = tpl("_match_reason.html")
     assert "/api/connections/reason" in part and "/api/my/offers" in part
 

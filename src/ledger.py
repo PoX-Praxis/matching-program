@@ -131,6 +131,9 @@ def approve(
     # すでに成立済み（active）なら冪等に返す（§5-6: active な間は1件のみ）。
     if _active_established(from_id, to_id, db_path=db_path):
         return {"vessel_id": vid, "established": True}
+    # 見送り（指示書63 段階1 §4-3）: どちらかが新しい版を作るまで、二人の間では申し出られない。
+    if declined_between(from_id, to_id, db_path=db_path):
+        return {"vessel_id": vid, "established": False, "reason": "declined"}
 
     with _connect(db_path) as con:
         # この向きの承認を記録（重複させない）。チャネル来歴も保持（§3）。
@@ -251,8 +254,94 @@ def withdraw_request(from_id: str, to_id: str, purpose_id: str = None, db_path: 
         return (cur.rowcount or 0) > 0
 
 
+# ── 見送り（指示書63 段階1 §4-3）────────────────────────────────────────────────
+# 申し出を受けた側が見送る。**通常DBの状態だけ**（status='declined'）で、台帳には書かない。理由は聞かない・記録しない。
+# 見送りは「どちらかが新しい版（profile.structured）を作るまで」効く: その間は二人の間で申し出られず、
+# 照合の結果からも互いに外し続ける（#129 の除外に足すだけ）。版が変われば再び申し出られる。
+
+def _at(x):
+    if not x:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(x).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _latest_version_at(db_path: str = "pox.db") -> dict:
+    """subject → 最新の版（profile.structured）の記録時刻。"""
+    out = {}
+    for e in le.get_events(type_="profile.structured", db_path=db_path):
+        sid, at = (e.get("payload") or {}).get("subject_id"), _at(e.get("at"))
+        if sid and at and (sid not in out or at > out[sid]):
+            out[sid] = at
+    return out
+
+
+def _effective_declines(rows, db_path: str = "pox.db") -> list:
+    """(from, to, responded_at) の見送りのうち、まだ効いているもの（見送りの後に、どちらも新しい版を作っていない）。"""
+    if not rows:
+        return []
+    latest = _latest_version_at(db_path=db_path)
+    out = []
+    for frm, to, at in rows:
+        t = _at(at)
+        if t is None:
+            continue
+        if all((latest.get(x) is None or latest[x] <= t) for x in (frm, to)):
+            out.append({"from": frm, "to": to, "at": at})
+    return out
+
+
+def decline_request(me: str, other: str, db_path: str = "pox.db") -> bool:
+    """me（申し出を受けた側）が other からの申し出（pending・目的を問わず全部）を見送る。台帳に書かない。
+    申し出の文は消す（受けた本人が読むためのもので、見送った後は要らない）。戻り値: 見送ったか（無ければ False）。"""
+    with _connect(db_path) as con:
+        cur = con.execute(
+            "UPDATE connection_requests SET status='declined', responded_at=%s, offer_message=NULL "
+            "WHERE from_subject=%s AND to_subject=%s AND status='pending'", (_now(), other, me))
+        return (cur.rowcount or 0) > 0
+
+
+def declined_between(a: str, b: str, db_path: str = "pox.db"):
+    """a と b の間で、まだ効いている見送り（最新のもの）。{"from"（申し出た側）, "to"（見送った側）, "at"} か None。"""
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT from_subject, to_subject, responded_at FROM connection_requests WHERE status='declined' "
+            "AND ((from_subject=%s AND to_subject=%s) OR (from_subject=%s AND to_subject=%s)) "
+            "ORDER BY responded_at DESC", (a, b, b, a)).fetchall()
+    eff = _effective_declines(rows, db_path=db_path)
+    return eff[0] if eff else None
+
+
+def declined_offers(me: str, db_path: str = "pox.db") -> list[dict]:
+    """me の申し出のうち、見送られてまだ効いているもの（申し出た側のマイページに「今回は見送られました」）。"""
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT from_subject, to_subject, responded_at FROM connection_requests "
+            "WHERE status='declined' AND from_subject=%s ORDER BY responded_at DESC", (me,)).fetchall()
+    seen, out = set(), []
+    for d in _effective_declines(rows, db_path=db_path):
+        if d["to"] not in seen:
+            seen.add(d["to"])
+            out.append({"to": d["to"], "at": d["at"]})
+    return out
+
+
+def _declined_counterparts(subject_id: str, db_path: str = "pox.db") -> set:
+    """見送りが効いている相手（どちら向きでも）。照合の結果から外し続ける。"""
+    with _connect(db_path) as con:
+        rows = con.execute(
+            "SELECT from_subject, to_subject, responded_at FROM connection_requests "
+            "WHERE status='declined' AND (from_subject=%s OR to_subject=%s)", (subject_id, subject_id)).fetchall()
+    return {d["to"] if d["from"] == subject_id else d["from"] for d in _effective_declines(rows, db_path=db_path)}
+
+
 def connection_state(me: str, other: str, db_path: str = "pox.db") -> str:
-    """me から見た other との状態: connected / pending_out / pending_in / none（画面の出し分け用）。"""
+    """me から見た other との状態: connected / pending_out / pending_in / declined_out / declined_in / none
+    （画面の出し分け用）。declined_out＝自分の申し出が見送られた・declined_in＝相手の申し出を見送った
+    （どちらも、どちらかが新しい版を作るまで。指示書63 段階1 §4-3）。"""
     if _active_established(me, other, db_path=db_path):
         return "connected"
     with _connect(db_path) as con:
@@ -264,6 +353,9 @@ def connection_state(me: str, other: str, db_path: str = "pox.db") -> str:
         return "pending_out"
     if inc:
         return "pending_in"
+    d = declined_between(me, other, db_path=db_path)     # 見送り（指示書63 段階1 §4-3）
+    if d:
+        return "declined_out" if d["from"] == me else "declined_in"
     return "none"
 
 
@@ -450,6 +542,7 @@ def engaged_counterparts(subject_id: str, db_path: str = "pox.db") -> set:
         ).fetchall()
     for frm, to in rows:
         out |= {frm, to}
+    out |= _declined_counterparts(subject_id, db_path=db_path)   # 見送り（指示書63 段階1 §4-3）
     out.discard(subject_id)
     return out
 
@@ -458,7 +551,8 @@ def engaged_by_purpose(subject_id: str, db_path: str = "pox.db"):
     """照合の結果から外す相手を目的ごとに返す（指示書57 受理時の推奨 #4）。
 
     戻り値: (全部の目的から外す相手 set, {相手: 自分が申し出中の purpose_id の set})
-      - 全部から外す: 接続済み（終了していない）／相手から申し出が来ている／目的を指定しない申し出（v4）
+      - 全部から外す: 接続済み（終了していない）／相手から申し出が来ている／目的を指定しない申し出（v4）／
+        見送りが効いている相手（どちら向きでも。指示書63 段階1）
       - 目的ごと: 自分がその目的で申し出中の相手は、**その目的のグループからだけ**外す
     """
     blocked = set()
@@ -482,6 +576,8 @@ def engaged_by_purpose(subject_id: str, db_path: str = "pox.db"):
             out_by.setdefault(to, set()).add(pid)
         else:
             blocked.add(to)
+    # 見送りが効いている相手は、どちら向きでも全部の目的から外し続ける（指示書63 段階1 §4-3。#129 の規則に足すだけ）
+    blocked |= _declined_counterparts(subject_id, db_path=db_path)
     blocked.discard(subject_id)
     return blocked, out_by
 

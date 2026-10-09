@@ -423,3 +423,21 @@
 | 293 | `test_t293_order_and_owner_page` |
 
 既存のテストの書き換え（指示書63 段階1 PR-C）: 216（マイページの 1 行の文言を「力になれること」の画面名に）
+
+### PR-D（受信箱のカード化・承認を1か所に・見送る・経路の記録）— `tests/test_t63d_inbox_decline.py`
+
+| 項目 | テスト |
+|---|---|
+| 294 | `test_t294_decline_only_in_normal_db` |
+| 295 | `test_t295_exclusion_continues_after_decline` |
+| 296 | `test_t296_reoffer_blocked_until_new_version`・`test_t296b_new_version_by_offerer_also_lifts` |
+| 297 | `test_t297_only_receiver_can_decline` |
+| 298 | `test_t298_offerer_sees_declined` |
+| 299 | `test_t299_channel_recorded_not_shown` |
+| 300 | `test_t300_card_reason_fields_one_way`・`test_t300b_mutual_direction_b_first_with_purpose`・`test_t300c_offer_time_basis_after_offerer_restructures` |
+| 301 | `test_t301_v4_counterpart_whole_state_note` |
+| 302 | `test_t302_no_reason` |
+| 303 | `test_t303_single_approval_place` |
+
+既存のテストの書き換え（指示書63 段階1 PR-D。承認の場面を受信箱だけにし、見出しを「応えるもの」に）:
+253・213・215・`test_approval_screens_show_reason_and_offer_message`（55-5）

@@ -46,7 +46,12 @@
   /* ---------- 接続状態バッジ ---------- */
   .mypage .badge-ok     {background:#d4edda;color:#155724;border-radius:3px;padding:2px 8px;font-size:12px}
   .mypage .badge-wait   {background:#fff3cd;color:#856404;border-radius:3px;padding:2px 8px;font-size:12px}
-  .mypage .badge-action {background:#f8d7da;color:#721c24;border-radius:3px;padding:2px 8px;font-size:12px}
+  /* 承認待ちは 1 行だけ（承認は受信箱だけ。指示書63 段階1 §4-3） */
+  .mypage .mp-pending{display:block;border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:12px 14px;
+    margin-bottom:10px;font-size:14px;color:#5a4410;text-decoration:none}
+  .mypage .mp-pending .n{font-weight:700;margin-right:10px}
+  .mypage .mp-pending .go{display:block;text-align:right;margin-top:4px;font-size:12.5px;color:#1f3a5f}
+  .mypage .mp-declined{font-size:13px;color:#454b54}
   .mypage #notice{margin:0 0 10px;font-size:13px}
   .mypage .ok  { color:#1a8a1a; font-weight:bold; }
   .mypage .err { color:#c00; }
@@ -54,7 +59,6 @@
 </style>
 {% include "_profile_view.html" %}
 {% include "_trajectory.html" %}
-{% include "_match_reason.html" %}
 {% endblock %}
 {% block content %}
 <a href="/" class="back">← トップに戻る</a>
@@ -190,7 +194,13 @@ async function init() {
     PoXProfileView.render(document.getElementById("pvRoot"), pv, { mode: "owner" });
     document.getElementById("editLink").href = `/edit?id=${encodeURIComponent(myId)}`;
 
-    try { renderConnections(vessels, myId); } catch (_) {}
+    // 見送られた自分の申し出（申し出た本人だけ。指示書63 段階1 §4-3）。失敗しても本体表示は止めない。
+    let declined = [];
+    try {
+      const dr = await fetch(`/api/my/declined?id=${encodeURIComponent(myId)}`);
+      if (dr.ok) declined = await dr.json();
+    } catch (_) { declined = []; }
+    try { renderConnections(vessels, myId, declined); } catch (_) {}
     loadV4Status(myId);        // 照合の準備状態（所有者のみ）
     loadOfferNotice();         // 与え像が無い間の 1 行（v4 互換・指示書57）
     loadOwnerNecessity(myId);  // 自分の必要像（本文=公開・根拠は本人のみ＝差2）
@@ -321,15 +331,20 @@ async function retryGeneration(id, btn) {
 }
 
 /* ══ 接続（カード化。空状態は「つながる」への導線） ══════════════ */
-function renderConnections(vessels, myId) {
+function renderConnections(vessels, myId, declined) {
   const mine = vessels;   // サーバー側（/api/my/vessels）で当事者分に絞り込み済み
+  declined = declined || [];
   const el = document.getElementById("connCards");
-  if (!mine.length) {
+  if (!mine.length && !declined.length) {
     el.innerHTML = `<p class="mp-empty">まだ接続はありません。<a href="/connect">「つながる」</a>から相手を探せます。</p>`;
     return;
   }
 
-  el.innerHTML = mine.map(v => {
+  // 承認待ち（相手から申し出が来ている）は個別のカードにせず、「承認待ち N件　名前…」の 1 行だけ。
+  // 全体が受信箱へのリンク。申し出の文・根拠はここに出さない（承認は受信箱だけ。指示書63 段階1 §4-3）。
+  const waiting = [];
+  const cards = [];
+  mine.forEach(v => {
     const j        = v.joins[0] || {};
     const other    = v.founder === myId ? (j.joiner || "-") : v.founder;
     const oname    = v.founder === myId ? (j.joiner_name || "表示名未設定のアカウント")
@@ -338,20 +353,15 @@ function renderConnections(vessels, myId) {
     const iApproved    = approvers.has(myId);
     const theyApproved = approvers.has(other);
 
-    let badge, action = "", why = "";
+    if (!v.is_connected && !iApproved && theyApproved) { waiting.push(oname); return; }
+
+    let badge, action = "";
     const eo = escHtml(other).replace(/'/g, "\\'");
     if (v.is_connected) {
       badge = `<span class="badge-ok">✅ 接続成立 ${(j.established_at || "").slice(0, 10)}</span>`;
     } else if (iApproved && !theyApproved) {
       badge = `<span class="badge-wait">⏳ 申請済み（${escHtml(oname)} の承認待ち）</span>`;
       action = `<button class="pv-btn" onclick="withdrawReq('${eo}', this)">取り下げる</button>`;
-    } else if (!iApproved && theyApproved) {
-      badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
-      const eid = escHtml(other).replace(/'/g, "\\'");
-      action = `<button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
-      // 承認の場面: 申し出の文を上に、その下に根拠（指示書61 §3-2）。描画後に非同期で埋める。
-      why = `<div class="mr-offer-slot" data-other="${escHtml(other)}"></div>
-             <div class="mr-slot" data-other="${escHtml(other)}"></div>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
     }
@@ -362,27 +372,25 @@ function renderConnections(vessels, myId) {
          ${v.is_connected && !j.closed_at ? `<a href="${dmHref}" style="margin-left:10px;font-size:12px;color:#1f3a5f">DM →</a>` : ""}`
       : "-";
 
-    return `<div class="mp-card">
+    cards.push(`<div class="mp-card">
       <div class="row"><span class="k">相手</span><span>${otherCell}</span></div>
       <div class="row"><span class="k">状態</span><span>${badge}</span></div>
-      ${why ? `<div class="row"><span class="k">なぜこの人か</span><span>${why}</span></div>` : ""}
       ${action ? `<div class="row"><span class="k">操作</span><span>${action}</span></div>` : ""}
-    </div>`;
-  }).join("");
-  fillApprovalContext(el);
-}
+    </div>`);
+  });
 
-/* 承認待ちカードに、照合の根拠（その場で再計算）と申し出の文（受けた本人だけ）を入れる。 */
-async function fillApprovalContext(root) {
-  const slots = root.querySelectorAll(".mr-slot");
-  if (!slots.length) return;
-  const offers = await PoXReason.fetchOffers();
-  root.querySelectorAll(".mr-offer-slot").forEach(el => {
-    el.innerHTML = PoXReason.offerHtml(offers[el.dataset.other]);
+  // 見送られた自分の申し出（隠さない。待たされ続けることを避けるため）。どちらかが作り直すと消え、また申し出られる。
+  declined.forEach(d => {
+    cards.push(`<div class="mp-card">
+      <div class="row"><span class="k">相手</span><span><a href="/profile/${encodeURIComponent(d.to)}">${escHtml(d.to_name)}</a></span></div>
+      <div class="row"><span class="k">状態</span><span class="mp-declined">今回は見送られました</span></div>
+    </div>`);
   });
-  slots.forEach(async el => {
-    el.innerHTML = PoXReason.reasonHtml(await PoXReason.fetchReason(el.dataset.other));
-  });
+
+  const pending = waiting.length
+    ? `<a class="mp-pending" id="pendingLine" href="/inbox"><span class="n">承認待ち ${waiting.length}件</span>${waiting.map(escHtml).join("、")}<span class="go">受信箱で応える →</span></a>`
+    : "";
+  el.innerHTML = pending + cards.join("");
 }
 
 async function withdrawReq(otherId, btn) {
@@ -393,37 +401,6 @@ async function withdrawReq(otherId, btn) {
   init();
 }
 
-async function doApprove(otherId, btn) {
-  const msg = document.getElementById("notice");
-  const sid = await PoX.me();                        // 同一性はセッション（§2）
-  if (!sid) { PoX.loginRedirect(); return; }
-  if (btn) btn.disabled = true;                      // 二重押下防止（§5）
-  msg.className = ""; msg.textContent = "承認処理中...";
-  let res;
-  try {
-    res = await fetch("/approve", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: otherId }),    // 承認は状態の遷移だけ（申し出の文は申し出る側だけが書く）
-    });
-  } catch (e) {
-    msg.className = "err"; msg.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
-    if (btn) btn.disabled = false; return;
-  }
-  if (PoX.handle(res, { on403: m => { msg.className = "err"; msg.textContent = m; } })) { if (btn) btn.disabled = false; return; }
-  const data = await res.json();
-  if (!res.ok) {
-    msg.className = "err"; msg.textContent = "エラー: " + JSON.stringify(data);
-    if (btn) btn.disabled = false; return;
-  }
-  if (data.established) {
-    msg.className = "ok"; msg.textContent = `🎉 接続成立！`;
-  } else {
-    msg.className = ""; msg.textContent = `✅ 承認しました。相手の承認待ちです。`;
-  }
-  const ledgerRes = await fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`);
-  if (handleAuth(ledgerRes)) return;
-  renderConnections(await ledgerRes.json(), myId);
-}
 
 /* ══ 軌跡（版ごとのツリー・指示書50 v3）══════════════════════════════
    描画は共通の PoXTrajectory。本人ビューは伏せの操作を持つ。 */

@@ -29,7 +29,6 @@
 </style>
 {% include "_profile_view.html" %}
 {% include "_trajectory.html" %}
-{% include "_match_reason.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-prose pv">
@@ -53,8 +52,10 @@
       <label for="offerMsg" style="font-size:12px;color:#555">なぜつながりたいか（任意・400字まで。相手だけが読めます）</label>
       <textarea id="offerMsg" maxlength="400" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;margin-top:4px"></textarea>
     </div>
-    <!-- 承認の場面の根拠（なぜこの人か）と申し出の文。承認待ち（pending_in）のときだけ出す（55-5 §1・§2）。 -->
-    <div id="approvalContext" style="display:none;margin-bottom:10px"></div>
+    <!-- 相手から申し出が届いているとき（pending_in）は承認ボタンを出さず、受信箱へ案内する（承認は受信箱だけ。
+         指示書63 段階1 §4-3）。申し出の文・根拠は受信箱で見る。 -->
+    <p id="inboxLink" style="display:none;margin:0 0 10px;font-size:14px">申し出が届いています →
+      <a href="/inbox">受信箱で応える</a></p>
     <div style="display:flex;gap:10px;flex-wrap:wrap" id="connectActions">
       <button class="btn btn-connect" id="btnOffer" onclick="doConnect(this)">つながりたいと伝える</button>
       <button class="btn btn-msg" id="btnWithdraw" style="display:none" onclick="doWithdraw(this)">取り下げる</button>
@@ -107,9 +108,10 @@ async function init() {
   refreshConnectState();
 }
 
-/* 相手との状態で出し分ける（指示書55-2 PR-C）:
-   none → 申し出（文は任意）／pending_out → 「申請済み」＋取り下げ／pending_in → 承認
-   connected → メッセージ（DM は成立後だけ） */
+/* 相手との状態で出し分ける（指示書55-2 PR-C・指示書63 段階1 §4-3）:
+   none → 申し出（文は任意）／pending_out → 「申請済み」＋取り下げ／pending_in → 受信箱へのリンク（承認は受信箱だけ）
+   connected → メッセージ（DM は成立後だけ）
+   declined_out → 「今回は見送られました」／declined_in → 見送った相手（どちらも、作り直すまで申し出られない） */
 async function refreshConnectState() {
   let state = "none";
   try {
@@ -119,21 +121,19 @@ async function refreshConnectState() {
   const $ = id => document.getElementById(id);
   const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
   $("btnOffer").disabled = false;
-  $("btnOffer").textContent = state === "pending_in" ? "承認する" : "つながりたいと伝える";
-  show("btnOffer", state === "none" || state === "pending_in");
-  show("offerBox", state === "none");   // 承認欄は申し出の文を「表示する」場所（入力欄は申し出る側だけ）
+  show("btnOffer", state === "none");
+  show("offerBox", state === "none");
   if (state === "none") loadMyPurposes();
   show("btnWithdraw", state === "pending_out");
   show("btnDm", state === "connected");
-  show("approvalContext", state === "pending_in");
-  if (state === "pending_in") {
-    const [reason, offers] = await Promise.all([PoXReason.fetchReason(profileId), PoXReason.fetchOffers()]);
-    $("approvalContext").innerHTML = PoXReason.offerHtml(offers[profileId]) + PoXReason.reasonHtml(reason);  // 申し出の文が上（指示書61 §3-2）
-  }
+  show("inboxLink", state === "pending_in");
   const notice = $("notice");
-  notice.className = state === "none" ? "" : "ok";
+  notice.className = (state === "pending_out" || state === "connected") ? "ok" : "";
   notice.textContent = state === "pending_out" ? "申請済みです。相手の承認をお待ちください。"
-                     : state === "connected" ? "つながっています。" : "";
+                     : state === "connected" ? "つながっています。"
+                     : state === "declined_out" ? "今回は見送られました。どちらかがプロフィールを作り直すと、もう一度申し出られます。"
+                     : state === "declined_in" ? "この人からの申し出を見送りました。どちらかがプロフィールを作り直すと、申し出られるようになります。"
+                     : "";
 }
 
 /* 接続の申し出（指示書55 PR-B）。以前は旧 v3 の /match を先に呼んでいたため、v4 で登録した人は
@@ -146,18 +146,17 @@ async function doConnect(btn) {
   notice.textContent = "送信中...";
   notice.className = "";
   try {
+    // プロフィールからは申し出だけ（承認は受信箱だけ）。経路 "profile" を記録する（画面には出さない。指示書63 段階1 §4-4）。
     const aRes = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      // 承認（pending_in）は状態の遷移だけ。申し出の文は申し出る側（offerBox が出ているとき）だけが送る。
-      body: JSON.stringify(document.getElementById("offerBox").style.display === "none"
-        ? { to_id: profileId }
-        : { to_id: profileId,
-            purpose_id: document.getElementById("offerPurpose").value || null,
-            message: (document.getElementById("offerMsg").value || "").trim() }),
+      body: JSON.stringify({ to_id: profileId, channel: "profile",
+                             purpose_id: document.getElementById("offerPurpose").value || null,
+                             message: (document.getElementById("offerMsg").value || "").trim() }),
     });
     if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
     const aData = await aRes.json();
     if (!aRes.ok) {
+      if (aData.error === "declined") { refreshConnectState(); return; }   // 見送られている（画面の状態を合わせる）
       notice.className = "err";
       notice.textContent = "送信できませんでした: " + (aData.error || aRes.status);
       if (btn) btn.disabled = false; return;

@@ -317,7 +317,7 @@ def test_t260_slash_part_missing_rejected(db):
     d = _doc()
     d["purposes"][0]["根拠"] = "仕組みを作るのが好きです／語りに無い一文"
     r = _draft("u_a", d)
-    assert r.status_code == 400 and "が生テキストに見つかりません" in r.get_json()["error"]
+    assert r.status_code == 400 and "が生テキストにありません" in r.get_json()["error"]
 
 
 def test_t261_slash_evidence_saved_verbatim(db):
@@ -411,8 +411,9 @@ def test_t266_profile_shows_why():
 
 
 def test_t267_register_prompts_are_revision3():
+    """登録画面のプロンプトは docs/prompts/ と一字一句一致（指示書62 で rev4 に差し替え。rev3 の JSON も受け付ける）。"""
     page = appmod.app.test_client().get("/register").get_data(as_text=True)
-    for pid, name, src in (("promptA", "v5_A_dialogue.txt", "v5r3-A"), ("promptB", "v5_B_selfwrite.txt", "v5r3-B")):
+    for pid, name, src in (("promptA", "v5_A_dialogue.txt", "v5r4-A"), ("promptB", "v5_B_selfwrite.txt", "v5r4-B")):
         m = re.search(rf'<pre id="{pid}">(.*?)</pre>', page, re.S)
         text = htmlmod.unescape(m.group(1))
         assert text == open(os.path.join(ROOT, "docs", "prompts", name), encoding="utf-8").read()

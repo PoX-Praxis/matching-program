@@ -26,7 +26,7 @@ from db import (save_seeker, load_all_seekers, save_profile, get_profile_view,
                 save_view_overrides, update_seeker_core, list_directory_ids,
                 record_policy_consent, set_profile_visibility, get_profile_visibility,
                 get_view_overrides)
-from profile_view import parse_registration_text, normalize_to_seeker
+from profile_view import parse_registration_text, parse_registration_text_report, normalize_to_seeker
 from connection_layer import run_matching
 from ledger import approve, load_all_vessels
 from messages import send_message, get_conversation, get_inbox_summary, get_unread_count
@@ -1279,9 +1279,10 @@ def post_draft():
     if not isinstance(body, dict):
         return jsonify({"error": "JSON が読めません"}), 400
     raw_text = body.get("raw_text")
+    repairs = []
     if raw_text is not None:
         try:
-            parsed = parse_registration_text(raw_text)
+            parsed, repairs = parse_registration_text_report(raw_text)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
     else:
@@ -1301,7 +1302,25 @@ def post_draft():
     if not subject_id:
         return jsonify({"error": "ログインが必要です"}), 401
     draft = drafts.save_draft(subject_id, parsed, owner_kind="subject", db_path=DB)
-    return jsonify(_draft_preview(draft)), 201
+    out = _draft_preview(draft)
+    if repairs:
+        # 形式を自動で補正したことを本人に見せる（指示書62 §1-2。黙って直さない）。補正の有無は下書き・台帳に
+        # 残さない（この応答にだけ載せる）。配列の [ ] を補ったときは要素の区切りを推測しているので、要素数も見せる。
+        out["repairs"] = repairs
+        out["array_counts"] = _array_counts(parsed)
+    return jsonify(out), 201
+
+
+def _array_counts(doc):
+    """確認画面で見せる配列の要素数（補正したときの確かめ用）。"""
+    sm = doc.get("supporting_material") if isinstance(doc.get("supporting_material"), dict) else {}
+    purposes = doc.get("purposes") if isinstance(doc.get("purposes"), list) else []
+
+    def n(x):
+        return len(x) if isinstance(x, list) else None
+    return {"purposes": n(purposes),
+            "必要像": [n((p or {}).get("必要像")) if isinstance(p, dict) else None for p in purposes],
+            "与え像": n(doc.get("与え像")), "関心": n(doc.get("関心")), "生テキスト": n(sm.get("生テキスト"))}
 
 
 @app.get("/v4/drafts/mine")

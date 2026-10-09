@@ -174,9 +174,13 @@ def test_t237_removing_offers_does_not_bump_attempt(db):
 
 # ── 238〜240 検証9（根拠が生テキストに実在）──────────────────────────────────────────────
 def test_t238_evidence_matches_after_normalization(db):
+    """比較のときだけ正規化する。指示書62 §1-3 で「NFC と前後の空白の除去のみ」に変えた（60 §4-1 の NFKC・空白の除去・
+    句読点の除去は取りやめ）。前後の空白・合成文字の違いは通し、全角半角・句読点・途中の空白の違いは通さない。"""
     d = _doc()
-    d["purposes"][0]["根拠"] = "AIと仕組みを作るのが、好きです"           # 全角半角・空白・句読点が違う
+    d["purposes"][0]["根拠"] = "  ＡＩ と仕組みを作るのが好きです　"          # 前後の空白だけが違う
     assert _draft(_cli(), d).status_code == 201
+    d["purposes"][0]["根拠"] = "AIと仕組みを作るのが、好きです"            # 全角半角・空白・句読点が違う
+    assert _draft(_cli(), d).status_code == 400
 
 
 def test_t239_missing_evidence_rejected_with_one_line(db):
@@ -184,7 +188,7 @@ def test_t239_missing_evidence_rejected_with_one_line(db):
     d["purposes"][0]["根拠"] = "語りに無い文章。"
     r = _draft(_cli(), d)
     msg = r.get_json()["error"]
-    assert r.status_code == 400 and "が生テキストに見つかりません" in msg and "\n" not in msg
+    assert r.status_code == 400 and "が生テキストにありません" in msg and "\n" not in msg
 
 
 def test_t240_evidence_saved_verbatim(db):

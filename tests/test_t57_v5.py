@@ -22,6 +22,7 @@ def _doc(**over):
     d = {
         "id": "kaoru_2026",
         "schema_version": "v5",
+        "generator": "Claude Opus 4.8",
         "purposes": [
             {"purpose_id": "p1", "向かう先": "自然に辿り着ける状態を実現したい。", "手段": "照合の仕組みを根づかせる。",
              "必要像": [{"文": "事業を立ち上げる局面で、構想を実行に移す側として関わってきた人。", "必須": True, "型": "関わり方"},
@@ -136,7 +137,8 @@ def test_t207_one_event_per_purpose_c3(db):
     assert [e["payload"]["purpose_id"] for e in evs] == ids
     assert all(e["payload"]["offer_hash"] == v5.offer_hash(_doc()["与え像"]) for e in evs)
     with N._connect(db) as con:
-        assert {r[0] for r in con.execute("SELECT canon_version FROM necessities").fetchall()} == {"c3"}
+        # 新しく書く版は c4（指示書61 で c3 から上げた。c3 の行の検証は test_t61 で確かめる）
+        assert {r[0] for r in con.execute("SELECT canon_version FROM necessities").fetchall()} == {"c4"}
 
 
 def test_t208_offer_change_changes_each_purpose_hash(db):
@@ -160,7 +162,7 @@ def test_t209_profile_structured_canon_version(db):
     _confirm("u_a", _doc())
     p4 = [e["payload"] for e in le.get_events(type_="profile.structured", db_path=db) if e["payload"]["subject_id"] == "u_v4"][0]
     p5 = [e["payload"] for e in le.get_events(type_="profile.structured", db_path=db) if e["payload"]["subject_id"] == "u_a"][0]
-    assert "canon_version" not in p4 and p5["canon_version"] == "p2"      # 無いもの＝c1
+    assert "canon_version" not in p4 and p5["canon_version"] == "p3"      # 無いもの＝c1（v5 は 61 で p2→p3）
     assert p4["content_hash"] == profile_content_hash({"will_text": "w"})   # c1 のまま読める
     assert le.verify_chain(db_path=db)["ok"] is True
 
@@ -258,7 +260,9 @@ def test_t216_v4_counterpart_matched_by_state(world):
 def test_t218_wording(world):
     part = TPL("_match_reason.html")
     assert "足りないところを互いに埋める" in part and "相互に噛み合っています" not in part
-    assert "が応えています" in part
+    # 引用の対の見出し（指示書61 §3 で「…が応えています」から置き換え）
+    assert "あなたが必要としていること" in open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
+    assert "mr-arrow" in part
 
 
 # ── 213・214・215 接続（目的・版の参照・承認の根拠・申し出の文）────────────────────────────

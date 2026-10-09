@@ -33,7 +33,7 @@ def publish_subject_created(subject_id: str, *, kind: str, actor: str = None,
     return {"skipped": False, "event_hash": r["event_hash"], "seq": r["seq"]}
 
 
-def profile_content_hash(profile_input: dict) -> str:
+def profile_content_hash(profile_input: dict, canon_version: str = None) -> str:
     """**表示される宣言のすべて**の内容ハッシュ（指示書18 §2）。本文は台帳に載せない（§4-2）。
 
     正準化規則（canon_version="c1"）:
@@ -45,8 +45,11 @@ def profile_content_hash(profile_input: dict) -> str:
       - 除外: 生テキスト(raw)・evidence_span（永久化しないもの）／gate/α/β/γ 等の内部数値・
         match_run_id（宣言ではないもの）。
     """
-    if profile_input.get("v5"):
+    v = canon_version or (PROFILE_CANON_V5 if profile_input.get("v5") else "c1")
+    if v == PROFILE_CANON_P2:
         return profile_content_hash_p2(profile_input)
+    if v == PROFILE_CANON_P3:
+        return profile_content_hash_p3(profile_input)
     sm = profile_input.get("supporting_raw") or {}
     fields = {"will_text": str(profile_input.get("will_text") or "")}
     for k in _STATE_KEYS:
@@ -57,6 +60,8 @@ def profile_content_hash(profile_input: dict) -> str:
 
 
 PROFILE_CANON_P2 = "p2"
+PROFILE_CANON_P3 = "p3"          # 指示書61: p2 ＋ 意志_なぜ・経験（表示される宣言はすべて内容ハッシュに。指示書18 §2）
+PROFILE_CANON_V5 = PROFILE_CANON_P3   # いま v5 の宣言を書くときの版（p2 のイベントは p2 のまま読む）
 
 
 def profile_content_hash_p2(profile_input: dict) -> str:
@@ -78,6 +83,33 @@ def profile_content_hash_p2(profile_input: dict) -> str:
     for k in _STATE_KEYS:
         fields[k] = str(profile_input.get(k) or "")
     for k in ("背景", "一行紹介", "要約文"):
+        fields[k] = str(sm.get(k) or "")
+    return sha256_hex(canonicalize(fields))
+
+
+def _p2_fields(profile_input: dict) -> dict:
+    doc = profile_input.get("v5") or {}
+    sm = profile_input.get("supporting_raw") or {}
+    fields = {
+        "purposes": [{"purpose_id": str(p.get("purpose_id") or ""),
+                      "向かう先": str(p.get("向かう先") or ""), "手段": str(p.get("手段") or "")}
+                     for p in (doc.get("purposes") or [])],
+        "関心": [str((x or {}).get("文") or "") for x in (doc.get("関心") or [])],
+    }
+    for k in _STATE_KEYS:
+        fields[k] = str(profile_input.get(k) or "")
+    for k in ("背景", "一行紹介", "要約文"):
+        fields[k] = str(sm.get(k) or "")
+    return fields
+
+
+def profile_content_hash_p3(profile_input: dict) -> str:
+    """宣言の内容ハッシュ p3（指示書61）。対象＝p2 の対象 ＋ supporting_material の `意志_なぜ`・`経験`
+    （どちらも表示される宣言なのに p2 に入っていなかった）。除外は p2 と同じ（生テキスト・必要像・与え像・
+    根拠・数値）。欠損は空文字。p2 で書いたイベントは p2 のまま（遡及しない）。"""
+    sm = profile_input.get("supporting_raw") or {}
+    fields = _p2_fields(profile_input)
+    for k in ("意志_なぜ", "経験"):
         fields[k] = str(sm.get(k) or "")
     return sha256_hex(canonicalize(fields))
 
@@ -118,7 +150,7 @@ def publish_profile_structured(subject_id: str, profile_input: dict, *,
     }
     # 宣言のハッシュ規則の版（指示書57）。任意キーで、無いもの＝c1。検証側はこれで規則を選ぶ。
     if profile_input.get("v5"):
-        payload["canon_version"] = PROFILE_CANON_P2
+        payload["canon_version"] = PROFILE_CANON_V5
     le.append_event(actor or subject_id, "profile.structured", payload, db_path=db_path)
     return {"skipped": False, "content_hash": ch, "n": n, "prev_snapshot": prev_snapshot}
 

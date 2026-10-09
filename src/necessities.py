@@ -31,6 +31,9 @@ import ledger_events as le
 _NUM_KEYS = ("gate_s", "gate_u", "p_sharpness", "alpha", "beta")
 C3 = "c3"                                              # 指示書57（①v5 の目的ごとの必要像）
 C3_NUM_KEYS = ("gate_s", "gate_u", "alpha", "beta")    # p_sharpness は含めない
+C4 = "c4"                                              # 指示書61（共鳴を門にしたので alpha・beta を外す）
+C4_NUM_KEYS = ("gate_s", "gate_u")
+V5_CANON = C4                                          # いま v5 の必要像を書くときの版（c3 の行は c3 のまま読む）
 SELF_DECLARED_MIN_GATE_U = 0.6   # §1-5・§7-4
 
 
@@ -123,17 +126,19 @@ def compute_content_hash(necessity_text: str, numbers: dict, ev_commit: str,
     - c3（指示書57・①v5）: H(必要像の文の配列 [{文, 必須, 型}] ‖ 数値 {gate_s, gate_u, alpha, beta}
       ‖ commit(根拠, salt) ‖ offer_hash)。p_sharpness は含めない（①が出さない）。offer_hash は同じ①の
       出力の与え像のハッシュ（ピン留め＝与え像が変われば各目的の必要像のハッシュも変わる）。
+    - c4（指示書61）: c3 と同じ形で、数値を {gate_s, gate_u} にしたもの（alpha・beta は①が出さない）。
+      c3 で書いた行は c3 のまま（遡及しない。検証は行の canon_version の規則で行う）。
 
     数値素材は平文でハッシュに含める（含めないと第三者が再計算できず検証が成立しない）。
     evidence_span 本文は入れず、その **コミットメント** を束ねる（束縛は切らさない）。
     canon_version=None のときは現行版（CANON_VERSION）。過去 c1 の再計算は "c1" を渡す。
     """
-    v = canon_version or (C3 if sentences is not None else CANON_VERSION)
-    if v == C3:
+    v = canon_version or (V5_CANON if sentences is not None else CANON_VERSION)
+    if v in (C3, C4):
         return sha256_hex(canonicalize({
             "sentences": [{"文": str(x.get("文") or ""), "必須": bool(x.get("必須")),
                            "型": str(x.get("型") or "")} for x in (sentences or [])],
-            "numbers": {k: numbers.get(k) for k in C3_NUM_KEYS},
+            "numbers": {k: numbers.get(k) for k in (C3_NUM_KEYS if v == C3 else C4_NUM_KEYS)},
             "evidence_commit": ev_commit or "",
             "offer_hash": offer_hash or "",
         }))
@@ -152,6 +157,39 @@ def compute_content_hash(necessity_text: str, numbers: dict, ev_commit: str,
         "evidence_commit": ev_commit or "",
         "seeking": seeking or "",
     }))
+
+
+def verify_content_hash(necessity_id: str, db_path: str = "pox.db") -> dict:
+    """行に保存した値から content_hash を**その行の版（canon_version）の規則で**再計算し、記録と照らす。
+    c1・c2・c3・c4 のどれでも検証できる（過去の行を書き換えない）。戻り値 {"ok", "canon_version"}。"""
+    with _connect(db_path) as con:
+        r = con.execute(
+            "SELECT necessity_text, gate_s, gate_u, p_sharpness, alpha, beta, evidence_commit, seeking, "
+            "canon_version, body_json, offer_hash, content_hash FROM necessities WHERE necessity_id=%s",
+            (necessity_id,)).fetchone()
+    if not r:
+        return {"ok": False, "canon_version": None}
+    canon = r[8] or "c1"
+    numbers = dict(zip(_NUM_KEYS, r[1:6]))
+    sentences = json.loads(r[9]) if r[9] else None
+    def calc(nums):
+        return compute_content_hash(r[0], nums, r[6], r[7] or "", canon_version=canon,
+                                    sentences=sentences, offer_hash=r[10])
+    ok = calc(numbers) == r[11]
+    if not ok:
+        # 書いた時点で整数（0・1）だった値は、REAL 列から float で戻る。正準形が 0 と 0.0 で違うため、
+        # 整数値の数値を int に戻した形でも照らす（c3 までの書き込みで起きうる。c4 は float に揃えて書く）。
+        from itertools import product
+        integral = [k for k, v in numbers.items() if isinstance(v, float) and v.is_integer()]
+        for flags in product((False, True), repeat=len(integral)):
+            trial = dict(numbers)
+            for k, as_int in zip(integral, flags):
+                if as_int:
+                    trial[k] = int(trial[k])
+            if calc(trial) == r[11]:
+                ok = True
+                break
+    return {"ok": ok, "canon_version": canon}
 
 
 # ── 発行（necessities 行 ＋ necessity.published イベント）────────────────────
@@ -194,7 +232,11 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
     numbers = {k: (gate_u if k == "gate_u" else necessity.get(k)) for k in _NUM_KEYS}
     v5 = sentences is not None
     if v5:
-        numbers["p_sharpness"] = None                  # ①v5 は出さない（c3 にも含めない）
+        numbers["p_sharpness"] = None                  # ①v5 は出さない（c3・c4 にも含めない）
+        numbers["alpha"] = numbers["beta"] = None      # c4（指示書61）: ①改訂3 は出さない
+        for k in C4_NUM_KEYS:                          # 正準形を固定する（0 と 0.0 でハッシュが変わるため float に揃える）
+            if numbers.get(k) is not None:
+                numbers[k] = float(numbers[k])
     will_text = necessity.get("will_text") or necessity.get("意志") or ""
     necessity_text = necessity.get("necessity_text") or ""
     if v5 and not necessity_text:
@@ -252,7 +294,7 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
             (necessity_id, owner_ref, owner_kind, n, will_text, necessity_text,
              numbers["gate_s"], numbers["gate_u"], numbers["p_sharpness"],
              numbers["alpha"], numbers["beta"], ev_commit, content_hash,
-             origin, gen, prev_id, _now(), seeking, C3 if v5 else CANON_VERSION,
+             origin, gen, prev_id, _now(), seeking, V5_CANON if v5 else CANON_VERSION,
              purpose_id, json.dumps(sentences, ensure_ascii=False) if v5 else None, offer_hash),
         )
         # 平文・salt は削除可能な別テーブル（§7-2）。

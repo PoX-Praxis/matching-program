@@ -303,7 +303,7 @@
 | 220 | `test_t220_one_per_person_assumptions_removed` |
 | 221 | `test_t57f_approval_does_not_carry_message` |
 | 222 | `test_t57f_exclusion_is_per_purpose` |
-| 223 | `test_t223_register_prompts_are_v5_revision2`（指示書60 で改訂2 に合わせて書き換え） |
+| 223 | `test_t223_register_prompts_are_v5_revision2`（指示書60 で改訂2 に合わせて書き換え。改訂3 は 267） |
 
 ## 指示書58（テスト4の不整合の解消）— `tests/test_t58.py`
 
@@ -335,3 +335,36 @@
 | 241 | `test_t241_p_sharpness_and_gamma_dropped` |
 | 242 | `test_t242_v4_json_still_registers` |
 | 改訂2 §3 の 11・12（番号なし） | `test_t60_rules_11_12[*]`, `test_t60_forbidden_wording_does_not_apply_to_quoted_evidence` |
+
+## 指示書61（共鳴の門・根拠の表示・生成元・改訂3）— `tests/test_t61_resonance_gate.py`
+
+| 項目 | テスト |
+|---|---|
+| 243 | `test_t243_gate_blocks_low_resonance` |
+| 244 | `test_t244_no_gate_when_gate_s_zero` |
+| 245 | `test_t245_no_gate_when_uncertain` |
+| 246 | `test_t246_direction_b_uses_their_purpose_numbers` |
+| 247 | `test_t247_resonance_not_mixed_into_score` |
+| 248 | `test_t248_gate_dropped_reason_not_shown_or_recorded` |
+| 249 | `test_t249_v4_person_uses_will_as_destination` |
+| 250 | `test_t250_audit_route_has_gate_values_public_does_not` |
+| 251 | `test_t251_card_shows_need_to_offer_pair` |
+| 252 | `test_t252_card_never_pairs_needs_with_needs` |
+| 253 | `test_t253_approval_shows_direction_b_first` |
+| 254 | `test_t254_v4_counterpart_shows_matching_state_slot` |
+| 255 | `test_t255_no_similarity_values_on_screen` |
+| 256 | `test_t256_revision3_json_accepted` |
+| 257 | `test_t257_revision2_json_accepted_alpha_beta_dropped` |
+| 258 | `test_t258_empty_generator_rejected_one_line` |
+| 259 | `test_t259_slash_joined_evidence_accepted` |
+| 260 | `test_t260_slash_part_missing_rejected` |
+| 261 | `test_t261_slash_evidence_saved_verbatim` |
+| 262 | `test_t262_generator_recorded_as_family_and_tag` |
+| 263 | `test_t263_profile_structured_p3_covers_why_and_experience` |
+| 264 | `test_t264_necessity_published_c4_without_alpha_beta` |
+| 265 | `test_t265_p2_and_c3_events_verify_by_their_rules` |
+| 266 | `test_t266_profile_shows_why` |
+| 267 | `test_t267_register_prompts_are_revision3` |
+| 番号なし | `test_t61_verify_c3_rows_written_with_integer_numbers`（c3 の整数値の検証） |
+
+既存のテストの書き換え（指示書61）: 207（新しい版は c4）・209（v5 の宣言は p3）・218（見出しの文言）・224（見出し）・227（「全文を見る」）

@@ -321,9 +321,9 @@ function renderConnections(vessels, myId) {
       badge  = `<span class="badge-action">⚠️ あなたの承認が必要</span>`;
       const eid = escHtml(other).replace(/'/g, "\\'");
       action = `<button class="pv-btn" onclick="doApprove('${eid}', this)">承認する</button>`;
-      // 承認の場面の根拠と申し出の文（55-5 §1・§2）。描画後に非同期で埋める。
-      why = `<div class="mr-slot" data-other="${escHtml(other)}"></div>
-             <div class="mr-offer-slot" data-other="${escHtml(other)}"></div>`;
+      // 承認の場面: 申し出の文を上に、その下に根拠（指示書61 §3-2）。描画後に非同期で埋める。
+      why = `<div class="mr-offer-slot" data-other="${escHtml(other)}"></div>
+             <div class="mr-slot" data-other="${escHtml(other)}"></div>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
     }

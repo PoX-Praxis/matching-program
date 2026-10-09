@@ -6,7 +6,19 @@
   table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
   th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; }
   th { background: #f5f5f5; white-space: nowrap; }
-  .badge-action { background: #f8d7da; color: #721c24; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+  /* 承認の案件はカード（指示書63 段階1 §4-2）。表組み・バッジを使わず、状態は見出し行の文で示す。 */
+  .ib-card { border: 1px solid #dfe3e8; border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
+  .ib-head { font-size: 15px; font-weight: 700; }
+  .ib-head .ib-one { font-weight: 400; color: #454b54; font-size: 13.5px; }
+  .ib-when { font-size: 12.5px; color: #666; margin: 2px 0 6px; }
+  .ib-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .ib-actions button { min-height: 36px; padding: 0 16px; border-radius: 6px; font-size: 13.5px; cursor: pointer; }
+  .ib-approve { background: #1a3a5c; color: #fff; border: 1px solid #1a3a5c; }
+  .ib-decline { background: #fff; color: #454b54; border: 1px solid #cfd3d9; }
+  .ib-empty { font-size: 13.5px; color: #666; }
+  .ib-confirm { margin-top: 12px; padding: 10px 12px; background: #fbf5ec; border-radius: 6px; }
+  .ib-confirm p { margin: 0; font-size: 13.5px; color: #5a4410; }
+  .ib-decline-go { background: #8a4a00; color: #fff; border: 1px solid #8a4a00; }
   .badge-unread { background: #cce5ff; color: #004085; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
   a { color: #1a3a5c; }
   .subject-id { color: #999; font-size: 12px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -23,10 +35,7 @@
 <div id="main" style="display:none">
 
   <h2>承認が必要な案件</h2>
-  <table>
-    <thead><tr><th>相手</th><th>状態</th><th>アクション</th></tr></thead>
-    <tbody id="approvalRows"><tr><td colspan="3">なし</td></tr></tbody>
-  </table>
+  <div id="approvalCards"><p class="ib-empty">なし</p></div>
 
   <h2>未読メッセージ</h2>
   <table>
@@ -49,65 +58,94 @@ async function init() {
     try { history.replaceState(null, "", `/inbox?id=${encodeURIComponent(sid)}`); } catch (_) {}
   }
 
-  const [ledgerRes, inboxRes] = await Promise.all([
-    fetch(`/api/my/vessels?id=${encodeURIComponent(myId)}`),   // 当事者分のみ（全台帳公開の廃止）
+  // 自分宛ての申し出（受けた本人だけ。申し出の文・表示名・一行紹介・届いた日時）と未読メッセージ。
+  const [offersRes, inboxRes] = await Promise.all([
+    fetch("/api/my/offers"),
     fetch(`/api/inbox?id=${encodeURIComponent(myId)}`),
   ]);
 
-  if (PoX.handle(ledgerRes) || PoX.handle(inboxRes)) return;   // 401→/login・403→権限表示（§4）
+  if (PoX.handle(offersRes) || PoX.handle(inboxRes)) return;   // 401→/login・403→権限表示（§4）
 
-  const vessels = await ledgerRes.json();
-  const inbox   = await inboxRes.json();
+  const offers = await offersRes.json();
+  const inbox  = await inboxRes.json();
 
   document.getElementById("loading").style.display = "none";
   document.getElementById("main").style.display = "block";
 
-  // 自分宛ての申し出の文（受けた本人だけが読める。指示書55 §3-5）
-  offerMsg = await PoXReason.fetchOffers();
-
-  renderApprovals(vessels, myId);
+  renderApprovals(offers);
   renderMessages(inbox.conversations || []);
 }
 
-let offerMsg = {};   // 申し出た人 → 申し出の文
-
-function renderApprovals(vessels, myId) {
-  const needAction = vessels.filter(v => {
-    const j = (v.joins || [])[0] || {};
-    if (v.is_connected) return false;
-    const approvers = new Set((j.approvals || []).map(a => a.from));
-    const other = v.founder === myId ? (j.joiner || "") : v.founder;
-    return other && approvers.has(other) && !approvers.has(myId) &&
-           (v.founder === myId || j.joiner === myId);
-  });
-
-  const tbody = document.getElementById("approvalRows");
-  if (!needAction.length) {
-    tbody.innerHTML = "<tr><td colspan='3'>承認待ち案件はありません</td></tr>"; return;
-  }
-  tbody.innerHTML = needAction.map(v => {
-    const j = (v.joins || [])[0] || {};
-    const other = v.founder === myId ? (j.joiner || "-") : v.founder;
-    const oname = v.founder === myId ? (j.joiner_name || "表示名未設定のアカウント")
-                                     : (v.founder_name || "表示名未設定のアカウント");
-    const oid = encodeURIComponent(other);
-    // 生 id は画面に出さない（指示書55 172。46 の「表示名＋id 併記」は廃止）
-    return `<tr>
-      <td><a href="/profile/${oid}">${escHtml(oname)}</a>
-        ${PoXReason.offerHtml(offerMsg[other])}
-        <div class="mr-slot" data-other="${escHtml(other)}"></div></td>
-      <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
-      <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
-    </tr>`;
-  }).join("");
-  fillReasons(tbody);
+/* 「〇月〇日」（届いた日。時刻は出さない） */
+function mdOf(at) {
+  const d = new Date(at);
+  return isNaN(d) ? "" : `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-/* 承認の場面の根拠（なぜこの人か）。照合の結果のカードと同じ形をその場で計算して出す（55-5 §1）。 */
-function fillReasons(root) {
-  root.querySelectorAll(".mr-slot").forEach(async el => {
-    el.innerHTML = PoXReason.reasonHtml(await PoXReason.fetchReason(el.dataset.other));
+/* 承認が必要な案件（指示書63 段階1 §4-2）。承認はここだけ（マイページ・プロフィールは受信箱へ案内する）。
+   1 人 1 枚: 名前（@ハンドル）─ 一行紹介／届いた日／申し出の文／根拠（方向 B が先）／[承認する] [見送る]。 */
+function renderApprovals(offers) {
+  const el = document.getElementById("approvalCards");
+  const byFrom = new Map();
+  offers.forEach(o => {                                   // 目的ごとに複数届いていても 1 人 1 枚（最初に届いた日）
+    const cur = byFrom.get(o.from);
+    if (!cur) byFrom.set(o.from, { ...o, messages: o.message ? [o.message] : [] });
+    else if (o.message) cur.messages.push(o.message);
   });
+  if (!byFrom.size) { el.innerHTML = `<p class="ib-empty">承認待ちの案件はありません</p>`; return; }
+  el.innerHTML = [...byFrom.values()].map(o => {
+    const oid = escHtml(o.from);
+    // 生 id は画面に出さない（指示書55 172）。表示名（@ハンドル）はサーバーが組む。
+    return `<div class="ib-card" data-other="${oid}">
+      <div class="ib-head"><a href="/profile/${encodeURIComponent(o.from)}">${escHtml(o.from_name)}</a>${
+        o.from_one_liner ? ` <span class="ib-one">─ ${escHtml(o.from_one_liner)}</span>` : ""}</div>
+      <p class="ib-when">${escHtml(mdOf(o.at))}に申し出が届きました</p>
+      ${o.messages.map(m => PoXReason.offerHtml(m)).join("")}
+      <div class="ib-reason" data-other="${oid}"><p class="ap-none">根拠を読み込んでいます</p></div>
+      <div class="ib-actions">
+        <button class="ib-approve" onclick="doApprove('${oid}', this)">承認する</button>
+        <button class="ib-decline" onclick="askDecline(this)">見送る</button>
+      </div>
+      <div class="ib-confirm" style="display:none">
+        <p>見送ると相手に伝わります。元に戻せません</p>
+        <div class="ib-actions">
+          <button class="ib-decline-go" onclick="doDecline('${oid}', this)">見送る</button>
+          <button class="ib-decline" onclick="cancelDecline(this)">やめる</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".ib-reason").forEach(async slot => {
+    slot.innerHTML = PoXReason.approvalHtml(await PoXReason.fetchReason(slot.dataset.other));
+  });
+}
+
+/* 見送る（指示書63 段階1 §4-3）。確認を 1 回挟む（ダイアログは使わず、カードの中で確かめる）。
+   台帳には書かない（通常DBの状態だけ）。理由は聞かない。 */
+function askDecline(btn) {
+  const card = btn.closest(".ib-card");
+  card.querySelector(".ib-actions").style.display = "none";
+  card.querySelector(".ib-confirm").style.display = "block";
+}
+function cancelDecline(btn) {
+  const card = btn.closest(".ib-card");
+  card.querySelector(".ib-confirm").style.display = "none";
+  card.querySelector(".ib-actions").style.display = "";
+}
+async function doDecline(otherId, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/connections/decline", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_id: otherId }),
+    });
+    if (PoX.handle(res)) { if (btn) btn.disabled = false; return; }
+    if (!res.ok) { alert("見送れませんでした。時間をおいて再度お試しください。"); if (btn) btn.disabled = false; return; }
+    init();                                          // 受信箱から消える
+  } catch (e) {
+    alert("通信エラーが発生しました。時間をおいて再度お試しください。");
+    if (btn) btn.disabled = false;
+  }
 }
 
 function renderMessages(convs) {

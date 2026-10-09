@@ -1775,8 +1775,8 @@ def connection_reason():
     if not other or other == me:
         return jsonify({"error": "with が必要です"}), 400
     from ledger import connection_state, request_refs
-    if connection_state(me, other, db_path=DB) == "none":
-        return jsonify({"error": "申し出・接続の相手についてだけ見られます"}), 403
+    if connection_state(me, other, db_path=DB) not in ("pending_out", "pending_in", "connected"):
+        return jsonify({"error": "申し出・接続の相手についてだけ見られます"}), 403   # 見送った・見送られた相手も不可
     if not is_postgres() or not _matching_available():
         return jsonify({"reason": None}), 200
     from embedding_config import MODEL_TAG
@@ -1785,35 +1785,95 @@ def connection_reason():
         return jsonify({"reason": None}), 200
     mine = _side_of(store, me, MODEL_TAG)
     theirs = _side_of(store, other, MODEL_TAG)
-    # 申し出た側の版の参照（その目的・その時点の与え像）で上書きする
+    # 申し出た側の版の参照（その目的・その時点の与え像）で上書きする。参照が今の版と違えば「申し出の時点」の照合。
+    current = True
     for who, side in ((me, mine), (other, theirs)):
         ref = request_refs(who, me if who == other else other, db_path=DB)
         if ref:
             _apply_refs(side, ref, MODEL_TAG)
+            current = current and _ref_is_current(who, ref)
     # 照合と同じ判定（共鳴の門 → 必須の文の充足）。成立していない方向は出さない（指示書61 §3-2）。
     from matcher_v5 import judge_direction
-    a_pairs = []
+    a = b = None                                   # 通った目的と引用の対（方向ごとに最初に通った目的）
     for p in mine["purposes"]:
         ok, prs, _ = judge_direction(p, theirs)
         if ok:
-            a_pairs = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in prs]
+            a = (p, prs)
             break
-    b_pairs = []
     for q in theirs["purposes"]:
         ok, prs, _ = judge_direction(q, mine)
         if ok:
-            b_pairs = [{"kind": "fill_theirs", "mine": x["offer"], "theirs": x["need"]} for x in prs]
+            b = (q, prs)
             break
-    if not a_pairs and not b_pairs:
+    if not a and not b:
         return jsonify({"reason": None}), 200
+    a_pairs = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in (a[1] if a else [])]
+    b_pairs = [{"kind": "fill_theirs", "mine": x["offer"], "theirs": x["need"]} for x in (b[1] if b else [])]
     axis = "mutual" if (a_pairs and b_pairs) else "fill"
-    # 承認は自分の引き受けの判断なので、補完B（相手があなたに求めていること）を先に出す。
+    # 承認は自分の引き受けの判断なので、補完B（相手が求めていること）を先に出す。
     chosen = (b_pairs[:1] + a_pairs[:1]) if axis == "mutual" else (b_pairs or a_pairs)
     items = _reason_items(chosen, mine, theirs, context="approval")
-    connected = connection_state(me, other, db_path=DB) == "connected"
+    # 受信箱のカード（指示書63 段階1 §4-2）: 方向ごとの目的（v4 は意志）と、必要像の文の「欠かせない要素」の印。
+    for it in items:
+        if it["kind"] == "fill_theirs":
+            q = b[0]
+            it["purpose_label"] = "相手の目的" if q.get("purpose_id") else "相手の意志"
+            it["purpose_text"] = _purpose_text(other, q)
+            it["must"] = _need_required(q, it["need"])
+        else:
+            p = a[0]
+            it["purpose_label"] = _my_purpose_label(me, p)
+            it["purpose_text"] = _purpose_text(me, p)
+            it["must"] = _need_required(p, it["need"])
     _mark_noindex()
-    # 接続中の相手は申し出の版の参照が無いので、現在のプロフィールで計算している（その旨を添える）。
-    return jsonify({"reason": {"axis": axis, "reasons": items, "current_profile": connected}}), 200
+    # basis: current＝両者とも現在の版で照合した／offer_time＝申し出の時点の版を含む（申し出の後に作り直した）。
+    return jsonify({"reason": {"axis": axis, "reasons": items, "current_profile": current,
+                               "basis": "current" if current else "offer_time"}}), 200
+
+
+def _ref_is_current(sid, ref):
+    """申し出に保存した版の参照が、いまの版（その目的の生きている必要像・最新の与え像）と同じか。"""
+    import v5
+    if ref.get("necessity_ref"):
+        live = {n["purpose_id"]: n["necessity_id"] for n in v5.live_necessities_v5(sid, db_path=DB)}
+        if live.get(ref.get("purpose_id")) != ref["necessity_ref"]:
+            return False
+    if ref.get("offer_ref") and (v5.latest_offer(sid, db_path=DB) or {}).get("offer_id") != ref["offer_ref"]:
+        return False
+    return True
+
+
+def _need_required(purpose, text):
+    return any(bool(n.get("required")) for n in (purpose.get("needs") or []) if n.get("text") == text)
+
+
+def _purpose_text(sid, purpose):
+    """目的の向かう先（v5）。v4 の人（目的なし）は意志の文。"""
+    if purpose.get("label"):
+        return purpose["label"]
+    if purpose.get("purpose_id"):
+        import v5
+        doc = v5.get_doc(sid, db_path=DB) or {}
+        t = next((p.get("向かう先") for p in (doc.get("purposes") or [])
+                  if p.get("purpose_id") == purpose["purpose_id"]), None)
+        if t:
+            return str(t)
+    pv = get_profile_view(sid, db_path=DB) or {}
+    return _text_of(pv.get("will_where") or pv.get("pursuing"))
+
+
+def _my_purpose_label(sid, purpose):
+    """「あなたの目的 N」（プロフィールの番号と同じ。目的が 1 つなら番号なし）。v4 は「あなたの意志」。"""
+    pid = purpose.get("purpose_id")
+    if not pid:
+        return "あなたの意志"
+    import v5
+    doc = v5.get_doc(sid, db_path=DB) or {}
+    live = {n["purpose_id"] for n in v5.live_necessities_v5(sid, db_path=DB)}
+    order = [p.get("purpose_id") for p in (doc.get("purposes") or []) if p.get("purpose_id") in live]
+    if len(order) <= 1 or pid not in order:
+        return "あなたの目的"
+    return f"あなたの目的 {order.index(pid) + 1}"
 
 
 def _apply_refs(side, ref, model_tag):
@@ -1906,8 +1966,9 @@ def _side_of(store, sid, model_tag, bundle=None):
 _LABELS = {
     "card": {"fill_mine": ("あなたが必要としていること", "相手が力になれること", "相手の現状"),
              "fill_theirs": ("相手が必要としていること", "あなたが力になれること", "あなたの現状")},
-    "approval": {"fill_mine": ("あなたが求めていること", "相手が力になれること", "相手の現状"),
-                 "fill_theirs": ("相手があなたに求めていること", "あなたが力になれること", "あなたの現状")},
+    # 受信箱（指示書63 段階1 §4-2）: 「応えるもの」で対を示す。現状と比べた方向も見出しは同じで、欄は state_slot に。
+    "approval": {"fill_mine": ("あなたが求めていること", "相手が応えるもの", "相手の現状"),
+                 "fill_theirs": ("相手が求めていること", "あなたが応えるもの", "あなたの現状")},
 }
 
 
@@ -1941,9 +2002,15 @@ def _reason_items(pairs, mine_side, their_side, context="card"):
         item = {"kind": kind, "need_label": need_label, "need": need, "offer_label": offer_label, "offer": offer}
         if not give_side.get("has_offer"):
             slot = _state_slot_for(_need_vec(need_side, need), give_side)
-            item["offer_label"] = f"{state_label}（{slot['label']}）" if slot else state_label
-            if slot:
-                item["offer"] = slot["text"]
+            if context == "approval":
+                # 最も近い欄の文を出し、照合はその欄ではなく現状の全体で行ったことを添える（指示書63 段階1 §4-2）
+                item["state_note"] = f"照合は{state_label}の全体で行っています"
+                if slot:
+                    item["offer"], item["state_slot"] = slot["text"], slot["label"]
+            else:
+                item["offer_label"] = f"{state_label}（{slot['label']}）" if slot else state_label
+                if slot:
+                    item["offer"] = slot["text"]
         if kind == "fill_theirs" and context == "approval":
             item["takes_on"] = True               # 承認すると、これを引き受ける（自分の引き受け）
         out.append(item)
@@ -2050,12 +2117,14 @@ def post_approve():
     off = v5.latest_offer(from_id, db_path=DB)
     offer_ref = off["offer_id"] if off else None
 
+    # 申し出の経路（指示書63 段階1 §4-4）: つながる＝"match"・プロフィール＝"profile"。通常DBに記録するだけで画面に出さない。
+    channel = body.get("channel") if body.get("channel") in OFFER_CHANNELS else None
     result = approve(
         from_id=from_id,
         to_id=to_id,
         match_run_id=body.get("match_run_id"),
         predicted_role=body.get("predicted_role"),
-        channel=body.get("channel"),
+        channel=channel,
         phase=None,
         db_path=DB,
         establish_hook=_snapshot_pair_resolver,   # 成立時に両者の最新スナップショットを結合（指示書12）
@@ -2064,10 +2133,14 @@ def post_approve():
         message=message or None,
         purpose_id=purpose_id, necessity_ref=necessity_ref, offer_ref=offer_ref,
     )
+    if result.get("reason") == "declined":
+        return jsonify({"error": "declined", "message": DECLINED_MESSAGE}), 409
     return jsonify(result), 200
 
 
 OFFER_MESSAGE_MAX = 400
+OFFER_CHANNELS = ("match", "profile")
+DECLINED_MESSAGE = "今回は見送られました。どちらかがプロフィールを作り直すと、もう一度申し出られます。"
 
 
 def _other_id(body):
@@ -2086,6 +2159,32 @@ def withdraw_connection_request():
     me = require_self(body.get("from_id"))
     from ledger import withdraw_request
     return jsonify({"withdrawn": withdraw_request(me, _other_id(body), db_path=DB)}), 200
+
+
+@app.post("/api/connections/decline")
+@login_required
+def decline_connection_request():
+    """受けた申し出を見送る（指示書63 段階1 §4-3）。**台帳に書かない**（通常DBの状態 declined だけ）。理由は受け取らない。
+    受信箱から消え、照合の結果からも外し続ける。どちらかが新しい版を作るまで、二人の間では申し出られない。
+    見送る申し出が無ければ 404。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("me"))
+    from ledger import decline_request
+    if not decline_request(me, _other_id(body), db_path=DB):
+        return jsonify({"error": "見送る申し出がありません"}), 404
+    return jsonify({"declined": True}), 200
+
+
+@app.get("/api/my/declined")
+@login_required
+def my_declined_offers():
+    """自分の申し出のうち、見送られたもの（申し出た本人だけ。マイページに「今回は見送られました」）。"""
+    me = require_self(request.args.get("id"))
+    from ledger import declined_offers
+    rows = declined_offers(me, db_path=DB)
+    names = _resolve_names([r["to"] for r in rows], fallback=UNNAMED_LABEL)
+    _mark_noindex()
+    return jsonify([{"to": r["to"], "to_name": names.get(r["to"], UNNAMED_LABEL), "at": r["at"]} for r in rows]), 200
 
 
 @app.get("/api/my/purposes")
@@ -2123,9 +2222,23 @@ def my_received_offers():
     me = require_self(request.args.get("id"))
     from ledger import received_offers
     offers = received_offers(me, db_path=DB)
-    names = _resolve_names([o["from"] for o in offers], fallback=UNNAMED_LABEL)
+    ids = sorted({o["from"] for o in offers})
+    names = _resolve_names(ids, fallback=UNNAMED_LABEL)          # 「表示名（@ハンドル）」
+    ones = {i: _one_liner_of(i) for i in ids}                    # 受信箱のカードの見出し（指示書63 段階1 §4-2）
     _mark_noindex()
-    return jsonify([{**o, "from_name": names.get(o["from"], UNNAMED_LABEL)} for o in offers]), 200
+    return jsonify([{**o, "from_name": names.get(o["from"], UNNAMED_LABEL),
+                     "from_one_liner": ones.get(o["from"], "")} for o in offers]), 200
+
+
+def _one_liner_of(sid):
+    """カードの見出しの一行: v5 は一行紹介、v4 は要約文（headline）。無ければ空。"""
+    v = _v5_profile_block(sid)
+    if v and v.get("one_liner"):
+        return v["one_liner"]
+    try:
+        return _text_of((get_profile_view(sid, db_path=DB) or {}).get("headline"))
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 @app.post("/api/connections/offer-message/retract")

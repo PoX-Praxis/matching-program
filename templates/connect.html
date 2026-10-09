@@ -146,7 +146,8 @@ async function offer(btn) {
   try {
     const box = document.getElementById(btn.dataset.msg);
     const r = await fetch("/approve", {method: "POST", headers: {"Content-Type": "application/json"},
-                                       body: JSON.stringify({ to_id: btn.dataset.to,
+                                       // 経路 "match" を記録する（画面には出さない。指示書63 段階1 §4-4）
+                                       body: JSON.stringify({ to_id: btn.dataset.to, channel: "match",
                                                               purpose_id: btn.dataset.purpose || null,
                                                               message: ((box && box.value) || "").trim() })});
     if (PoX.handle(r)) { btn.disabled = false; return; }

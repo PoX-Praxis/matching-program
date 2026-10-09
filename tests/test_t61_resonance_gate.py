@@ -242,15 +242,12 @@ def test_t253_approval_shows_direction_b_first(world):
     r = _cli("me").get("/api/connections/reason?with=c_mut").get_json()["reason"]
     assert r["axis"] == "mutual"
     first, second = r["reasons"]
-    assert first["kind"] == "fill_theirs" and first["need_label"] == "相手があなたに求めていること"
-    assert first["offer_label"] == "あなたが力になれること" and first["takes_on"] is True
-    assert second["need_label"] == "あなたが求めていること"
-    for t in ("inbox.html", "mypage.html", "profile.html"):      # 申し出の文が根拠の上
-        src = open(os.path.join(ROOT, "templates", t), encoding="utf-8").read()
-        if t == "profile.html":
-            assert "PoXReason.offerHtml(offers[profileId]) + PoXReason.reasonHtml(reason)" in src
-        else:
-            assert src.index("offer") < src.index('class="mr-slot"') or "mr-offer-slot" in src
+    # 見出しは指示書63 段階1 §4-2 の受信箱のカードに合わせた（「応えるもの」で対を示す）
+    assert first["kind"] == "fill_theirs" and first["need_label"] == "相手が求めていること"
+    assert first["offer_label"] == "あなたが応えるもの" and first["takes_on"] is True
+    assert second["need_label"] == "あなたが求めていること" and second["offer_label"] == "相手が応えるもの"
+    src = open(os.path.join(ROOT, "templates", "inbox.html"), encoding="utf-8").read()   # 申し出の文が根拠の上
+    assert src.index("PoXReason.offerHtml(m)") < src.index('class="ib-reason"')
 
 
 def test_t254_v4_counterpart_shows_matching_state_slot(world, monkeypatch):

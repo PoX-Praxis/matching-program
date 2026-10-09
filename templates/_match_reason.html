@@ -17,6 +17,17 @@
   .mr-offer { font-size: 12.5px; color: #444; margin-top: 4px; white-space: pre-wrap;
               border-left: 3px solid #d5dae1; padding-left: 8px; }
   .mr-offer .k { display: block; font-size: 11px; color: #888; }
+  /* 受信箱のカード（指示書63 段階1 §4-2）: 方向ごとの節。矢印・表組み・バッジを使わず、ラベルで対を示す。 */
+  .ap-sec { margin-top: 12px; }
+  .ap-sec-h { font-size: 13px; font-weight: 700; color: #1f3a5f; margin-bottom: 4px; }
+  .ap-row { font-size: 13.5px; color: #333; line-height: 1.7; padding-left: 1em; }
+  .ap-row .ap-k { font-size: 12px; color: #555; }
+  .ap-must { display: inline-block; font-size: 11px; font-weight: 700; color: #1f3a5f; border: 1px solid #b9c6d6;
+             border-radius: 3px; padding: 0 5px; margin-left: 6px; line-height: 1.6; }
+  .ap-sub { font-size: 12px; color: #666; }
+  .ap-note { font-size: 11.5px; color: #888; padding-left: 1em; }
+  .ap-basis { font-size: 11.5px; color: #888; margin-top: 10px; }
+  .ap-none { font-size: 13px; color: #666; margin: 8px 0 0; }
   .mr-compose textarea { width: 100%; box-sizing: border-box; font-size: 13px; margin-top: 4px; }
   .mr-compose label { font-size: 12px; color: #555; }
 </style>
@@ -65,6 +76,34 @@ window.PoXReason = (function () {
     const note = r.current_profile ? `<div class="mr-note">現在のプロフィールにもとづく</div>` : "";
     return `<div class="mr-axis ${r.axis}">${AXIS[r.axis]}</div>` + (r.reasons || []).map(line).join("") + note;
   }
+  /* 受信箱のカードの根拠（指示書63 段階1 §4-2）。方向 B（承認すると、あなたが引き受けること）を先に。
+     通った方向だけを出す（片方向なら「互いに」を使わない）。根拠が無ければ「照合による根拠はありません」だけ
+     （経路は断定しない）。現状と比べた方向は、最も近い欄の文と「照合は…現状の全体で行っています」を添える。 */
+  const SECTION = { fill_theirs: "承認すると、あなたが引き受けること", fill_mine: "あなたが得られるもの" };
+  function apSection(kind, items) {
+    if (!items.length) return "";
+    const p = items[0];
+    let h = `<div class="ap-sec"><div class="ap-sec-h">${SECTION[kind]}</div>`;
+    if (p.purpose_text) h += `<div class="ap-row"><span class="ap-k">${esc(p.purpose_label)}</span>：${quote(p.purpose_text)}</div>`;
+    items.forEach(x => {
+      h += `<div class="ap-row"><span class="ap-k">${esc(x.need_label)}</span>：${quote(x.need)}`
+         + (x.must ? `<span class="ap-must">欠かせない要素</span>` : "") + `</div>`;
+      h += `<div class="ap-row"><span class="ap-k">${esc(x.offer_label)}</span>：${quote(x.offer)}`
+         + (x.state_slot ? ` <span class="ap-sub">（現状の「${esc(x.state_slot)}」から）</span>` : "") + `</div>`;
+    });
+    const note = (items.find(x => x.state_note) || {}).state_note;      // 節に 1 回だけ
+    if (note) h += `<div class="ap-note">${esc(note)}</div>`;
+    return h + `</div>`;
+  }
+  function approvalHtml(r) {
+    const xs = (r && r.reasons) || [];
+    if (!xs.length) return `<p class="ap-none">照合による根拠はありません</p>`;
+    const basis = r.basis === "offer_time" ? "相手が申し出た時点のプロフィールにもとづく照合です"
+                                           : "現在のプロフィールにもとづく照合です";
+    return apSection("fill_theirs", xs.filter(x => x.kind === "fill_theirs"))
+         + apSection("fill_mine", xs.filter(x => x.kind === "fill_mine"))
+         + `<p class="ap-basis">※ ${basis}</p>`;
+  }
   /* 申し出の文（受けた本人だけに届く）。 */
   function offerHtml(text) {
     if (!text) return "";
@@ -91,6 +130,6 @@ window.PoXReason = (function () {
     return `<div class="mr-compose"><label for="${id}">なぜつながりたいか（任意・400字まで。相手だけが読めます）</label>
       <textarea id="${id}" maxlength="400" rows="2"></textarea></div>`;
   }
-  return { esc, AXIS, cut, reasonHtml, offerHtml, fetchReason, fetchOffers, composeHtml };
+  return { esc, AXIS, cut, quote, reasonHtml, approvalHtml, offerHtml, fetchReason, fetchOffers, composeHtml };
 })();
 </script>

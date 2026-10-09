@@ -287,8 +287,7 @@ def test_t213_approval_reason_recomputed_from_refs(world):
     with ledger._connect(appmod.DB) as con:                        # 根拠のコピーは保存しない
         cols = [c[1] for c in con.execute("PRAGMA table_info(connection_requests)").fetchall()]
     assert "reason" not in " ".join(cols)
-    for t in ("inbox.html", "mypage.html", "profile.html"):
-        assert "PoXReason" in TPL(t)
+    assert "PoXReason" in TPL("inbox.html")          # 承認の場面は受信箱だけ（指示書63 段階1 §4-3）
 
 
 def test_t214_establish_uses_purpose_event_hash(world):
@@ -306,7 +305,7 @@ def test_t215_offer_message_box_only_for_offerer():
     assert "PoXReason.composeHtml" in TPL("connect.html")
     for t in ("inbox.html", "mypage.html"):
         assert "apvMsg_" not in TPL(t) and "composeHtml" not in TPL(t)
-        assert "PoXReason.offerHtml" in TPL(t)                         # 受けた文は表示する
+    assert "PoXReason.offerHtml" in TPL("inbox.html")                  # 受けた文は受信箱で表示する（指示書63 段階1）
     assert 'show("offerBox", state === "none")' in TPL("profile.html")
 
 

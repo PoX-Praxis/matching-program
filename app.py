@@ -479,7 +479,23 @@ def ledger_audit_match():
         "threshold_scale": "g(cos) = (1 + cos) / 2 の加重べき乗平均（総合）に対する閾値。cos そのものではない",
         "a_to_b": _pair_detail(store, a, b, MODEL_TAG),
         "b_to_a": _pair_detail(store, b, a, MODEL_TAG),
+        "v5": _pair_detail_v5(store, a, b, MODEL_TAG),
     }), 200
+
+
+def _pair_detail_v5(store, a, b, model_tag):
+    """段3（目的ごと・文単位）と共鳴の門の内部値（指示書61 §2-5）。本文は返さない。
+    a_to_b: a の各目的が b を求める方向（補完A）／b_to_a: b の各目的が a を求める方向。
+    各方向: purpose_id・resonance（向かう先どうしの g(cos) の最大）・gate_strength（gate_s×(1−gate_u)）・
+    gate（門を立てたか）・gate_passed（門を通ったか）・complement（必須の文の充足。門で落ちたら null）。"""
+    from matcher_v5 import audit_pair
+    from match_config import RES_GATE_MIN, RES_THRESHOLD
+    from matcher_v5 import SENTENCE_JUDGE_THRESHOLD
+    sa, sb = _side_of(store, a, model_tag), _side_of(store, b, model_tag)
+    return {"res_gate_min": RES_GATE_MIN, "res_threshold": RES_THRESHOLD,
+            "sentence_threshold": SENTENCE_JUDGE_THRESHOLD,
+            "has_offer": {"a": sa["has_offer"], "b": sb["has_offer"]},
+            **audit_pair(sa, sb)}
 
 
 def _pair_detail(store, seeker, other, model_tag):
@@ -819,6 +835,7 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
         _run_with_retry(
             lambda: vectorize_profile_v4(
                 store, profile_id, profile_input, necessity["necessity_text"]))
+        _state_slot_job(profile_id)      # 現状の欄ごと（表示で該当する欄を選ぶ。指示書61 §3-1）
         if final_status is not None:  # 編集経路: ready を上書きして needs_regeneration を維持
             store.set_generation_status(profile_id, final_status, error=None)
         # 下書き→確定の経路では台帳は confirm が同期で書き済み（生成元ピン留め等の付帯情報つき）。
@@ -1130,15 +1147,16 @@ def _draft_preview(draft):
 
 
 def _clamp_numbers(nums):
-    """①v5 の目的ごとの数値を検証・クランプ（無検証で信頼しない）。gate は [0,1]、α・β は [0,2]。"""
+    """①v5 の目的ごとの数値を検証・クランプ（無検証で信頼しない）。gate は [0,1]。
+    alpha・beta は使わない（指示書61: 共鳴を門にした。c4 の数値は {gate_s, gate_u}）。"""
     def f(x, lo, hi, default):
+        # 常に float で返す（max(0, 0.0) は int の 0 を返し、内容ハッシュの正準形が 0 と 0.0 で変わるため）
         try:
-            return max(lo, min(hi, float(x)))
+            return float(max(lo, min(hi, float(x))))
         except (TypeError, ValueError):
-            return default
+            return float(default)
     nums = nums or {}
-    return {"gate_s": f(nums.get("gate_s"), 0, 1, 0.0), "gate_u": f(nums.get("gate_u"), 0, 1, 0.5),
-            "alpha": f(nums.get("alpha"), 0, 2, 1.0), "beta": f(nums.get("beta"), 0, 2, 1.0)}
+    return {"gate_s": f(nums.get("gate_s"), 0, 1, 0.0), "gate_u": f(nums.get("gate_u"), 0, 1, 0.5)}
 
 
 def _confirm_v5_ledger(pid, doc, assigned, prof, draft):
@@ -1147,14 +1165,17 @@ def _confirm_v5_ledger(pid, doc, assigned, prof, draft):
     import v5
     import necessities as _nec
     offer = v5.save_offer(pid, doc.get("与え像") or [], db_path=DB)
-    prompt_ver = ((draft["payload"].get("_meta") or {}).get("source")) or "v5"
+    # 生成元の記録（穴A・指示書61 §4-3）: generator はモデルの系統に丸めた値、generator_tag は <source>/<系統>。
+    # どちらも payload の値で、内容ハッシュの対象ではない。
+    family = _nec.normalize_generator(str(doc.get("generator") or ""))
+    generator_tag = f"{v5.source_of(doc)}/{family}" if family else v5.source_of(doc)
     published = []
     for purpose_id, p in assigned:
         nec_in = {**_clamp_numbers(p.get("数値")), "will_text": str(p.get("向かう先") or ""),
                   "evidence_span": str(p.get("根拠") or "")}
         r = _nec.publish_necessity(
-            pid, "subject", nec_in, origin="generated", generator="",
-            source_snapshot_hash=prof.get("content_hash"), generator_tag=prompt_ver,
+            pid, "subject", nec_in, origin="generated", generator=family,
+            source_snapshot_hash=prof.get("content_hash"), generator_tag=generator_tag,
             attempt_n=draft["attempt_n"], actor=pid, db_path=DB,
             purpose_id=purpose_id, sentences=p.get("必要像") or [], offer_hash=offer["offer_hash"])
         published.append(r)
@@ -1181,8 +1202,42 @@ def _v5_sentence_job(pid, offer):
             o = v5.get_offer(offer["offer_id"], db_path=DB) or {"sentences": []}
             v5.save_sentence_vectors("offer", offer["offer_id"], [x["文"] for x in o["sentences"]],
                                      MODEL_TAG, _nec._default_embed, db_path=DB)
+        # 共鳴の門（指示書61）: 目的ごとの向かう先。与え像が 0 文なら現状の欄も（表示で該当する欄を選ぶ）。
+        v5.save_dest_vectors(pid, MODEL_TAG, _nec._default_embed, db_path=DB)
+        _state_slot_job(pid)
     except Exception as e:  # noqa: BLE001
         app.logger.warning(f"[v5-sentences] 文単位ベクトルの作成に失敗（確定は成立済み）: {e}")
+
+
+def _state_slot_job(sid):
+    """現状の欄ごとのベクトル（表示用。判定には使わない）。公開プロフィールの欄の文で作る。失敗しても何も壊さない。"""
+    try:
+        import v5
+        import necessities as _nec
+        from embedding_config import MODEL_TAG
+        pv = get_profile_view(sid, db_path=DB) or {}
+        v5.save_state_slot_vectors(sid, [_text_of(pv.get(k)) for k, _ in STATE_SLOTS], MODEL_TAG,
+                                   _nec._default_embed, db_path=DB)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[state-slots] 現状の欄のベクトルの作成に失敗（照合には影響しない）: {e}")
+
+
+_STATE_SLOT_PENDING = set()
+
+
+def _backfill_state_slots(sid):
+    """欄ごとのベクトルがまだ無い v4 の人の分を、裏で一度だけ作る（照合の応答は待たせない）。
+    テスト（TESTING）では動かさない（合成ベクトルを上書きしないため）。"""
+    if app.config.get("TESTING") or sid in _STATE_SLOT_PENDING:
+        return
+    _STATE_SLOT_PENDING.add(sid)
+
+    def run():
+        try:
+            _state_slot_job(sid)
+        finally:
+            _STATE_SLOT_PENDING.discard(sid)
+    threading.Thread(target=run, daemon=True).start()
 
 
 def _purpose_hint(draft):
@@ -1624,50 +1679,73 @@ def connection_reason():
         ref = request_refs(who, me if who == other else other, db_path=DB)
         if ref:
             _apply_refs(side, ref, MODEL_TAG)
-    from matcher_v5 import direction
-    pairs = []
+    # 照合と同じ判定（共鳴の門 → 必須の文の充足）。成立していない方向は出さない（指示書61 §3-2）。
+    from matcher_v5 import judge_direction
+    a_pairs = []
     for p in mine["purposes"]:
-        ok, prs = direction(p["needs"], theirs["offers"])
-        if ok or not pairs:
-            pairs = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in prs] or pairs
+        ok, prs, _ = judge_direction(p, theirs)
         if ok:
+            a_pairs = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in prs]
             break
     b_pairs = []
     for q in theirs["purposes"]:
-        ok, prs = direction(q["needs"], mine["offers"])
+        ok, prs, _ = judge_direction(q, mine)
         if ok:
             b_pairs = [{"kind": "fill_theirs", "mine": x["offer"], "theirs": x["need"]} for x in prs]
             break
-    if not pairs and not b_pairs:
+    if not a_pairs and not b_pairs:
         return jsonify({"reason": None}), 200
-    axis = "mutual" if (pairs and b_pairs) else "fill"
-    items = _reason_items((pairs[:1] + b_pairs[:1]) if axis == "mutual" else (pairs or b_pairs), mine, theirs)
+    axis = "mutual" if (a_pairs and b_pairs) else "fill"
+    # 承認は自分の引き受けの判断なので、補完B（相手があなたに求めていること）を先に出す。
+    chosen = (b_pairs[:1] + a_pairs[:1]) if axis == "mutual" else (b_pairs or a_pairs)
+    items = _reason_items(chosen, mine, theirs, context="approval")
+    connected = connection_state(me, other, db_path=DB) == "connected"
     _mark_noindex()
-    return jsonify({"reason": {"axis": axis, "reasons": items}}), 200
+    # 接続中の相手は申し出の版の参照が無いので、現在のプロフィールで計算している（その旨を添える）。
+    return jsonify({"reason": {"axis": axis, "reasons": items, "current_profile": connected}}), 200
 
 
 def _apply_refs(side, ref, model_tag):
-    """申し出に保存した版の参照で、片側の目的と与え像を差し替える（その時点の版で再計算するため）。"""
+    """申し出に保存した版の参照で、片側の目的と与え像を差し替える（その時点の版で再計算するため）。
+    必須の印と門の値（gate_s・gate_u）はその版の必要像の行から読む（指示書61。以前は必須を落としていた）。"""
     import v5
     if ref.get("necessity_ref"):
         vecs = v5.get_sentence_vectors("necessity", ref["necessity_ref"], model_tag, db_path=DB)
         if vecs:
-            side["purposes"] = [{"purpose_id": ref.get("purpose_id"), "label": "", "necessity_id": ref["necessity_ref"],
-                                 "needs": [{"text": t, "vec": v, "required": False} for t, v in vecs]}]
+            row = v5.necessity_body(ref["necessity_ref"], db_path=DB) or {}
+            req = [bool((x or {}).get("必須")) for x in (row.get("sentences") or [])]
+            pid = ref.get("purpose_id")
+            dest = v5.get_sentence_vectors("dest", pid, model_tag, db_path=DB) if pid else []
+            side["purposes"] = [{
+                "purpose_id": pid, "label": "", "necessity_id": ref["necessity_ref"],
+                "needs": [{"text": t, "vec": v, "required": req[i] if i < len(req) else False}
+                          for i, (t, v) in enumerate(vecs)],
+                "dest_vec": dest[0][1] if dest else side.get("will_vec"),
+                "gate_s": row.get("gate_s"), "gate_u": row.get("gate_u")}]
     if ref.get("offer_ref"):
         vecs = v5.get_sentence_vectors("offer", ref["offer_ref"], model_tag, db_path=DB)
         if vecs:
             side["offers"], side["has_offer"] = [{"text": t, "vec": v} for t, v in vecs], True
 
 
-# ── 照合の段3（指示書57）: 目的ごと・文単位 ──────────────────────────────────────
+# ── 照合の段3（指示書57・61）: 目的ごと・文単位・共鳴の門 ───────────────────────────
+STATE_SLOTS = (("state_have", "持っているもの"), ("state_can_type", "できること（型）"),
+               ("state_bound", "縛られているもの"), ("state_unsorted", "未分類"))
+
+
 def _side_of(store, sid, model_tag, bundle=None):
-    """照合の片側: 目的ごとの必要像の文と、与え像の文（ベクトル付き）。
+    """照合の片側: 目的ごとの必要像の文と、与え像の文（ベクトル付き）、向かう先と門の値。
 
     v5 の人は文単位ベクトル。v4 の人（または文単位ベクトルがまだ無い人）は「目的 1 つ・与え像なし」と
     して読み、必要像の全文ベクトルと、与え像の代わりに現状（state_passage）を使う（v4 互換）。
+    共鳴の門（指示書61）: 目的ごとの向かう先のベクトル（"dest"）。無ければ意志の全文（will_symmetric）で代える。
+    v4 の人は意志の全文を向かう先とする。現状の欄ごとのベクトル（"state"）があれば、表示で該当する欄を選ぶのに使う。
     """
     import v5
+    if bundle is None:
+        bundle = store.get_bundle(sid, model_tag)
+    vecs4 = (bundle or {}).get("vectors") or {}
+    will_vec = vecs4.get("will_symmetric")
     doc = v5.get_doc(sid, db_path=DB) or {}
     labels = {p.get("purpose_id"): str(p.get("向かう先") or "") for p in (doc.get("purposes") or [])}
     purposes = []
@@ -1676,10 +1754,13 @@ def _side_of(store, sid, model_tag, bundle=None):
         if not vecs:
             continue
         req = [bool((x or {}).get("必須")) for x in n["sentences"]]
+        dest = v5.get_sentence_vectors("dest", n["purpose_id"], model_tag, db_path=DB)
         purposes.append({"purpose_id": n["purpose_id"], "label": labels.get(n["purpose_id"], ""),
                          "necessity_id": n["necessity_id"],
                          "needs": [{"text": t, "vec": v, "required": req[i] if i < len(req) else False}
-                                   for i, (t, v) in enumerate(vecs)]})
+                                   for i, (t, v) in enumerate(vecs)],
+                         "dest_vec": dest[0][1] if dest else will_vec,
+                         "gate_s": n.get("gate_s"), "gate_u": n.get("gate_u")})
     offers, offer_id = [], None
     off = v5.latest_offer(sid, db_path=DB)
     if off:
@@ -1687,31 +1768,74 @@ def _side_of(store, sid, model_tag, bundle=None):
         if vecs:
             offers, offer_id = [{"text": t, "vec": v} for t, v in vecs], off["offer_id"]
     has_offer = bool(offers)
-    if bundle is None:
-        bundle = store.get_bundle(sid, model_tag)
-    vecs4 = (bundle or {}).get("vectors") or {}
     if not purposes and bundle:
-        text = ((bundle.get("necessity") or {}).get("necessity_text") or "").strip()
+        nec = bundle.get("necessity") or {}
+        text = (nec.get("necessity_text") or "").strip()
         if text and vecs4.get("necessity_query"):
             purposes = [{"purpose_id": None, "label": "", "necessity_id": None,
-                         "needs": [{"text": text, "vec": vecs4["necessity_query"], "required": False}]}]
+                         "needs": [{"text": text, "vec": vecs4["necessity_query"], "required": False}],
+                         "dest_vec": will_vec, "gate_s": nec.get("gate_s"), "gate_u": nec.get("gate_u")}]
+    state_slots = []
     if not offers and vecs4.get("state_passage"):
-        offers = [{"text": _state_text(get_profile_view(sid, db_path=DB) or {}), "vec": vecs4["state_passage"]}]
-    return {"purposes": purposes, "offers": offers, "has_offer": has_offer, "offer_id": offer_id}
+        pv = get_profile_view(sid, db_path=DB) or {}
+        offers = [{"text": _state_text(pv), "vec": vecs4["state_passage"]}]
+        slot_vecs = dict(v5.get_sentence_vectors_indexed("state", sid, model_tag, db_path=DB))
+        for i, (key, label) in enumerate(STATE_SLOTS):
+            t = _text_of(pv.get(key))
+            if t and i in slot_vecs and slot_vecs[i][0] == t:      # 現在の欄の文と同じものだけ使う
+                state_slots.append({"label": label, "text": t, "vec": slot_vecs[i][1]})
+        if not state_slots and any(_text_of(pv.get(k)) for k, _ in STATE_SLOTS):
+            _backfill_state_slots(sid)
+    dests = [p["dest_vec"] for p in purposes if p.get("dest_vec")] or ([will_vec] if will_vec else [])
+    return {"purposes": purposes, "offers": offers, "has_offer": has_offer, "offer_id": offer_id,
+            "dests": dests, "will_vec": will_vec, "state_slots": state_slots}
 
 
-def _reason_items(pairs, mine_side, their_side):
-    """引用の対を表示用にする（数値なし）。与え像が無い側は「現状」と書く（v4 互換）。"""
+# 根拠の見出し（指示書61 §3）。並べるのは常に「必要像の文 ↔ 与え像の文（無ければ現状の欄）」。
+_LABELS = {
+    "card": {"fill_mine": ("あなたが必要としていること", "相手が力になれること", "相手の現状"),
+             "fill_theirs": ("相手が必要としていること", "あなたが力になれること", "あなたの現状")},
+    "approval": {"fill_mine": ("あなたが求めていること", "相手が力になれること", "相手の現状"),
+                 "fill_theirs": ("相手があなたに求めていること", "あなたが力になれること", "あなたの現状")},
+}
+
+
+def _need_vec(side, text):
+    for p in side.get("purposes") or []:
+        for n in p.get("needs") or []:
+            if n.get("text") == text:
+                return n.get("vec")
+    return None
+
+
+def _state_slot_for(need_vec, side):
+    """与え像が無い側の現状から、必要像の文に最も近い欄を選ぶ（表示用。判定は現状の全文で済んでいる）。"""
+    from embedding_service import cosine
+    slots = side.get("state_slots") or []
+    if not slots or not need_vec:
+        return None
+    return max(slots, key=lambda x: cosine(need_vec, x["vec"]))
+
+
+def _reason_items(pairs, mine_side, their_side, context="card"):
+    """引用の対を表示用にする（数値なし）。与え像が無い側は現状の該当する欄（欄のベクトルが無ければ現状の全文）。"""
     out = []
     for p in pairs:
-        if p["kind"] == "fill_mine":
-            out.append({"kind": "fill_mine", "need_label": "あなたの必要像", "need": p["mine"],
-                        "offer_label": "相手の与え像" if their_side["has_offer"] else "相手の現状",
-                        "offer": p["theirs"]})
+        kind = p["kind"]
+        need_label, offer_label, state_label = _LABELS[context][kind]
+        if kind == "fill_mine":
+            need, offer, need_side, give_side = p["mine"], p["theirs"], mine_side, their_side
         else:
-            out.append({"kind": "fill_theirs", "need_label": "相手の必要像", "need": p["theirs"],
-                        "offer_label": "あなたの与え像" if mine_side["has_offer"] else "あなたの現状",
-                        "offer": p["mine"]})
+            need, offer, need_side, give_side = p["theirs"], p["mine"], their_side, mine_side
+        item = {"kind": kind, "need_label": need_label, "need": need, "offer_label": offer_label, "offer": offer}
+        if not give_side.get("has_offer"):
+            slot = _state_slot_for(_need_vec(need_side, need), give_side)
+            item["offer_label"] = f"{state_label}（{slot['label']}）" if slot else state_label
+            if slot:
+                item["offer"] = slot["text"]
+        if kind == "fill_theirs" and context == "approval":
+            item["takes_on"] = True               # 承認すると、これを引き受ける（自分の引き受け）
+        out.append(item)
     return out
 
 

@@ -94,8 +94,8 @@ function renderApprovals(vessels, myId) {
     // 生 id は画面に出さない（指示書55 172。46 の「表示名＋id 併記」は廃止）
     return `<tr>
       <td><a href="/profile/${oid}">${escHtml(oname)}</a>
-        <div class="mr-slot" data-other="${escHtml(other)}"></div>
-        ${PoXReason.offerHtml(offerMsg[other])}</td>
+        ${PoXReason.offerHtml(offerMsg[other])}
+        <div class="mr-slot" data-other="${escHtml(other)}"></div></td>
       <td><span class="badge-action">⚠️ あなたの承認が必要</span></td>
       <td><button onclick="doApprove('${escHtml(other)}', this)">承認する</button></td>
     </tr>`;

@@ -25,6 +25,7 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
 - 構造化プロンプト v4「判断しない採集者」を `templates/register.html` に反映
 - 構造化プロンプト v5（2026-10-06 の文面）に差し替え（v4 の JSON も受け付ける）
 - 構造化プロンプト v5 改訂2（A 対話・B 自分で書く）に差し替え（指示書60）。本文は `docs/prompts/` が唯一の正で、画面はそこから読み込む
+- 構造化プロンプト v5 改訂3 に差し替え・共鳴の門・根拠の表示・生成元の記録・正準化 p3/c4（指示書61）
 - iOS スマートクォート（`“` `”`）によるJSON登録エラー修正
   - `src/profile_view.py`: `strip_code_fence()` でUnicodeエスケープ正規化
   - `templates/register.html`: 送信前にJS側でも正規化
@@ -54,7 +55,7 @@ templates/
   edit.html                   # 編集フォーム（意志 + 現状4スロット）
 qwen3_server/                 # Qwen3-Embedding ローカル推論サーバー
 docs/prompts/
-  v5_A_dialogue.txt                   # ① 構造化プロンプト v5 改訂2 A（対話して作る・推奨）＝唯一の正
+  v5_A_dialogue.txt                   # ① 構造化プロンプト v5 改訂3 A（対話して作る・推奨）＝唯一の正
   v5_B_selfwrite.txt                  # ① 同 B（自分で書いて作る・簡易）
 spec/
   structuring_prompt_v5.md            # ① v5 の旧文面（2026-10-06・一発変換。改訂2 で置き換え）

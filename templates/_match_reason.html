@@ -6,7 +6,11 @@
   .mr-axis { font-size: 12px; font-weight: bold; }
   .mr-axis.will { color: #1a56bb; } .mr-axis.fill { color: #1a6a3a; } .mr-axis.mutual { color: #7a4a1a; }
   .mr-line { font-size: 13px; color: #333; line-height: 1.6; margin-top: 2px; }
-  .mr-line .mr-give { padding-left: 1em; }
+  .mr-line .mr-k { font-size: 12px; color: #555; }
+  .mr-line .mr-arrow { color: #8a96a8; padding-left: 1em; line-height: 1.2; }
+  .mr-line + .mr-line { margin-top: 8px; }
+  .mr-takes { display: block; font-size: 11.5px; color: #7a4a1a; }
+  .mr-note { font-size: 11.5px; color: #888; margin-top: 4px; }
   .mr-more { display: inline; font-size: 12px; color: #555; }
   .mr-more > summary { display: inline; cursor: pointer; color: #1a3a5c; margin-left: 4px; white-space: nowrap; }
   .mr-more[open] { display: block; white-space: pre-wrap; padding-left: 1em; }
@@ -28,32 +32,38 @@ window.PoXReason = (function () {
     fill:   "足りないところを埋める",
     mutual: "足りないところを互いに埋める",
   };
-  /* 引用の対（指示書57）: 「◯◯の『…』に、△△の『…』が応えています」。数値は出さない。
-     need_label / offer_label はサーバーが付ける（与え像が無い側は「現状」）。 */
+  /* 根拠は常に「必要像の文 ↔ 与え像の文（無ければ現状の欄）」の引用の対（指示書61 §3）。数値は出さない。
+     見出し（need_label / offer_label）はサーバーが付ける。照合のカード:
+       あなたが必要としていること：…
+       　↑
+       相手が力になれること：…
+     承認の画面は補完B（相手があなたに求めていること ↔ あなたが力になれること）が先（サーバーが並べる）。 */
   /* 引用は**文の区切りまで**で切る（指示書58 1-5）。行数の丸め（CSS の clamp）は語の途中で切れて意味の核が消えるため
      使わない。区切り＝「。」「！」「？」・改行・現状のスロットの境目（" / "）。最初の区切りまでを出し、残りがあれば
-     「続きを見る」で折りたたむ（新しい画面は作らない）。区切りが無い文は丸ごと出す。 */
+     「全文を見る」で開く（切り詰めない・新しい画面は作らない）。区切りが無い文は丸ごと出す。 */
   function cut(t) {
     const s = String(t ?? "");
     const m = s.match(/^[\s\S]*?(?:[。！？!?]|\n| \/ )/);
     if (!m || m[0].length >= s.trim().length) return { head: s, rest: "" };
     return { head: m[0].replace(/(\n| \/ )$/, ""), rest: s.slice(m[0].length).trim() };
   }
-  function quote(label, t, tail) {
+  function quote(t) {
     const q = cut(t);
-    const more = q.rest ? `<details class="mr-more"><summary>続きを見る</summary>${esc(q.rest)}</details>` : "";
-    return `${esc(label)}の『${esc(q.head)}${q.rest ? "…" : ""}』${tail}${more}`;
+    const more = q.rest ? `<details class="mr-more"><summary>全文を見る</summary>${esc(q.rest)}</details>` : "";
+    return `「${esc(q.head)}${q.rest ? "…" : ""}」${more}`;
   }
-  /* 必要像の側と応える側（与え像／現状）を別々の塊にする（指示書58 1-1。応える側が必ず見える）。 */
   function line(x) {
     if (!x || !x.need || !x.offer) return "";
-    return `<div class="mr-line"><div class="mr-need">${quote(x.need_label, x.need, "に、")}</div>`
-         + `<div class="mr-give">${quote(x.offer_label, x.offer, "が応えています")}</div></div>`;
+    const takes = x.takes_on ? `<span class="mr-takes">承認すると、これを引き受けます</span>` : "";
+    return `<div class="mr-line"><div class="mr-need"><span class="mr-k">${esc(x.need_label)}</span>：${quote(x.need)}</div>`
+         + `<div class="mr-arrow" aria-hidden="true">↑</div>`
+         + `<div class="mr-give"><span class="mr-k">${esc(x.offer_label)}</span>：${quote(x.offer)}${takes}</div></div>`;
   }
   /* 根拠（axis と reasons）を HTML にする。無ければ空文字。 */
   function reasonHtml(r) {
     if (!r || !AXIS[r.axis]) return "";
-    return `<div class="mr-axis ${r.axis}">${AXIS[r.axis]}</div>` + (r.reasons || []).map(line).join("");
+    const note = r.current_profile ? `<div class="mr-note">現在のプロフィールにもとづく</div>` : "";
+    return `<div class="mr-axis ${r.axis}">${AXIS[r.axis]}</div>` + (r.reasons || []).map(line).join("") + note;
   }
   /* 申し出の文（受けた本人だけに届く）。 */
   function offerHtml(text) {

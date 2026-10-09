@@ -128,7 +128,7 @@ async function refreshConnectState() {
   show("approvalContext", state === "pending_in");
   if (state === "pending_in") {
     const [reason, offers] = await Promise.all([PoXReason.fetchReason(profileId), PoXReason.fetchOffers()]);
-    $("approvalContext").innerHTML = PoXReason.reasonHtml(reason) + PoXReason.offerHtml(offers[profileId]);
+    $("approvalContext").innerHTML = PoXReason.offerHtml(offers[profileId]) + PoXReason.reasonHtml(reason);  // 申し出の文が上（指示書61 §3-2）
   }
   const notice = $("notice");
   notice.className = state === "none" ? "" : "ok";

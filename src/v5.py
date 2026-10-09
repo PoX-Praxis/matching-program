@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from canon import canonicalize, sha256_hex
 from db_connect import get_connection, is_postgres
+from match_config import ALPHA_DEFAULT, BETA_DEFAULT
 
 TYPES = ("向かう先", "関わり方", "資源", "関心")
 MAX_PURPOSES, MAX_SENTENCES, MAX_REQUIRED = 3, 5, 2
@@ -23,7 +24,12 @@ MAX_PURPOSES, MAX_SENTENCES, MAX_REQUIRED = 3, 5, 2
 FORBIDDEN = ("年以上", "必須スキル", "ができる方", "を募集")
 # 「向かう先」への手段の混入（規則 3）。誤って弾かないよう最小限の語だけを見る。
 MEANS_MARKERS = ("そのために", "手段として")
-DROP_KEYS = ("p_sharpness", "gamma")              # 規則 7: あれば捨てる
+DROP_KEYS = ("p_sharpness", "gamma", "alpha", "beta")   # 規則 7: あれば捨てる（alpha・beta は指示書61 で追加）
+# 規則 14: どのプロンプトで作ったか（_meta.source）。無いもの＝改訂2（"v5r2"）として扱う（拒否しない）。
+SOURCES = ("v5r3-A", "v5r3-B", "v5r2-A", "v5r2-B")
+SOURCE_DEFAULT = "v5r2"
+# 規則 9: 根拠が「／」「/」でつながれていたら、比較のときだけ分ける（保存は原文のまま）
+_EVIDENCE_SPLIT = re.compile(r"[／/]")
 
 
 def _now() -> str:
@@ -73,12 +79,19 @@ def validate(doc: dict):
     1 schema_version / 2 目的の数 / 3 向かう先と手段（混入）/ 4 必要像の文数・必須の数 / 5 与え像の文数（0〜5）/
     6 型 / 7 p_sharpness・gamma は捨てる（拒否しない）/ 8 求人票の文体（根拠＝本人の引用は対象外）/
     9 根拠が生テキストに実在（正規化した派生キーで比較）/ 10 purpose_id はヒント（assign_purposes が振り直す）/
-    11 一行紹介・要約文・生テキストが空でない / 12 id（ハンドル）がある
+    11 一行紹介・要約文・生テキストが空でない / 12 id（ハンドル）がある /
+    13 generator が空でない / 14 _meta.source が既知の値か、無い（無ければ改訂2 として扱う）
     """
     if not is_v5(doc):
         return False, "schema_version が v5 ではありません"
     if not str(doc.get("id") or "").strip():
         return False, "id（ハンドル）がありません"
+    if not str(doc.get("generator") or "").strip():
+        return False, "generator（AI の名前）が入っていません"
+    meta = doc.get("_meta")
+    src = meta.get("source") if isinstance(meta, dict) else None
+    if src is not None and src not in SOURCES:
+        return False, f"_meta.source は {'／'.join(SOURCES)} のいずれかです"
     sm = doc.get("supporting_material") if isinstance(doc.get("supporting_material"), dict) else {}
     texts = raw_texts(doc)
     for k in ("一行紹介", "要約文"):
@@ -111,7 +124,8 @@ def validate(doc: dict):
             if x.get("型") not in TYPES:
                 return False, f"目的 {i}: 型は {'／'.join(TYPES)} のいずれかです"
         ev = str(p.get("根拠") or "").strip()
-        if ev and _norm(ev) not in story:
+        parts = [_norm(x) for x in _EVIDENCE_SPLIT.split(ev)] if ev else []
+        if any(x and x not in story for x in parts):
             return False, f"目的 {i}: 根拠が生テキストに見つかりません（引用は原文のまま）"
         for k in DROP_KEYS:
             p.pop(k, None)
@@ -132,6 +146,12 @@ def validate(doc: dict):
         if w in blob:
             return False, f"求人票の文体（「{w}」）は使えません"
     return True, doc
+
+
+def source_of(doc: dict) -> str:
+    """どのプロンプトで作ったか（_meta.source）。無ければ改訂2（"v5r2"）。"""
+    meta = (doc or {}).get("_meta")
+    return (meta.get("source") if isinstance(meta, dict) else None) or SOURCE_DEFAULT
 
 
 def keep_offers(doc: dict, keep) -> dict:
@@ -162,7 +182,9 @@ def to_flat(doc: dict) -> dict:
         "supporting_raw": sm,
         "necessity_text": "\n".join(str(x.get("文") or "") for x in (first.get("必要像") or [])),
         "gate_s": nums.get("gate_s"), "gate_u": nums.get("gate_u"), "p_sharpness": 0.0,
-        "alpha": nums.get("alpha"), "beta": nums.get("beta"),
+        # v4 互換の全文ベクトルの行（derived_necessity）は alpha・beta を必須とするので既定値を入れる。
+        # v5 の照合（段3・共鳴の門）は使わない。①改訂3 は出さず、改訂2 の値は規則 7 で捨てている。
+        "alpha": ALPHA_DEFAULT, "beta": BETA_DEFAULT,
         "evidence_span": str(first.get("根拠") or ""),
     }
 
@@ -301,11 +323,15 @@ def latest_event_hash_for_purpose(owner_ref: str, purpose_id: str, db_path: str 
 
 # ── 文単位のベクトル ─────────────────────────────────────────────────────────────
 def save_sentence_vectors(ref_kind: str, ref_id: str, texts: list, model_tag: str, embed_fn,
-                          db_path: str = "pox.db") -> int:
-    """文ごとに埋め込んで保存する。ref_kind: "necessity"（query）／"offer"（passage）。戻り値＝本数。"""
-    role = "query" if ref_kind == "necessity" else "passage"
+                          db_path: str = "pox.db", role: str = None, indexes: list = None) -> int:
+    """文ごとに埋め込んで保存する。戻り値＝本数。
+    ref_kind: "necessity"（query）／"offer"（passage）／"dest"＝目的の向かう先（symmetric。共鳴の門・指示書61）／
+    "state"＝現状の欄（passage。idx は欄の番号。表示で該当する欄を選ぶため）。
+    indexes を渡すと idx をその番号にする（既定は 0, 1, …）。"""
+    role = role or {"necessity": "query", "dest": "symmetric"}.get(ref_kind, "passage")
+    idxs = list(indexes) if indexes is not None else list(range(len(texts)))
     with _connect(db_path) as con:
-        for i, t in enumerate(texts):
+        for i, t in zip(idxs, texts):
             vec = embed_fn(t, role)
             con.execute("DELETE FROM sentence_vectors WHERE ref_kind=%s AND ref_id=%s AND idx=%s AND model_tag=%s",
                         (ref_kind, ref_id, i, model_tag))
@@ -314,9 +340,70 @@ def save_sentence_vectors(ref_kind: str, ref_id: str, texts: list, model_tag: st
     return len(texts)
 
 
+def delete_sentence_vectors(ref_kind: str, ref_id: str, model_tag: str, keep: list = None,
+                            db_path: str = "pox.db") -> None:
+    """ref の文ベクトルを消す（keep の idx は残す）。現状の欄が空になったときの掃除用。"""
+    with _connect(db_path) as con:
+        rows = con.execute("SELECT idx FROM sentence_vectors WHERE ref_kind=%s AND ref_id=%s AND model_tag=%s",
+                           (ref_kind, ref_id, model_tag)).fetchall()
+        for (i,) in rows:
+            if keep is None or i not in keep:
+                con.execute("DELETE FROM sentence_vectors WHERE ref_kind=%s AND ref_id=%s AND idx=%s "
+                            "AND model_tag=%s", (ref_kind, ref_id, i, model_tag))
+
+
 def get_sentence_vectors(ref_kind: str, ref_id: str, model_tag: str, db_path: str = "pox.db") -> list:
     """[(text, vec), ...]（idx 順）。無ければ空。"""
+    return [(t, v) for _, (t, v) in get_sentence_vectors_indexed(ref_kind, ref_id, model_tag, db_path=db_path)]
+
+
+def get_sentence_vectors_indexed(ref_kind: str, ref_id: str, model_tag: str, db_path: str = "pox.db") -> list:
+    """[(idx, (text, vec)), ...]（idx 順）。"""
     with _connect(db_path) as con:
-        rows = con.execute("SELECT text, vec FROM sentence_vectors WHERE ref_kind=%s AND ref_id=%s "
+        rows = con.execute("SELECT idx, text, vec FROM sentence_vectors WHERE ref_kind=%s AND ref_id=%s "
                            "AND model_tag=%s ORDER BY idx", (ref_kind, ref_id, model_tag)).fetchall()
-    return [(r[0], json.loads(r[1])) for r in rows]
+    return [(r[0], (r[1], json.loads(r[2]))) for r in rows]
+
+
+def necessity_body(necessity_id: str, db_path: str = "pox.db"):
+    """必要像の版の文（必須・型つき）と門の値。無ければ None。"""
+    import necessities as N
+    with N._connect(db_path) as con:
+        r = con.execute("SELECT body_json, gate_s, gate_u, purpose_id FROM necessities WHERE necessity_id=%s",
+                        (necessity_id,)).fetchone()
+    if not r:
+        return None
+    return {"sentences": json.loads(r[0]) if r[0] else [], "gate_s": r[1], "gate_u": r[2], "purpose_id": r[3]}
+
+
+def save_dest_vectors(subject_id: str, model_tag: str, embed_fn, db_path: str = "pox.db") -> int:
+    """生きている目的の向かう先を埋め込む（共鳴の門。指示書61）。文が変わった目的だけ作り直す。"""
+    doc = get_doc(subject_id, db_path=db_path) or {}
+    dest = {p.get("purpose_id"): str(p.get("向かう先") or "") for p in (doc.get("purposes") or [])}
+    made = 0
+    for n in live_necessities_v5(subject_id, db_path=db_path):
+        pid, text = n["purpose_id"], dest.get(n["purpose_id"], "")
+        if not text:
+            continue
+        cur = get_sentence_vectors("dest", pid, model_tag, db_path=db_path)
+        if not cur or cur[0][0] != text:
+            made += save_sentence_vectors("dest", pid, [text], model_tag, embed_fn, db_path=db_path)
+    return made
+
+
+def save_state_slot_vectors(subject_id: str, slots: list, model_tag: str, embed_fn,
+                            db_path: str = "pox.db") -> int:
+    """現状の欄ごとのベクトル（表示で「該当する欄」を選ぶ。判定には使わない）。slots は 4 欄の文（空は飛ばす）。
+    文が変わった欄だけ作り直し、空になった欄は消す。"""
+    have = dict(get_sentence_vectors_indexed("state", subject_id, model_tag, db_path=db_path))
+    made, keep = 0, []
+    for i, t in enumerate(slots):
+        t = str(t or "").strip()
+        if not t or t == "未取得":
+            continue
+        keep.append(i)
+        if i not in have or have[i][0] != t:
+            made += save_sentence_vectors("state", subject_id, [t], model_tag, embed_fn,
+                                          db_path=db_path, indexes=[i])
+    delete_sentence_vectors("state", subject_id, model_tag, keep=keep, db_path=db_path)
+    return made

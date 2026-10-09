@@ -385,22 +385,10 @@ def ledger_anchor():
     return jsonify(anchor.run_daily(db_path=DB)), 200
 
 
-@app.post("/ledger/admin/purge-accounts")
-def ledger_admin_purge_accounts():
-    """アカウント整理（指示書55-3 §2。scripts/purge_accounts.py と同じ）。**対象は固定の 4 id のみ**。
-
-    認証は X-Anchor-Token（一致しなければ 404）。**既定は dry-run**（消える行数と、消せない理由を返す）。
-    body {"apply": true} のときだけ削除する（1 トランザクション）。実行時に台帳参照を再確認し、0 でない id は
-    消さない。**実行前に pg_dump を取る**（docs/account_purge.md）。**使用後はルートを閉じる**。
-    """
-    if not (_debug_enabled() or _anchor_token_ok()):
-        abort(404)
-    _root = os.path.dirname(os.path.abspath(__file__))
-    if _root not in sys.path:
-        sys.path.insert(0, _root)
-    from scripts.purge_accounts import run_purge
-    body = request.get_json(force=True, silent=True) or {}
-    return jsonify(run_purge(apply=body.get("apply") is True, db_path=DB)), 200
+# 一時的に開けていた /ledger/admin/purge-accounts（消去）・/ledger/audit/inventory（棚卸し）は閉じた
+# （指示書58 §2-4・指示書62 §4-1）。同じ処理はリポジトリ直下から CLI で実行できる:
+#   scripts/purge_accounts.py・scripts/audit_inventory.py。/ledger/audit/match は照合の検証に使うので残す
+#   （X-Anchor-Token で保護。指示書61 §2-5・62 §4-1）。
 
 
 @app.get("/ledger/audit/legacy-boundary")
@@ -436,30 +424,14 @@ def ledger_audit_legacy_boundary():
     }), 200
 
 
-@app.get("/ledger/audit/inventory")
-def ledger_audit_inventory():
-    """埋め込みとアカウントの棚卸し（指示書55 段階0-2 E-1〜E-3・B-2・B-5。scripts/audit_inventory.py と同じ）。
-
-    読み取りのみ。認証は /ledger/audit/legacy-boundary と同じ（X-Anchor-Token が一致しなければ 404）。
-    返すのは設定値・件数・id ごとの所在と表示名まで。本文・スコア・照合の結果は返さない。
-    """
-    if not (_debug_enabled() or _anchor_token_ok()):
-        abort(404)
-    _root = os.path.dirname(os.path.abspath(__file__))
-    if _root not in sys.path:
-        sys.path.insert(0, _root)
-    from scripts.audit_inventory import run_inventory
-    return app.response_class(json.dumps(run_inventory(db_path=DB), ensure_ascii=False, default=str),
-                              mimetype="application/json"), 200
-
-
 @app.get("/ledger/audit/match")
 def ledger_audit_match():
     """指定ペアの照合の内部値（指示書55-4 §2。閾値の校正の証拠として取る）。
 
     認証は inventory と同じ（X-Anchor-Token が一致しなければ 404）。**指定した 2 人だけ**を返し、
     一覧・横断はしない。**本文は返さない**（類似度・ゲート・寄与・総合と入口の判定だけ）。画面と
-    /v4/match には引き続き数値を出さない。inventory と同時に閉じる。記録は校正の証拠で、指標にしない。
+    /v4/match には引き続き数値を出さない。照合の検証に使うので残す（指示書62 §4-1。inventory・消去は閉じた）。
+    記録は校正の証拠で、指標にしない。
     ?pair=<id_a>,<id_b> → a_to_b（a が照合したときの b）と b_to_a（その逆）。
     """
     if not (_debug_enabled() or _anchor_token_ok()):

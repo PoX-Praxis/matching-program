@@ -144,3 +144,13 @@ def test_allow_stub_is_refused_on_render():
     r = subprocess.run([sys.executable, "-c", "import app"], cwd=ROOT, env=env,
                        capture_output=True, text=True, timeout=60)
     assert r.returncode != 0 and "POX_TEST_ALLOW_STUB はテスト専用" in (r.stderr + r.stdout)
+
+
+def test_t62_only_inventory_and_purge_are_closed(v4):
+    """指示書62 §4-1: 棚卸し・消去のルートだけを閉じる。/ledger/audit/match は残す（トークン必須のまま）。"""
+    c = appmod.app.test_client()
+    h = {"X-Anchor-Token": TOKEN}
+    assert c.get("/ledger/audit/inventory", headers=h).status_code == 404
+    assert c.post("/ledger/admin/purge-accounts", headers=h, json={"apply": True}).status_code == 404
+    assert c.get("/ledger/audit/match?pair=u_k,u_p", headers=h).status_code == 200
+    assert c.get("/ledger/audit/match?pair=u_k,u_p").status_code == 404

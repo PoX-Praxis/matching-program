@@ -14,8 +14,7 @@
   併せて消す（未認証で照合を叩けた期間の記録で、意思決定に使わないもの。判定書 §11-3）
 - **実行前に Render の Postgres のダンプ（pg_dump）を手元に取ること**（docs/account_purge.md）
 
-HTTP: POST /ledger/admin/purge-accounts（X-Anchor-Token 必須。body {"apply": true} で実行）。
-**使用後はルートを閉じる**（inventory と同じ扱い）。
+HTTP のルート（POST /ledger/admin/purge-accounts）は使用後に閉じた（指示書58 §2-4）。いまは CLI だけ。
 """
 import argparse, json, os, sys
 

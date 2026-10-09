@@ -286,7 +286,7 @@
 
 | 項目 | テスト（`t57_v5::`） |
 |---|---|
-| 205 | `test_t205_validation_rules[*]`, `test_t205_rule1_schema_version`, `test_t205_valid_v5_draft_saved_and_extra_numbers_dropped`, `test_t205_narrative_can_be_given_separately` |
+| 205 | `test_t205_validation_rules[*]`, `test_t205_rule1_schema_version`, `test_t205_valid_v5_draft_saved_and_extra_numbers_dropped`, `test_t205_evidence_checked_against_raw_text`（指示書60 で語りの別欄を廃止） |
 | 206 | `test_t206_purpose_ids_server_side_and_stable` |
 | 207 | `test_t207_one_event_per_purpose_c3` |
 | 208 | `test_t208_offer_change_changes_each_purpose_hash` |
@@ -303,7 +303,7 @@
 | 220 | `test_t220_one_per_person_assumptions_removed` |
 | 221 | `test_t57f_approval_does_not_carry_message` |
 | 222 | `test_t57f_exclusion_is_per_purpose` |
-| 223 | `test_t57f_register_prompt_is_v5` |
+| 223 | `test_t223_register_prompts_are_v5_revision2`（指示書60 で改訂2 に合わせて書き換え） |
 
 ## 指示書58（テスト4の不整合の解消）— `tests/test_t58.py`
 
@@ -314,3 +314,24 @@
 | 226 | `test_t226_zero_results_links_to_inbox_when_offers_pending` |
 | 1-3（番号なし） | `test_t58_connect_header_wording` |
 | 227 | `test_t227_quote_is_cut_at_sentence_boundary`, `test_t227_no_line_clamp_on_quotes_and_fold_exists` |
+
+## 指示書60（構造化プロンプト v5 改訂2）— `tests/test_t60_prompt_v5r2.py`
+
+| 項目 | テスト |
+|---|---|
+| 228 | `test_t228_two_prompts_dialogue_is_default` |
+| 229 | `test_t229_prompt_text_matches_files_exactly` |
+| 230 | `test_t230_no_separate_narrative_field` |
+| 231 | `test_t231_handle_notice_near_step2` |
+| 232 | `test_t232_zero_offers_accepted` |
+| 233 | `test_t233_six_or_more_offers_rejected` |
+| 234 | `test_t234_removed_offers_are_not_saved` |
+| 235 | `test_t235_all_offers_removed_confirms_with_zero` |
+| 236 | `test_t236_no_input_to_add_or_rewrite_offers` |
+| 237 | `test_t237_removing_offers_does_not_bump_attempt` |
+| 238 | `test_t238_evidence_matches_after_normalization` |
+| 239 | `test_t239_missing_evidence_rejected_with_one_line` |
+| 240 | `test_t240_evidence_saved_verbatim` |
+| 241 | `test_t241_p_sharpness_and_gamma_dropped` |
+| 242 | `test_t242_v4_json_still_registers` |
+| 改訂2 §3 の 11・12（番号なし） | `test_t60_rules_11_12[*]`, `test_t60_forbidden_wording_does_not_apply_to_quoted_evidence` |

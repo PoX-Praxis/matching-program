@@ -14,6 +14,10 @@
   .choice { margin: 14px 0 6px; }
   .choice-label { font-weight: bold; font-size: 14px; }
   .choice-sub { font-size: 12px; color: #777; margin-left: 4px; }
+  details.writein { margin-top: 14px; border: 1px solid #e0e0e0; border-radius: 6px; }
+  details.writein > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: #555; }
+  details.writein > summary:hover { background: #f7f7f7; border-radius: 6px; }
+  .writein-inner { padding: 0 14px 14px; }
   .prompt-wrap {
     position: relative; background: #f8f9fa; border: 1px solid #ddd;
     border-radius: 6px; padding: 16px; margin-top: 10px;
@@ -54,7 +58,7 @@
   <strong>なぜ AI で自己構造化するのか？</strong><br>
   PoX の照合は「意志（どこへ進みたいか）」と「現状（いま何を持ち、何に縛られているか）」の二軸＋補足素材で行われます。
   これを自分の言葉で正確に言語化するのは難しいため、まずあなたの普段使う AI（ChatGPT・Claude など）に
-  あなた自身の語りを渡し、構造化された JSON を生成してもらいます。
+  あなた自身をインタビューしてもらい、構造化された JSON を生成してもらいます。
   その JSON をそのまま下の欄に貼り付けるだけで登録完了です。<br>
   <a href="/about" style="font-size:13px;color:#1a3a5c">PoX の仕組みをもっと知る →</a>
 </div>
@@ -64,139 +68,31 @@
 <p class="step-kicker">STEP 1</p>
 <h2>AI に自分を構造化してもらう<span class="en">STRUCTURE</span></h2>
 
+{# プロンプト本文は docs/prompts/ のファイルが唯一の正（指示書60 §1）。ここに直書きしない（app.py が読み込んで渡す）。 #}
 <div class="choice">
-  <span class="choice-label">◉ 構造化プロンプト v5</span>
-  <span class="choice-sub">語りを貼って AI に 1 回送るだけ。JSON が出ます</span>
+  <span class="choice-label">◉ 対話して作る（推奨）</span>
+  <span class="choice-sub">5分ほど。数往復して合意してから JSON が出ます</span>
 </div>
-<ol style="margin:6px 0 0;padding-left:20px;font-size:14px;line-height:1.7">
-  <li>下のプロンプトをコピーして、ChatGPT・Claude・Gemini などに貼り付けます。</li>
-  <li>末尾の「<b>■ 本人の語り</b>」に、あなたの語りを貼ってから送ります（長くてかまいません）。</li>
-  <li>AI が出した JSON を STEP 2 に貼り、<b>同じ語り</b>も STEP 2 の「本人の語り」欄に貼ります。</li>
-</ol>
+<p style="margin-top:6px">下のプロンプトをコピーして、ChatGPT・Claude・Gemini などに貼り付けてください。</p>
 
 <div class="prompt-wrap">
-  <button class="copy-btn" onclick="copyPrompt('promptV5','copyMsg1')">コピー</button>
-  <pre id="promptV5">{% raw %}あなたは、本人の語りを**歪めずに構造化する鏡**です。評価・助言・励まし・要約の感想をしません。**出力は JSON のみ**（前後に文章を書かない。コードブロックも使わない）。
-
-## あなたが行うこと
-
-本人の語りから、次を作ります。
-
-- **目的**（複数可）: 「向かう先」（何を実現したいか）と「手段」（そのために何をするか）を**分けて**書く
-- **必要像**: その目的に対して**足りないもの**を、**文単位**で書く（各文に「必須」か「歓迎」を付ける）
-- **与え像**: 本人が**提供できる関わり方と資源**を、**文単位**で書く
-- **関心**: 本人が何に惹かれるか
-- **現状**: 持っているもの／できることの型／縛られているもの／未分類
-- **数値**: `gate_s`・`gate_u`・`alpha`・`beta`（**目的ごと**）
-
-## 出力（この形の JSON のみ）
-
-```
-{
-  "schema_version": "v5",
-  "purposes": [
-    {
-      "purpose_id": "p1",
-      "向かう先": "…",
-      "手段": "…",
-      "必要像": [
-        { "文": "…", "必須": true,  "型": "関わり方" },
-        { "文": "…", "必須": false, "型": "資源" }
-      ],
-      "数値": { "gate_s": 0.9, "gate_u": 0.3, "alpha": 1.2, "beta": 1.0 },
-      "根拠": "…"
-    }
-  ],
-  "与え像": [
-    { "文": "…", "型": "関わり方" },
-    { "文": "…", "型": "資源" }
-  ],
-  "関心": [ { "文": "…" } ],
-  "現状": {
-    "持っているもの": "…",
-    "できること_型": "…",
-    "縛られているもの": "…",
-    "未分類": "…"
-  }
-}
-```
-
-## 規則（必ず守る）
-
-1. **申告を写さない。** 本人が「こういう人が欲しい」と書いていても、そのまま写さず、**意志と現状の差分から仮説として**書く。
-2. **自然文で書く。** 候補者が自分の現状を語るときと同じ言葉づかいにする。
-3. **求人票の文体を禁止。** 「〜年以上」「必須スキル」「〜ができる方」「〜を募集」を使わない。
-4. **経験は「何をしたか」ではなく「どう関わったか」で書く。**
-   - 悪い例: 「起業やサービス開発を実際に進めた経験がある人。」
-   - 良い例: 「事業を立ち上げる局面で、構想を実行に移す側として関わってきた人。」
-5. **目的は複数でよい（最大3）。** 無理に1つにまとめない。
-6. **手段を「向かう先」に混ぜない。**
-7. **必須は目的あたり最大2つ。** 3つ以上は「歓迎」に落とす。
-8. **与え像は「能力の一覧」にしない。** **関わり方と資源**（能力・場・機会・関係）を書く。
-9. **必要像・与え像の文は、それぞれ最大5文。**
-10. **`p_sharpness` と `gamma` は出力しない。**
-11. **根拠は本人の語りからの引用**（原文のまま。要約しない）。
-12. **該当が無い項目は省略する**（空文字を入れない）。
-
-## 型は4種のいずれか
-
-`向かう先` / `関わり方` / `資源` / `関心`
-
-## 数値の目安
-
-- `gate_s`: **0 = 能力だけでよい** 〜 **0.9 = 志の一致が必須**
-- `gate_u`: **0 = 素材が十分** 〜 **1 = 素材が薄い・迷いがある**
-- `alpha`: **共鳴（同じ志）の重み**（0〜2 程度）
-- `beta`: **補完（不足を埋める）の重み**（0〜2 程度）
-
-## 記入例（形の参考。内容は写さない）
-
-```
-{
-  "schema_version": "v5",
-  "purposes": [
-    {
-      "purpose_id": "p1",
-      "向かう先": "必要な人や機会に、確率と膨大なエネルギーに依存せず自然に辿り着ける状態を実現したい。",
-      "手段": "状況と実行したいことを条件に照合する仕組みを社会に根づかせ、試作を起点に広げる。",
-      "必要像": [
-        { "文": "事業を立ち上げる局面で、構想を実行に移す側として関わってきた人。", "必須": true,  "型": "関わり方" },
-        { "文": "事業構造をロジカルに組み立てられる人。", "必須": true, "型": "資源" }
-      ],
-      "数値": { "gate_s": 0.9, "gate_u": 0.3, "alpha": 1.2, "beta": 1.0 },
-      "根拠": "（本人の語りからの引用）"
-    },
-    {
-      "purpose_id": "p2",
-      "向かう先": "照合の論理を、説明できる形で組み上げたい。",
-      "手段": "必要像と与え像の対応を、文単位で検証できるようにする。",
-      "必要像": [
-        { "文": "論理の穴を指摘し、構造として組み直せる関わり方をしてきた人。", "必須": false, "型": "資源" }
-      ],
-      "数値": { "gate_s": 0.0, "gate_u": 0.3, "alpha": 0.5, "beta": 1.5 },
-      "根拠": "（本人の語りからの引用）"
-    }
-  ],
-  "与え像": [
-    { "文": "まだ形になっていない仕組みや思想を、試作として形にする立場で関われる。", "型": "関わり方" },
-    { "文": "照合の仕組みと、そこに集まる人と機会という場を提供できる。", "型": "資源" }
-  ],
-  "関心": [ { "文": "生まれた条件や環境の構造が、自由なつながりを阻むことに関心がある。" } ],
-  "現状": {
-    "持っているもの": "…",
-    "できること_型": "…",
-    "縛られているもの": "…",
-    "未分類": ""
-  }
-}
-```
-
-## ■ 本人の語り
-
-（ここに、あなたの語りを貼ってください。長くてかまいません。複数の目的が含まれていてかまいません。）{% endraw %}</pre>
+  <button class="copy-btn" onclick="copyPrompt('promptA','copyMsg1')">コピー</button>
+  <pre id="promptA">{{ prompt_a }}</pre>
 </div>
 <div id="copyMsg1" class="copy-note"></div>
-<p style="font-size:12px;color:#777;margin-top:6px">以前のプロンプト（v4）で作った JSON も、そのまま STEP 2 に貼れば登録できます。</p>
+
+<details class="writein">
+  <summary>○ 自分で書いて作る（簡易・任意）</summary>
+  <div class="writein-inner">
+    <p style="font-size:13px;color:#666;margin:8px 0">インタビューなしで、まとめて書いた記述から JSON を作ります。
+      末尾の『■ 本人の語り』に自分の記述を貼ってから AI に送ってください。</p>
+    <div class="prompt-wrap">
+      <button class="copy-btn" onclick="copyPrompt('promptB','copyMsg2')">コピー</button>
+      <pre id="promptB">{{ prompt_b }}</pre>
+    </div>
+    <div id="copyMsg2" class="copy-note"></div>
+  </div>
+</details>
 
 <p class="step-kicker">STEP 2</p>
 <h2>生成された JSON を貼り付けて登録<span class="en">REGISTER</span></h2>
@@ -204,19 +100,16 @@
 <p>AI が最後に出力した JSON を、<code>{</code> から <code>}</code> までそのまま貼り付けてください。
 <code>```</code> や前置きが付いていても自動で取り除きます。</p>
 
+<p id="handleNote" style="font-size:13px;color:#8a4a00;margin:6px 0">ハンドルは後から変更できません。実名ではなく、公開されて構わない名前を選んでください。</p>
 <textarea id="seekerJson" placeholder='{
+  "id": "alice_2025",
   "schema_version": "v5",
   "purposes": [ { "purpose_id": "p1", "向かう先": "...", "手段": "...", "必要像": [ ... ], "数値": { ... }, "根拠": "..." } ],
   "与え像": [ ... ],
-  "関心": [ ... ],
-  "現状": { "持っているもの": "...", "できること_型": "...", "縛られているもの": "...", "未分類": "" }
+  "現状": { "持っているもの": "...", "できること_型": "...", "縛られているもの": "...", "未分類": "" },
+  "supporting_material": { "一行紹介": "...", "要約文": "...", "生テキスト": [ "..." ] }
 }'></textarea>
-<!-- ①v5（指示書57）: 本人の語りも貼る。根拠（引用）が語りに実在するかの検査だけに使い、照合には使わない。
-     本人だけが見られる。 -->
-<p style="margin:12px 0 4px;font-size:13px">AI に渡した<b>本人の語り</b>（プロンプト末尾に貼ったもの）を、ここにも貼ってください
-  （根拠の引用が語りに実在するかの確認だけに使います。照合には使わず、本人だけが見られます。v4 の JSON のときは不要です）。</p>
-<textarea id="narrative" placeholder="本人の語り（v5 のとき）" style="min-height:120px"></textarea>
-<br>
+<p style="font-size:12px;color:#777;margin:6px 0 0">v4 の JSON も今までどおり登録できます。</p>
 <div id="consentRow" style="margin:14px 0;font-size:13px;line-height:1.6">
   <label><input type="checkbox" id="policyAgree">
     <a href="/privacy" target="_blank">プライバシーポリシー</a>を読み、特に「重要な点」（必要像の公開・接続の公開・消せない記録があること）に同意します</label>
@@ -282,8 +175,7 @@ async function register(btn) {
   try {
     res = await fetch("/v4/drafts", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ raw_text: rawText,
-                             narrative: (document.getElementById("narrative").value || "").trim() || null }),
+      body: JSON.stringify({ raw_text: rawText }),
     });
   } catch (e) {
     el.className = "err"; el.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";
@@ -304,7 +196,9 @@ async function register(btn) {
 function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 /* ①v5 の下書きの確認（指示書57）: 目的ごとの必要像（必須／歓迎）・与え像、前の目的との対応（本人が確認）。 */
+let v5PreviewShown = false;   // v5 の確認画面のときだけ、残した与え像の番号を確定に添える
 function renderV5Preview(draft) {
+  v5PreviewShown = true;
   const el = document.getElementById("msg");
   const p = draft.payload || {};
   const existing = draft.existing_purposes || [];
@@ -325,8 +219,15 @@ function renderV5Preview(draft) {
     }
     h += `</div>`;
   });
-  h += `<p style="margin:10px 0 4px"><b>与え像</b></p><ul style="margin:4px 0 8px">` +
-       (p["与え像"] || []).map(x => `<li>${esc(x["文"])}</li>`).join("") + `</ul>`;
+  // 与え像の確認（指示書60 §3）: 各文を示し、提供したくない文は外せる。**外す操作だけ**（足す・書き換える欄は無い）。
+  const offers = p["与え像"] || [];
+  h += `<p style="margin:10px 0 4px"><b>与え像</b></p>`;
+  if (offers.length) {
+    h += `<p id="offerNote" style="font-size:12px;color:#555;margin:2px 0 4px">AI があなたの語りから読み取った『力になれること』です。この形で提供したくない文は外してください。文を足すことはできません。</p>`;
+    h += `<ul style="margin:4px 0 8px;list-style:none;padding-left:0">` + offers.map((x, i) =>
+      `<li><label><input type="checkbox" class="offerKeep" data-i="${i}" checked> ${esc(x["文"])}</label></li>`).join("") + `</ul>`;
+  }
+  h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">すべて外した場合（または与え像が無い場合）は、現状で照合します。</p>`;
   h += `<p style="font-size:12px;color:#666;margin:6px 0">対応を選ばなかった前の目的は「取り下げ」になり、記録としては残ります。</p>`;
   el.className = "";
   el.innerHTML = h + handleBoxHtml(draft) + confirmButtonHtml(draft) + `</div>`;
@@ -348,6 +249,7 @@ function confirmButtonHtml(draft) {
 
 function renderDraftPreview(draft) {
   if (draft.v5) { renderV5Preview(draft); return; }
+  v5PreviewShown = false;
   const el = document.getElementById("msg");
   const p = draft.payload || {};
   const seeker = p.seeker || {};
@@ -401,6 +303,11 @@ function renderDraftPreview(draft) {
   el.innerHTML = h;
 }
 
+/* 残した与え像の番号（0 始まり）。外した文は送らない。 */
+function offerKeep() {
+  return [...document.querySelectorAll("input.offerKeep")].filter(b => b.checked).map(b => Number(b.dataset.i));
+}
+
 /* 再構造化の目的の対応（本人が確かめた結果）。選択欄が無ければ null（サーバーが提案どおりに振る）。 */
 function purposeMap() {
   const sels = document.querySelectorAll("select.pmap");
@@ -422,7 +329,8 @@ async function confirmDraft(draftId, btn) {
       body: JSON.stringify({ privacy_policy_agreed: true,
                              privacy_policy_version: PRIVACY_POLICY_VERSION,
                              handle: (document.getElementById("handleInput") || {}).value || "",
-                             purpose_map: purposeMap() }),
+                             purpose_map: purposeMap(),
+                             offer_keep: v5PreviewShown ? offerKeep() : null }),
     });
   } catch (e) {
     el.className = "err"; el.textContent = "通信エラーが発生しました。時間をおいて再度お試しください。";

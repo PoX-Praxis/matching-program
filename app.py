@@ -1141,7 +1141,7 @@ def _clamp_numbers(nums):
             "alpha": f(nums.get("alpha"), 0, 2, 1.0), "beta": f(nums.get("beta"), 0, 2, 1.0)}
 
 
-def _confirm_v5_ledger(pid, doc, assigned, prof, draft, narrative=None):
+def _confirm_v5_ledger(pid, doc, assigned, prof, draft):
     """①v5 の確定（指示書57 段2）: 与え像の版 → 目的ごとの necessity.published（c3・purpose_id・offer_hash）
     → 消えた目的の必要像を necessity.retired → 本文の保存 → 文単位ベクトル（非同期）。"""
     import v5
@@ -1162,7 +1162,7 @@ def _confirm_v5_ledger(pid, doc, assigned, prof, draft, narrative=None):
     for n in v5.live_necessities_v5(pid, db_path=DB):
         if n["purpose_id"] not in keep:                     # 目的が消えた（対応が取れなかった）
             _nec.retire_necessity(n["necessity_id"], actor=pid, db_path=DB)
-    v5.save_doc(pid, doc, narrative, db_path=DB)
+    v5.save_doc(pid, doc, db_path=DB)
     threading.Thread(target=_v5_sentence_job, args=(pid, offer), daemon=True).start()
     return published
 
@@ -1230,16 +1230,14 @@ def post_draft():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
     else:
-        parsed = {k: v for k, v in body.items() if k not in ("user_id", "narrative")}
+        parsed = {k: v for k, v in body.items() if k != "user_id"}
     import v5
     if v5.is_v5(parsed):
-        # ①v5（指示書57）: 受信の検証規則（10 項目）。通らなければ保存せず、理由を 1 行で返す。
-        narrative = body.get("narrative") or None
-        ok, why = v5.validate(parsed, narrative)
+        # ①v5: 受信の検証規則（改訂2 §3・指示書60）。通らなければ保存せず、理由を 1 行で返す。
+        # 根拠の検査は JSON の supporting_material.生テキストで行う（「本人の語り」の別欄は廃止）。
+        ok, why = v5.validate(parsed)
         if not ok:
             return jsonify({"error": why}), 400
-        if narrative:
-            parsed["_narrative"] = narrative            # 本人のみ・検査用（照合には使わない）
     else:
         flat = _normalize_v4_body(parsed)
         if not (flat.get("will_text") or "").strip():
@@ -1337,11 +1335,14 @@ def confirm_draft(draft_id):
     v5_doc = None
     if v5.is_v5(d["payload"]):
         v5_doc = {k: v for k, v in d["payload"].items() if k != "_narrative"}
-        narrative = d["payload"].get("_narrative")
-        ok, why = v5.validate(v5_doc, narrative)
+        # 与え像の確認（指示書60 §3）: 本人が外した文を除く（外すだけ。足す・書き換えは受け付けない）。
+        # 外すのは再生成ではないので attempt_n は変えない（下書きはそのまま）。0 文でも確定できる。
+        keep = cbody.get("offer_keep")
+        v5_doc = v5.keep_offers(v5_doc, keep if isinstance(keep, list) else None)
+        ok, why = v5.validate(v5_doc)
         if not ok:
             return jsonify({"error": why}), 400
-        flat = v5.to_flat(v5_doc, narrative)
+        flat = v5.to_flat(v5_doc)
     else:
         flat = _normalize_v4_body(d["payload"])
     if not (flat.get("will_text") or "").strip():
@@ -1392,7 +1393,7 @@ def confirm_draft(draft_id):
     # profile.structured（生成元）を書き、その content_hash を必要像のピン留めに使う（§3-1）。
     prof = publish_profile_structured(pid, profile_input, actor=pid, db_path=DB)
     if v5_doc is not None:
-        _confirm_v5_ledger(pid, flat["v5"], assigned, prof, d, narrative=d["payload"].get("_narrative"))
+        _confirm_v5_ledger(pid, flat["v5"], assigned, prof, d)
     elif necessity is not None:
         sm = profile_input.get("supporting_raw") or {}
         seeking = sm.get("求めている") or ""                       # §3-3: content_hash に含める
@@ -1864,7 +1865,7 @@ def my_purposes():
     live = [n["purpose_id"] for n in v5.live_necessities_v5(me, db_path=DB)]
     _mark_noindex()
     return jsonify({"purposes": [{"purpose_id": p, "label": labels.get(p, "")} for p in live],
-                    "has_offer": v5.latest_offer(me, db_path=DB) is not None}), 200
+                    "has_offer": bool((v5.latest_offer(me, db_path=DB) or {}).get("sentences"))}), 200
 
 
 @app.get("/api/connections/state")
@@ -2320,9 +2321,22 @@ def privacy():
     return render_template("privacy.html")
 
 
+# 構造化プロンプトの唯一の正（指示書60 §1）。画面はここから読み込み、本文をテンプレートに直書きしない。
+PROMPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "prompts")
+PROMPT_FILES = {"prompt_a": "v5_A_dialogue.txt", "prompt_b": "v5_B_selfwrite.txt"}
+
+
+def _read_prompts():
+    out = {}
+    for key, name in PROMPT_FILES.items():
+        with open(os.path.join(PROMPT_DIR, name), encoding="utf-8") as f:
+            out[key] = f.read()
+    return out
+
+
 @app.get("/register")
 def register():
-    return render_template("register.html")
+    return render_template("register.html", **_read_prompts())
 
 
 @app.get("/profile/<seeker_id>")

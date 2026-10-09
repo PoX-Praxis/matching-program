@@ -441,3 +441,16 @@
 
 既存のテストの書き換え（指示書63 段階1 PR-D。承認の場面を受信箱だけにし、見出しを「応えるもの」に）:
 253・213・215・`test_approval_screens_show_reason_and_offer_message`（55-5）
+
+### PR-E（つながるのカード・一覧のラベル）— `tests/test_t63e_connect_cards.py`
+
+| 項目 | テスト |
+|---|---|
+| 304 | `test_t304_match_card_rows_and_for_purpose` |
+| 305 | `test_t305_no_offers_evidence_numbers_on_cards` |
+| 306 | `test_t306_threshold_on_cards_and_directory` |
+| 307 | `test_t307_directory_rows` |
+| 308 | `test_t308_labels_order_and_note` |
+| 309 | `test_t309_v4_card` |
+
+既存のテストの書き換え（指示書63 段階1 PR-E。カードの段を足した）: 162（照合の結果のキー）・169/171（/seekers のキー）

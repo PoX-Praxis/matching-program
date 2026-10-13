@@ -23,10 +23,8 @@ def strip_code_fence(text: str) -> str:
     """先頭末尾の ```（```json 含む）を除去し、最初の { から最後の } までを返す。"""
     if not isinstance(text, str):
         text = str(text or "")
-    # Normalize iOS smart quotes to ASCII before JSON parse
-    text = (text
-            .replace('\u201c', '"').replace('\u201d', '"')
-            .replace('\u2018', "'").replace('\u2019', "'"))
+    # 全角の引用符（iOS の自動変換）はここでは直さない。厳密に読めなかったときだけ、JSON の区切りの位置にあるものを
+    # repair_ai_json_report が直す（文字列の中身の “ ” は本人の文字なので変えない。指示書62-b §2-1）。
     fence = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
     if fence:
         text = fence.group(1)
@@ -123,18 +121,103 @@ def _wrap_missing_array(s: str):
     return None
 
 
+_CURLY_DQ = "\u201c\u201d"
+
+
+def _fix_curly_delimiters(s: str):
+    """全角の二重引用符（“ ”）のうち、**JSON の区切りの位置にあるものだけ**を `"` に戻す（指示書62-b §2-1）。
+    - 文字列の外の “ ” は区切り（文字列の始まり）とみなして戻す
+    - 全角の引用符で始まった文字列は、後ろが（空白を挟んで）`:` `,` `}` `]` か終わりの “ ” で閉じる
+    - 半角の `"` で始まった文字列の中の “ ” は本人の文字として触らない（‘ ’ も触らない）
+    戻り値: (直した文字列, 直したか)。"""
+    if not any(c in s for c in _CURLY_DQ):
+        return s, False
+    out, i, opener, changed = [], 0, None, False      # opener: None＝文字列の外／'"'／'curly'
+    while i < len(s):
+        c = s[i]
+        if opener is None:
+            if c == '"':
+                opener = '"'
+            elif c in _CURLY_DQ:
+                opener, c, changed = "curly", '"', True
+            out.append(c)
+            i += 1
+            continue
+        if c == "\\":
+            out.append(s[i:i + 2])
+            i += 2
+            continue
+        if c == '"':
+            opener = None
+        elif c in _CURLY_DQ and opener == "curly":
+            j = _skip_ws(s, i + 1)
+            if j >= len(s) or s[j] in ":,}]":
+                opener, c = None, '"'
+        out.append(c)
+        i += 1
+    return "".join(out), changed
+
+
+_UNESCAPE_BRACKET = {"[": "[", "]": "]", "(": "[", ")": "]"}
+
+
+def _unescape_markdown(s: str):
+    r"""Markdown の表示で付いたバックスラッシュを外す（指示書62 §1-1・62-b §1-2・§7）。
+    - `\_` `\*`: 文字列の中でも外す（キーの purpose\_id など）。ただし直前のバックスラッシュが偶数個
+      （`\\_` ＝正しい JSON の「バックスラッシュ文字＋記号」）なら触らない
+    - `\[` `\]` `\(` `\)`: **文字列の外だけ**で `[` `]` に戻す（文字列の中は本人の文字なので触らない）
+    戻り値: (直した文字列, 直した種類の set: "md"・"bracket"・"paren")。"""
+    out, i, in_str, kinds = [], 0, False, set()
+    while i < len(s):
+        c = s[i]
+        if c == "\\":
+            j = i
+            while j < len(s) and s[j] == "\\":
+                j += 1
+            run, nxt = j - i, (s[j] if j < len(s) else "")
+            if run % 2 == 1 and nxt in ("_", "*"):
+                out.append("\\" * (run - 1) + nxt)
+                kinds.add("md")
+                i = j + 1
+                continue
+            if run % 2 == 1 and not in_str and nxt in _UNESCAPE_BRACKET:
+                out.append("\\" * (run - 1) + _UNESCAPE_BRACKET[nxt])
+                kinds.add("bracket" if nxt in "[]" else "paren")
+                i = j + 1
+                continue
+            out.append(s[i:j])
+            if run % 2 == 1 and nxt:                     # 奇数個の最後は次の 1 字をエスケープしている（\" を含む）
+                out.append(nxt)
+                i = j + 1
+            else:
+                i = j
+            continue
+        if c == '"':
+            in_str = not in_str
+        out.append(c)
+        i += 1
+    return "".join(out), kinds
+
+
 def repair_ai_json_report(text: str):
     r"""AI の出力をコピーしたときに起きる**形式の**壊れ方を直す（厳密に読めなかったときだけ使う）。
-    戻り値: (直した文字列, 直した種類の一覧)。**内容には触れない**（指示書62 §1-1）:
-    - Markdown のエスケープ `\[` `\]` `\_` `\*`（JSON には無いエスケープなので、元が正しい JSON なら現れない）
+    戻り値: (直した文字列, 直した種類の一覧)。**内容には触れない**（指示書62 §1-1・62-b）:
+    - 全角の二重引用符（“ ”）のうち JSON の区切りの位置にあるもの（文字列の中身は変えない）
+    - Markdown のエスケープ `\_` `\*`（`\\_` `\\*` には触れない）
+    - バックスラッシュ付きの括弧 `\[` `\]`・数式記号になった括弧 `\(` `\)`（文字列の外だけ）
     - 配列のはずのキー（_ARRAY_KEYS）の `[` `]` の欠落（要素の区切りを推測しているので、確認画面で要素数を見せる）
     引用・数値・キーの欠けは直さない。"""
     kinds = []
-    if re.search(r"\\[\[\]]", text):
+    s, curly = _fix_curly_delimiters(text)
+    if curly:
+        kinds.append("全角の引用符（“ ”）を区切りの \" に戻した")
+    s, esc = _unescape_markdown(s)
+    if "bracket" in esc:
         kinds.append("バックスラッシュ付きの括弧（\\[ \\]）を [ ] に戻した")
-    if re.search(r"\\[_*]", text):
+    if "paren" in esc:
+        kinds.append("数式記号になった括弧（\\( \\)）を [ ] に戻した")
+    if "md" in esc:
         kinds.append("Markdown のエスケープ（\\_ \\*）を戻した")
-    s = re.sub(r"\\([\[\]_*])", r"\1", text)
     wrapped = []
     for _ in range(200):
         fixed = _wrap_missing_array(s)
@@ -156,7 +239,8 @@ def repair_ai_json(text: str) -> str:
 def parse_registration_text_report(text: str):
     """登録テキストを dict にする。戻り値: (dict, 形式の補正の種類の一覧)。失敗時は ValueError（読めなかった位置と、
     次にすることを 1 行で）。厳密に読めなければ repair_ai_json_report で形式を直してから読み直す。
-    ``` の除去と全角の引用符の正規化は、①の出力の包み・端末の自動変換なので補正の一覧には入れない。"""
+    ``` の除去は①の出力の包みなので補正の一覧には入れない。全角の引用符は区切りの位置だけを補正として直し、
+    一覧に入れる（指示書62-b §2-1。以前は厳密に読む前に中身まで置き換えていた）。"""
     cleaned = strip_code_fence(text)
     try:
         data, kinds = json.loads(cleaned), []

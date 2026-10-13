@@ -71,7 +71,8 @@ def test_t179_confirm_requires_handle_for_new_users():
 def test_t179_draft_preview_suggests_handle_from_seeker_id(db):
     import drafts
     d = drafts.save_draft("u_new", {"id": "Alice_2025", "seeker": {"意志": "x"}}, owner_kind="subject", db_path=db)
-    assert appmod._handle_hint(d) == {"needs_handle": True, "handle_suggestion": "alice_2025"}
+    assert appmod._handle_hint(d) == {"needs_handle": True, "handle_suggestion": "alice_2025",
+                                      "handle_taken": False}          # handle_taken は指示書62-b §1-4
     handles.set_handle("u_new", "alice_2025", db_path=db)
     assert appmod._handle_hint(d) == {"needs_handle": False}
 

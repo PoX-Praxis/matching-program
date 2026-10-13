@@ -9,6 +9,7 @@
 - v4 互換: v4 の人は「目的 1 つ・与え像なし」として読む（与え像の代わりに現状で照合する）
 """
 import json
+import math
 import re
 import unicodedata
 import uuid
@@ -81,7 +82,8 @@ def validate(doc: dict):
     6 型 / 7 p_sharpness・gamma は捨てる（拒否しない）/ 8 求人票の文体（根拠＝本人の引用は対象外）/
     9 根拠が生テキストに実在（正規化した派生キーで比較）/ 10 purpose_id はヒント（assign_purposes が振り直す）/
     11 一行紹介・要約文・生テキストが空でない / 12 id（ハンドル）がある /
-    13 generator が空でない / 14 _meta.source が既知の値か、無い（無ければ改訂2 として扱う）
+    13 generator が空でない / 14 _meta.source が既知の値か、無い（無ければ改訂2 として扱う）/
+    15 目的ごとの 数値.gate_s・gate_u が 0〜1 の数値（範囲外・数値でない値・欠けは拒否。丸めない。指示書62-b）
     """
     if not is_v5(doc):
         return False, "schema_version が v5 ではありません"
@@ -124,6 +126,11 @@ def validate(doc: dict):
                 return False, f"目的 {i}: 必要像の文が空です"
             if x.get("型") not in TYPES:
                 return False, f"目的 {i}: 型は {'／'.join(TYPES)} のいずれかです"
+        nums = p.get("数値")
+        for key in GATE_KEYS:                             # 規則 15: gate は 0〜1 の数値（丸めずに拒否。指示書62-b §1-1）
+            err = _gate_error(i, key, nums.get(key, _MISSING) if isinstance(nums, dict) else _MISSING)
+            if err:
+                return False, err
         ev = str(p.get("根拠") or "").strip()
         for part in (_EVIDENCE_SPLIT.split(ev) if ev else []):
             q = _norm(part)
@@ -150,6 +157,23 @@ def validate(doc: dict):
         if w in blob:
             return False, f"求人票の文体（「{w}」）は使えません"
     return True, doc
+
+
+GATE_KEYS = ("gate_s", "gate_u")
+_MISSING = object()
+_GATE_FIX = "AI に『数値を範囲内で出し直して』と頼んでください"
+
+
+def _gate_error(i, key, v):
+    """gate の値の検証（規則 15）。通れば None。範囲は [0, 1]（gate_s の 0.9 の上限は検証に入れない。指示書62-b §1-1）。"""
+    if v is _MISSING:
+        return f"目的 {i}: {key} の値がありません。{_GATE_FIX}"
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        shown = json.dumps(v, ensure_ascii=False)
+        return f"目的 {i}: {key} の値 {shown} が数値ではありません。{_GATE_FIX}"
+    if not (math.isfinite(v) and 0 <= v <= 1):
+        return f"目的 {i}: {key} の値 {v} が 0〜1 の範囲にありません。{_GATE_FIX}"
+    return None
 
 
 def source_of(doc: dict) -> str:

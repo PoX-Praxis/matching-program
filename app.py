@@ -582,7 +582,8 @@ def get_seekers():
     """登録者一覧（公開）。**母集団は v4（profiles_v4）**で、本人と紐づいている人だけ（指示書55 §4-4）。
 
     返すのは id・表示名・一行紹介・意志・公開条件を満たす必要像の本文と、目的ごとの向かう先・必要像の文
-    （v5。プロフィールと同じ公開の日時の閾値。指示書63 段階1）だけ（seeker 原文・数値・与え像は返さない）。
+    （v5。プロフィールと同じ公開の日時の閾値。指示書63 段階1）、力になれること（v5。与え像の公開の閾値より後の版。
+    指示書64）だけ（seeker 原文・数値・根拠は返さない）。
     - **本文をサーバーで切り詰めない**（以前の 40 文字切断をやめた。見た目の丸めは CSS 側）
     - **generation_status を返さない**（非本人に生成状態を出さない。指示書27）
     - ログイン中なら**自分を除く**（照合の結果と同じく、一覧も他の人の面）
@@ -606,6 +607,7 @@ def get_seekers():
             "will": _text_of(pv.get("pursuing")),
             "necessity": (pub or {}).get("necessity_text") or "",
             "purposes": prof["purposes"],
+            "offers": prof.get("offers") or [],    # 力になれること（v5・公開の閾値より後の版だけ。指示書64）
         })
     return jsonify(rows)
 
@@ -751,9 +753,8 @@ def get_owner_necessity(user_id):
 # ── プロフィールの v5 の本文（指示書63 段階1 PR-C）─────────────────────────────────
 # 第三者に出す: 一行紹介・目的ごとの向かう先・手段・必要像（文・欠かせない要素）・関心。
 # 目的ごとの必要像は、必要像と同じ公開の日時の閾値に従う（閾値より前の版は第三者に出さない。本人には出す）。
-# 根拠・数値・生テキスト・generator は返さない。与え像（画面名「力になれること」）は本人だけ：
-# プライバシーポリシー §2 は AI が生成する情報を「必要像」とだけ書き、§4 にも与え像の行が無く、公開の対象として
-# 読めないため（指示書63 §4-1。文言は変えない）。
+# 根拠・数値・生テキスト・generator は返さない。与え像（画面名「力になれること」）は、ポリシーに書き足した後
+# （指示書64）、与え像の公開の閾値より後の版だけを第三者に出す（前の版は本人だけ）。
 def _public_since_passed(ts) -> bool:
     from datetime import datetime, timezone
     if not ts:
@@ -767,6 +768,37 @@ def _public_since_passed(ts) -> bool:
     return dt >= _necessity_public_since()
 
 
+# 力になれること（与え像）の公開（指示書64 §1-2）。ポリシーに書き足した時点（PR-64A のデプロイ）より後に作られた
+# 版だけを第三者に出す（さかのぼって公開しない）。必要像の閾値とは別の値で、設定値として持ち、以後変えない。
+_OFFER_PUBLIC_SINCE_DEFAULT = "2026-10-13T05:00:00+00:00"
+
+
+def _offer_public_since():
+    from datetime import datetime, timezone
+    raw = os.environ.get("POX_OFFER_PUBLIC_SINCE", _OFFER_PUBLIC_SINCE_DEFAULT)
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        dt = datetime.fromisoformat(_OFFER_PUBLIC_SINCE_DEFAULT)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _offer_public(ts) -> bool:
+    """この時刻に作られた与え像の版を第三者に出してよいか（閾値より後なら出す）。時刻が読めなければ出さない。"""
+    from datetime import datetime, timezone
+    if not ts:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt >= _offer_public_since()
+
+
 def _texts(items):
     out = []
     for x in items or []:
@@ -778,7 +810,8 @@ def _texts(items):
 
 def _v5_profile_block(user_id, owner=False):
     """v5 の人のプロフィールの本文。v5 でなければ None。
-    owner=True は本人用（閾値に関わらず必要像・目的ごとの根拠・力になれること。数値は出さない）。"""
+    owner=True は本人用（閾値に関わらず必要像・目的ごとの根拠・力になれること。数値は出さない）。
+    第三者用は、必要像・力になれることをそれぞれの公開の閾値に従わせる（offers は閾値より後の版のときだけ）。"""
     try:
         import v5
         import necessities as _nec
@@ -805,8 +838,12 @@ def _v5_profile_block(user_id, owner=False):
         purposes.append(item)
     sm = doc.get("supporting_material") or {}
     out = {"one_liner": str(sm.get("一行紹介") or ""), "purposes": purposes, "interests": _texts(doc.get("関心"))}
+    off = v5.latest_offer(user_id, db_path=DB) or {}
+    offers, offers_public = _texts(off.get("sentences")), _offer_public(off.get("created_at"))
     if owner:
-        out["offers"] = _texts((v5.latest_offer(user_id, db_path=DB) or {}).get("sentences"))
+        out.update(offers=offers, offers_public=offers_public)
+    elif offers_public and offers:
+        out["offers"] = offers                     # 与え像の公開の閾値より後の版だけ（指示書64 §1-3）
     return out
 
 
@@ -1942,6 +1979,8 @@ def _side_of(store, sid, model_tag, bundle=None):
         if vecs:
             offers, offer_id = [{"text": t, "vec": v} for t, v in vecs], off["offer_id"]
     has_offer = bool(offers)
+    # 与え像の文を第三者（つながるの根拠）に引用してよいか（指示書64 §1-3）。判定には使わない。
+    offer_public = _offer_public((off or {}).get("created_at"))
     if not purposes and bundle:
         nec = bundle.get("necessity") or {}
         text = (nec.get("necessity_text") or "").strip()
@@ -1962,7 +2001,7 @@ def _side_of(store, sid, model_tag, bundle=None):
             _backfill_state_slots(sid)
     dests = [p["dest_vec"] for p in purposes if p.get("dest_vec")] or ([will_vec] if will_vec else [])
     return {"purposes": purposes, "offers": offers, "has_offer": has_offer, "offer_id": offer_id,
-            "dests": dests, "will_vec": will_vec, "state_slots": state_slots}
+            "offer_public": offer_public, "dests": dests, "will_vec": will_vec, "state_slots": state_slots}
 
 
 # 根拠の見出し（指示書61 §3）。並べるのは常に「必要像の文 ↔ 与え像の文（無ければ現状の欄）」。
@@ -1973,6 +2012,9 @@ _LABELS = {
     "approval": {"fill_mine": ("あなたが求めていること", "相手が応えるもの", "相手の現状"),
                  "fill_theirs": ("相手が求めていること", "あなたが応えるもの", "あなたの現状")},
 }
+
+
+OFFER_HIDDEN_TEXT = "（公開前の登録のため表示しません）"
 
 
 def _need_vec(side, text):
@@ -2003,6 +2045,11 @@ def _reason_items(pairs, mine_side, their_side, context="card"):
         else:
             need, offer, need_side, give_side = p["theirs"], p["mine"], their_side, mine_side
         item = {"kind": kind, "need_label": need_label, "need": need, "offer_label": offer_label, "offer": offer}
+        if (context == "card" and kind == "fill_mine" and give_side.get("has_offer")
+                and not give_side.get("offer_public", True)):
+            # 相手の与え像の版が公開の閾値より前（指示書64 §1-3）。判定は変えず、文だけを出さない。
+            # 受信箱（approval）は申し出た本人が相手に向けて開示したものなので、閾値によらず出す。
+            item["offer"], item["offer_hidden"] = OFFER_HIDDEN_TEXT, True
         if not give_side.get("has_offer"):
             slot = _state_slot_for(_need_vec(need_side, need), give_side)
             if context == "approval":
@@ -2071,20 +2118,21 @@ def _v5_match_response(store, me, model_tag):
 
 def _card(cid, names, hs, prof, res, mine, theirs, purpose_id, for_purpose=None):
     return {"candidate_id": cid, "handle": hs.get(cid), "name": names.get(cid) or UNNAMED_LABEL,
-            "one_liner": prof["one_liner"], "purposes": prof["purposes"], "purpose_id": purpose_id,
-            "for_purpose": for_purpose,
+            "one_liner": prof["one_liner"], "purposes": prof["purposes"], "offers": prof.get("offers") or [],
+            "purpose_id": purpose_id, "for_purpose": for_purpose,
             "axis": res["axis"], "reasons": _reason_items(res["pairs"], mine, theirs)}
 
 
 def _card_profile(sid, pv=None):
     """つながるのカード・登録者一覧の段（指示書63 段階1 §4-5）。第三者向けの公開の範囲だけ:
     一行紹介（v5）／要約文（v4）、目的ごとの向かう先（v4 は意志）と必要像の文（欠かせない要素の印つき。
-    プロフィールと同じ公開の日時の閾値に従う）。力になれること（与え像）は出さない（PR-C のポリシーの確認による）。"""
+    プロフィールと同じ公開の日時の閾値に従う）、力になれること（v5。与え像の公開の閾値より後の版だけ。指示書64）。"""
     pv = pv if pv is not None else (get_profile_view(sid, db_path=DB) or {})
     v = _v5_profile_block(sid)
     if v:
         return {"one_liner": v["one_liner"] or _text_of(pv.get("headline")),
-                "purposes": [{"dest": p["dest"], "needs": p["needs"] or []} for p in v["purposes"]]}
+                "purposes": [{"dest": p["dest"], "needs": p["needs"] or []} for p in v["purposes"]],
+                "offers": v.get("offers") or []}         # 与え像の公開の閾値より後の版だけ（指示書64）
     pub = get_public_necessity(sid)              # 数値なし・日時閾値ゲート済み
     return {"one_liner": _text_of(pv.get("headline")),
             "purposes": [{"dest": _text_of(pv.get("pursuing")),
@@ -2415,6 +2463,8 @@ def api_timeline(user_id):
     tree = _traj.build(user_id, viewer_role, snaps, vessels, names=names,
                        necessity_public_for=(_necessity_public_for_third if viewer_role == "third"
                                              else (lambda _at: True)),
+                       # 与え像は与え像の公開の閾値（指示書64 §1-3）。本人・接続の相手は対象外。
+                       offer_public_for=(_offer_public if viewer_role == "third" else (lambda _at: True)),
                        other_snaps_of=_snaps_of, db_path=DB)
     _mark_noindex()     # 軌跡は公開だが検索の対象にしない（切り取られた引用を招かない・50 v3 §3-5）
     return jsonify({"user_id": user_id, "is_owner": is_owner,

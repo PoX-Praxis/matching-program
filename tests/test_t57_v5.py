@@ -242,7 +242,7 @@ def test_t211_t212_results_grouped_by_purpose_with_quote_pairs(world):
     assert by[me_purposes[1]] == ["c2"]                    # p2（[0,1] が必要）には c2（与え像 [0,1]）
     card = d["groups"][1]["results"][0]
     assert 1 <= len(card["reasons"]) <= 2
-    assert set(card["reasons"][0]) == {"kind", "need_label", "need", "offer_label", "offer"}
+    assert set(card["reasons"][0]) == {"kind", "need_label", "need", "offer_label", "offer"}   # 公開の版（指示書64）
     blob = json.dumps(d, ensure_ascii=False)
     for k in ("score", "cos", "gate_s", "0.7"):
         assert k not in blob, k

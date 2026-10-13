@@ -4,7 +4,7 @@
      mypage.html（mode:"owner"）と profile.html（mode:"public"）の両方が include し、
      幅・見出し・本文の構造を完全に同一にする。両者の差は次の3点のみ：
        1. 編集UIの有無（表示名の保存・「本人より」の入力・プロフィールを編集する）
-       2. 非公開項目（evidence_span・数値は本人のみ。v5 の「力になれること」も本人のみ＝指示書63 段階1 PR-C）
+       2. 非公開項目（evidence_span・数値は本人のみ。v5 の「力になれること」は公開の閾値より前の版だけ本人のみ＝指示書64）
        3. 接続CTAの有無（← これはコンポーネント外。各ページが持つ）
      §3-1 の回帰（公開ビューで「読み方」注記と「背景」見出しが消えていた件）は、
      両ビューが同一構造を描くこのコンポーネントで解消する。
@@ -277,7 +277,7 @@ window.PoXProfileView = (function(){
   /* ══ v5（指示書63 段階1 PR-C）════════════════════════════════════════
      並び: 背景 → 意志 → 現状 → 目的ごと → 力になれること → 関心 → 本人より（軌跡は各ページ）。
      「足りないもの（次の一歩・求めている）」は v5 には出さない。必要像の「必須」は画面では「欠かせない要素」の印、
-     「歓迎」は印を付けない。根拠は本人だけ。力になれることは本人の API だけが返す（第三者には節ごと出ない）。 */
+     「歓迎」は印を付けない。根拠は本人だけ。力になれることは公開の閾値より後の版だけ第三者にも出る（指示書64）。 */
   function needsList(needs){
     return '<ul class="pv-needs">' + needs.map(function(n){
       return '<li>' + (n.must ? '<span class="pv-must">欠かせない要素</span>' : '') + esc(n.text) + '</li>';
@@ -332,11 +332,15 @@ window.PoXProfileView = (function(){
     var ps = v.purposes || [];
     ps.forEach(function(p, i){ h += purposeBlock(p, i, ps.length, mode); });
 
+    // 力になれること: 与え像の公開の閾値より後の版は第三者にも出る（指示書64）。前の版は本人だけに出し、その旨を添える。
     var offers = v.offers || [];
     if (offers.length) {
+      var ocap = '';
+      if (owner) ocap = (v.offers_public === false)
+        ? '<b>この版の力になれることは、他の人には表示されません。作り直すと公開されます。</b>'
+        : '<b>プロフィールに公開されます。</b>';
       h += '<h2 class="pv-h">力になれること<span class="en">OFFER</span></h2>'
-        + '<p class="pv-blkcap">AI が本人の語りから読み取り、本人が提供の意思を確かめたもの。'
-        + (owner ? 'いまは公開プロフィールには表示していません。' : '') + '</p>'
+        + '<p class="pv-blkcap">AI が本人の語りから読み取り、本人が提供の意思を確かめたもの。' + ocap + '</p>'
         + sentenceList(offers);
     }
 

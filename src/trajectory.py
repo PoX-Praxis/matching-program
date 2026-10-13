@@ -53,7 +53,7 @@ def version_numbers(user_id, snaps, *, db_path="pox.db"):
     return out
 
 
-def _content(s, role, necessity_public):
+def _content(s, role, necessity_public, offer_public=False):
     """版の本文を閲覧者の役割で絞る（§1）。None は「本文なし（伏せ）」。"""
     nec = s.get("necessity") or {}
     hidden = bool(s.get("vulnerable_hidden"))
@@ -74,9 +74,9 @@ def _content(s, role, necessity_public):
         del c["necessity_text"]         # 必要像の公開閾値（指示書11・37 の既存の決定を維持）
         c.pop("purposes", None)         # 目的ごとの必要像・与え像も同じ閾値（生成された仮説の側）
         c.pop("offers", None)
-    if role == "third":
-        # 与え像（力になれること）は第三者に出さない（指示書63 段階1 PR-C）。プライバシーポリシー §2・§4 に
-        # 公開の対象として読める記述が無いため。本人・接続の相手には従来どおり出す。
+    if role == "third" and not offer_public:
+        # 与え像（力になれること）は、与え像の公開の閾値より後の版だけを第三者に出す（指示書64 §1-3。
+        # 閾値より前の版はさかのぼって公開しない）。本人・接続の相手には従来どおり出す。
         c.pop("offers", None)
     if role == "owner":
         c["supporting"] = sup           # raw（生テキスト等）を含む全体は本人のみ
@@ -170,10 +170,11 @@ def _branches(user_id, vessels, names, other_versions, own_version_of, *, db_pat
 
 
 def build(user_id, role, snaps, vessels, *, names, necessity_public_for, other_snaps_of,
-          db_path="pox.db"):
+          offer_public_for=None, db_path="pox.db"):
     """版ツリーを組み立てる。台帳・DB には書かない。
 
     names: {subject_id: 表示名}／necessity_public_for(created_at)->bool（第三者の必要像の閾値）
+    offer_public_for(created_at)->bool（第三者の与え像の閾値。指示書64。省略時は出さない）
     other_snaps_of(subject_id)->list（相手の版番号の解決用）
     """
     vn = version_numbers(user_id, snaps, db_path=db_path)
@@ -200,7 +201,8 @@ def build(user_id, role, snaps, vessels, *, names, necessity_public_for, other_s
             node["content"] = None         # 本文は上の「いまの姿」に表示中（§3-2）
             node["shown_above"] = True
         else:
-            node["content"] = _content(s, role, necessity_public_for(s.get("created_at")))
+            node["content"] = _content(s, role, necessity_public_for(s.get("created_at")),
+                                       offer_public=bool(offer_public_for and offer_public_for(s.get("created_at"))))
         versions.append(node)
 
     before = []                            # 最初の版より前に起きた関係

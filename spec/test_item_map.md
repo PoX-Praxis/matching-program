@@ -454,3 +454,18 @@
 | 309 | `test_t309_v4_card` |
 
 既存のテストの書き換え（指示書63 段階1 PR-E。カードの段を足した）: 162（照合の結果のキー）・169/171（/seekers のキー）
+
+## 指示書64
+
+### PR-64A（力になれることの公開）— `tests/test_t64a_offer_public.py`
+
+| 項目 | テスト |
+|---|---|
+| 310 | `test_t310_policy_three_places_only` |
+| 311 | `test_t311_after_threshold_shown_to_third_parties`・`test_t311b_after_threshold_on_cards_and_reasons` |
+| 312 | `test_t312_before_threshold_hidden`・`test_t312b_before_threshold_cards_and_reasons` |
+| 313 | `test_t313_inbox_shows_offerer_offer_regardless` |
+| 314 | `test_t314_third_party_no_evidence_numbers_raw` |
+
+既存のテストの書き換え（指示書64 PR-64A。与え像を公開に変えた）: 287（閾値より前の版の条件に）・305（同）・162・169/171（キーに offers）・211（公開の版の注記）。
+テストの共通設定（`tests/conftest.py`）に `POX_OFFER_PUBLIC_SINCE` の既定（過去の日時）を足した（壁時計に左右されないため）。

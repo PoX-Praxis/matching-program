@@ -92,7 +92,7 @@ def test_t162_no_numbers_in_response(v4):
     assert [r["candidate_id"] for r in d["results"]] == ["c1"]                # c2 は入口の閾値未満
     # purposes・for_purpose はカードの段（指示書63 段階1 §4-5。公開の本文だけで数値は無い）
     assert set(d["results"][0]) == {"candidate_id", "handle", "name", "one_liner", "axis", "reasons", "purpose_id",
-                                    "purposes", "for_purpose"}
+                                    "purposes", "for_purpose", "offers"}               # offers は指示書64
     assert "pool_size" not in d                                                 # 件数も出さない（170）
 
 

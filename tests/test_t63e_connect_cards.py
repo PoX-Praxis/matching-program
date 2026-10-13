@@ -46,18 +46,18 @@ def test_t304_match_card_rows_and_for_purpose(world):
 
 # ── 305 カードに力になれること（与え像）・根拠・数値・生テキストを出さない ───────────────────────
 def test_t305_no_offers_evidence_numbers_on_cards(world, monkeypatch):
+    """カードに根拠・数値・生テキストを出さない。力になれることは、指示書64 で与え像の公開の閾値より後の版だけ出す。"""
+    monkeypatch.setenv("POX_OFFER_PUBLIC_SINCE", "2999-01-01T00:00:00+00:00")          # 閾値より前の版
     d, _ = _groups()
     c = _card(d, "c_ok")
-    prof = json.dumps({"one_liner": c["one_liner"], "purposes": c["purposes"]}, ensure_ascii=False)
-    for k in ("与え像", "offers", "試作として形にする立場で関われる", "根拠", "gate", "生テキスト", STORY[:10]):
+    prof = json.dumps({"one_liner": c["one_liner"], "purposes": c["purposes"], "offers": c["offers"]},
+                      ensure_ascii=False)
+    for k in ("与え像", "試作として形にする立場で関われる", "根拠", "gate", "生テキスト", STORY[:10]):
         assert k not in prof, k
     rows = json.dumps(_seekers(monkeypatch, ["c_ok"]), ensure_ascii=False)
-    for k in ("与え像", "offers", "試作として形にする立場で関われる", "根拠", "evidence", "gate_s", "生テキスト",
+    for k in ("与え像", "試作として形にする立場で関われる", "根拠", "evidence", "gate_s", "生テキスト",
               "generator", STORY[:10]):
         assert k not in rows, k
-    html = TPL("connect.html")
-    body = html[html.index("function profileRows("):html.index("/* ── 照合の結果（v4 照合）")]
-    assert "offers" not in body and "力になれること" not in body
 
 
 # ── 306 必要像はプロフィールと同じ公開の日時の閾値に従う（一覧・カードとも） ───────────────────────

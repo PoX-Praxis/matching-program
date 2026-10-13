@@ -469,3 +469,20 @@
 
 既存のテストの書き換え（指示書64 PR-64A。与え像を公開に変えた）: 287（閾値より前の版の条件に）・305（同）・162・169/171（キーに offers）・211（公開の版の注記）。
 テストの共通設定（`tests/conftest.py`）に `POX_OFFER_PUBLIC_SINCE` の既定（過去の日時）を足した（壁時計に左右されないため）。
+
+### PR-64B（指示書62-b の未実装分）— `tests/test_t64b_62b_followup.py`
+
+62-b のテスト番号（277〜）は指示書63 段階1 で使われているので、続きの 315 から振った（指示書64 §2）。
+
+| 項目 | 62-b | テスト |
+|---|---|---|
+| 315 | §1-1 範囲外の拒否 | `test_t315_gate_out_of_range_rejected` |
+| 316 | §1-1 数値でない値の拒否 | `test_t316_gate_not_number_rejected`・`test_t316b_numbers_not_clamped_at_confirm` |
+| 317 | §1-1 境界値 | `test_t317_boundaries_pass` |
+| 318 | §1-2 `\\_` `\\*` `\\[` を補正しない | `test_t318_escaped_backslash_kept` |
+| 319 | §2-1 文字列の中の全角の引用符 | `test_t319_curly_quotes_in_content_unchanged`・`test_t319b_curly_delimiters_fixed_content_kept` |
+| 320 | §1-4 確認画面のハンドルの重なり | `test_t320_handle_taken_on_preview` |
+| 321 | §3 プロンプト A の 139 行目 | `test_t321_prompt_a_line_139`（既存 229・267 は文書を読んで比べるので、そのまま通る） |
+| 322 | §7 `\(` `\)` | `test_t322_math_parens_repaired`・`test_t322b_parens_inside_strings_untouched` |
+
+既存のテストの書き換え: 179（`_handle_hint` に `handle_taken`）。

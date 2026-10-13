@@ -162,10 +162,8 @@ async function register(btn) {
   let rawText = document.getElementById("seekerJson").value.trim();
   if (!rawText) { el.className = "err"; el.textContent = "JSON を貼り付けてください"; return; }
 
-  // iOS スマートクォートを ASCII に正規化してからサーバへ送る
-  rawText = rawText
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'");
+  // 全角の引用符はここでは置き換えない。サーバーが、厳密に読めなかったときだけ JSON の区切りの位置にあるものを
+  // 直して告知する（文字列の中身の “ ” ‘ ’ は本人の文字なので変えない。指示書62-b §2-1）。
 
   if (btn) btn.disabled = true;                    // 二重押下防止
   el.textContent = "下書きを作成中...";
@@ -253,13 +251,33 @@ function renderV5Preview(draft) {
   el.innerHTML = h + handleBoxHtml(draft) + confirmButtonHtml(draft) + `</div>`;
 }
 
+/* ハンドルの重なりは確認画面を開いた時点と、欄を変えたときに知らせる（指示書62-b §1-4）。出すのは確定時と同じ
+   「使われているか否か」だけ（相手の情報は出さない）。守りは確定時の 409 のまま。 */
+const HANDLE_TAKEN = "このハンドルは既に使われています";
 function handleBoxHtml(draft) {
   if (!draft.needs_handle) return "";
   return `<div style="border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:10px 12px;margin:10px 0">
       <label for="handleInput" style="font-weight:700;font-size:13px">ハンドル（@の後ろ・英小文字・数字・_ の 3〜30 字）</label><br>
       <span style="font-size:13px">@</span><input id="handleInput" type="text" maxlength="31" autocomplete="off"
-        value="${esc(draft.handle_suggestion || "")}" style="font-size:14px;padding:4px 8px;margin:6px 0">
+        value="${esc(draft.handle_suggestion || "")}" oninput="checkHandleSoon(this.value)" style="font-size:14px;padding:4px 8px;margin:6px 0">
+      <p id="handleTakenNote" style="font-size:12px;color:#c00;margin:2px 0 0">${draft.handle_taken ? HANDLE_TAKEN : ""}</p>
       <p style="font-size:12px;color:#8a4a00;margin:4px 0 0">ハンドルは<b>後から変えられません</b>。</p></div>`;
+}
+let handleTimer = null;
+function checkHandleSoon(value) {
+  clearTimeout(handleTimer);
+  handleTimer = setTimeout(async () => {
+    const note = document.getElementById("handleTakenNote");
+    if (!note) return;
+    const h = String(value || "").trim();
+    if (!h) { note.textContent = ""; return; }
+    try {
+      const r = await fetch(`/api/handle/check?h=${encodeURIComponent(h)}`);
+      if (!r.ok) return;
+      const d = await r.json();
+      note.textContent = d.available ? "" : (d.error || HANDLE_TAKEN);
+    } catch (e) { /* 案内なので、取れなければ何も出さない（確定時に確かめる） */ }
+  }, 300);
 }
 
 function confirmButtonHtml(draft) {

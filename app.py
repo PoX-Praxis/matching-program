@@ -1274,17 +1274,17 @@ def _draft_preview(draft):
     }
 
 
-def _clamp_numbers(nums):
-    """①v5 の目的ごとの数値を検証・クランプ（無検証で信頼しない）。gate は [0,1]。
-    alpha・beta は使わない（指示書61: 共鳴を門にした。c4 の数値は {gate_s, gate_u}）。"""
-    def f(x, lo, hi, default):
-        # 常に float で返す（max(0, 0.0) は int の 0 を返し、内容ハッシュの正準形が 0 と 0.0 で変わるため）
-        try:
-            return float(max(lo, min(hi, float(x))))
-        except (TypeError, ValueError):
-            return float(default)
-    nums = nums or {}
-    return {"gate_s": f(nums.get("gate_s"), 0, 1, 0.0), "gate_u": f(nums.get("gate_u"), 0, 1, 0.5)}
+def _v5_numbers(nums):
+    """①v5 の目的ごとの数値 {gate_s, gate_u}（c4）。範囲と型は v5.validate（規則 15）が確かめ済みで、範囲外・数値で
+    ない値は登録できない（**丸めない**。指示書62-b §1-1 で、以前の範囲合わせを拒否に変えた）。ここでは float に
+    そろえるだけ（int の 0 と float の 0.0 で内容ハッシュの正準形が変わるため）。alpha・beta は使わない（指示書61）。"""
+    import v5
+    nums = nums if isinstance(nums, dict) else {}
+    for key in v5.GATE_KEYS:
+        err = v5._gate_error(0, key, nums.get(key, v5._MISSING))
+        if err:                                              # 検証をすり抜けた場合の防壁（丸めずに止める）
+            raise ValueError(err)
+    return {"gate_s": float(nums["gate_s"]), "gate_u": float(nums["gate_u"])}
 
 
 def _confirm_v5_ledger(pid, doc, assigned, prof, draft):
@@ -1299,7 +1299,7 @@ def _confirm_v5_ledger(pid, doc, assigned, prof, draft):
     generator_tag = f"{v5.source_of(doc)}/{family}" if family else v5.source_of(doc)
     published = []
     for purpose_id, p in assigned:
-        nec_in = {**_clamp_numbers(p.get("数値")), "will_text": str(p.get("向かう先") or ""),
+        nec_in = {**_v5_numbers(p.get("数値")), "will_text": str(p.get("向かう先") or ""),
                   "evidence_span": str(p.get("根拠") or "")}
         r = _nec.publish_necessity(
             pid, "subject", nec_in, origin="generated", generator=family,
@@ -1395,7 +1395,16 @@ def _handle_hint(draft):
         suggestion = handles.normalize(raw)
     except handles.HandleError:
         suggestion = ""
-    return {"needs_handle": True, "handle_suggestion": suggestion}
+    # 初期値が既に使われていれば、確認画面を開いた時点で知らせる（指示書62-b §1-4）。出すのは使われているか否かだけ。
+    taken = False
+    if suggestion:
+        try:
+            handles.check(suggestion, draft["subject_id"], db_path=DB)
+        except handles.HandleTaken:
+            taken = True
+        except handles.HandleError:
+            pass
+    return {"needs_handle": True, "handle_suggestion": suggestion, "handle_taken": taken}
 
 
 @app.post("/v4/drafts")

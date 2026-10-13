@@ -261,21 +261,23 @@ def save_offer(subject_id: str, offers: list, db_path: str = "pox.db") -> dict:
 
 
 def latest_offer(subject_id: str, db_path: str = "pox.db"):
+    """最新の与え像の版。created_at は公開の日時の閾値（指示書64 §1-2）に使う。"""
     with _connect(db_path) as con:
-        r = con.execute("SELECT offer_id, body_json, offer_hash FROM offers WHERE subject_id=%s "
+        r = con.execute("SELECT offer_id, body_json, offer_hash, created_at FROM offers WHERE subject_id=%s "
                         "ORDER BY n DESC LIMIT 1", (subject_id,)).fetchone()
     if not r:
         return None
-    return {"offer_id": r[0], "sentences": json.loads(r[1]), "offer_hash": r[2]}
+    return {"offer_id": r[0], "sentences": json.loads(r[1]), "offer_hash": r[2], "created_at": r[3]}
 
 
 def get_offer(offer_id: str, db_path: str = "pox.db"):
     with _connect(db_path) as con:
-        r = con.execute("SELECT offer_id, body_json, offer_hash, subject_id FROM offers WHERE offer_id=%s",
+        r = con.execute("SELECT offer_id, body_json, offer_hash, subject_id, created_at FROM offers WHERE offer_id=%s",
                         (offer_id,)).fetchone()
     if not r:
         return None
-    return {"offer_id": r[0], "sentences": json.loads(r[1]), "offer_hash": r[2], "subject_id": r[3]}
+    return {"offer_id": r[0], "sentences": json.loads(r[1]), "offer_hash": r[2], "subject_id": r[3],
+            "created_at": r[4]}
 
 
 def save_doc(subject_id: str, doc: dict, narrative: str = None, db_path: str = "pox.db"):

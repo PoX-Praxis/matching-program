@@ -79,8 +79,8 @@ function profileHref(id, handle) {
 }
 
 /* ── カードの段（照合の結果・登録者一覧とも。指示書63 段階1 §4-5）──────────────
-   目指していること（目的ごと。v4 は意志）・必要としている相手（欠かせない要素の文を先に、最大 2 文。残りは全文で）。
-   力になれること（与え像）は出さない（プライバシーポリシーの確認により、本人の画面だけ）。 */
+   目指していること（目的ごと。v4 は意志）・必要としている相手（欠かせない要素の文を先に、最大 2 文。残りは全文で）・
+   力になれること（v5。与え像の公開の閾値より後の版だけ。最大 2 文＋全文。指示書64）。v4 の人は節を出さない。 */
 const MUST_TAG = `<span class="cf-must">欠かせない要素</span>`;
 function needsHtml(needs) {
   const xs = [...needs].sort((a, b) => (b.must ? 1 : 0) - (a.must ? 1 : 0));   // 欠かせない要素を先に（同じ印の中は元の順）
@@ -95,11 +95,18 @@ function needsHtml(needs) {
     + (rest.length ? `<details class="cf-more"><summary>全文を見る</summary><ul class="cf-needs">${
         rest.map(n => li(n, n.text)).join("")}</ul></details>` : "");
 }
+function offersHtml(offers) {
+  const li = t => `<li>${escHtml(t)}</li>`;
+  const head = offers.slice(0, 2), rest = offers.slice(2);
+  return `<ul class="cf-needs">${head.map(li).join("")}</ul>`
+    + (rest.length ? `<details class="cf-more"><summary>全文を見る</summary><ul class="cf-needs">${rest.map(li).join("")}</ul></details>` : "");
+}
 function profileRows(r) {
   return (r.purposes || []).map(p =>
     (p.dest ? `<div class="cf"><span class="cf-k">目指していること</span>${escHtml(p.dest)}</div>` : "")
     + ((p.needs || []).length ? `<div class="cf"><span class="cf-k">必要としている相手</span>${needsHtml(p.needs)}</div>` : "")
-  ).join("");
+  ).join("")
+    + ((r.offers || []).length ? `<div class="cf"><span class="cf-k">力になれること</span>${offersHtml(r.offers)}</div>` : "");
 }
 
 /* ── 照合の結果（v4 照合）── 4 状態: 未ログイン／必要像なし／該当なし／該当あり */

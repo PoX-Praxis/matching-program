@@ -59,7 +59,9 @@ TPL = lambda name: open(os.path.join(ROOT, "templates", name), encoding="utf-8")
 
 
 # ── 287 目的2 の必要像・関心・手段が本人と第三者に出る。力になれることは本人だけ ──────────────
-def test_t287_purposes_interest_means_for_both_offers_owner_only(pv):
+def test_t287_purposes_interest_means_for_both_offers_owner_only(pv, monkeypatch):
+    # 力になれることが本人だけになるのは、与え像の公開の閾値より前の版（指示書64 で公開に変えた後の条件）
+    monkeypatch.setenv("POX_OFFER_PUBLIC_SINCE", "2999-01-01T00:00:00+00:00")
     _person()
     for v in (_public()["v5"], _public(viewer="u_other")["v5"], _owner()):
         assert v["one_liner"] == "つなぐ"

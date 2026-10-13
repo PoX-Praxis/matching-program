@@ -68,7 +68,8 @@ window.PoXReason = (function () {
     const takes = x.takes_on ? `<span class="mr-takes">承認すると、これを引き受けます</span>` : "";
     return `<div class="mr-line"><div class="mr-need"><span class="mr-k">${esc(x.need_label)}</span>：${quote(x.need)}</div>`
          + `<div class="mr-arrow" aria-hidden="true">↑</div>`
-         + `<div class="mr-give"><span class="mr-k">${esc(x.offer_label)}</span>：${quote(x.offer)}${takes}</div></div>`;
+         // 相手の力になれることの版が公開前（指示書64）なら、文の代わりの断り書きを引用符なしで出す
+         + `<div class="mr-give"><span class="mr-k">${esc(x.offer_label)}</span>：${x.offer_hidden ? esc(x.offer) : quote(x.offer)}${takes}</div></div>`;
   }
   /* 根拠（axis と reasons）を HTML にする。無ければ空文字。 */
   function reasonHtml(r) {

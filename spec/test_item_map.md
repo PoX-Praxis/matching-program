@@ -486,3 +486,11 @@
 | 322 | §7 `\(` `\)` | `test_t322_math_parens_repaired`・`test_t322b_parens_inside_strings_untouched` |
 
 既存のテストの書き換え: 179（`_handle_hint` に `handle_taken`）。
+
+### §3（照合の見分ける力の調査スクリプト）— `tests/test_t64c_probe.py`
+
+| 項目 | テスト |
+|---|---|
+| 323 | `test_t323_probe_runs_and_writes_results`（擬似ベクトルで最後まで動く・監査の g を再現する欄の割り当て・生テキスト等を書かない） |
+| 324 | `test_t324_fictional_data_shape`（A 20・B 10・C 10、架空の人 18 人の内訳） |
+| 325 | `test_t325_same_paths_no_production_local_ignored`（本番と同じ経路・本番に触れない・local/ をコミットしない） |

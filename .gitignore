@@ -51,3 +51,6 @@ eval/github_profiles.jsonl
 
 # solo_eval 用の個人プロフィール（個人情報なのでコミットしない）
 eval/my_profile.json
+
+# --- 手元だけのファイル（指示書64 §3: KAORU・PA の文・監査の応答・調査の結果。コミットしない） ---
+local/

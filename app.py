@@ -1834,13 +1834,14 @@ def connection_reason():
     from ledger import connection_state, request_refs
     if connection_state(me, other, db_path=DB) not in ("pending_out", "pending_in", "connected"):
         return jsonify({"error": "申し出・接続の相手についてだけ見られます"}), 403   # 見送った・見送られた相手も不可
+    # 照合できない（可用性）ときは、根拠が無いのとは別に伝える（指示書65B-6・65-B §5「いま照合できません」）
     if not is_postgres() or not _matching_available():
-        return jsonify({"reason": None}), 200
+        return jsonify({"reason": None, "status": "unavailable"}), 200
     from embedding_config import MODEL_TAG
     store = _v4_store()
     # 2 人のどちらかが現行タグのベクトルを持たないときだけ根拠を出さない（他の人の切替で止めない。指示書65B-1）
     if store.missing_tag_ids(MODEL_TAG) & {me, other}:
-        return jsonify({"reason": None}), 200
+        return jsonify({"reason": None, "status": "unavailable"}), 200
     mine = _side_of(store, me, MODEL_TAG)
     theirs = _side_of(store, other, MODEL_TAG)
     # 申し出た側の版の参照（その目的・その時点の与え像）で上書きする。参照が今の版と違えば「申し出の時点」の照合。
@@ -2232,8 +2233,9 @@ def _v5_match_response(store, me, model_tag):
     them_need_me = {"purpose_id": "_theirs", "label": "", "results": []}
     for cid in ids:
         theirs = _side_of(store, cid, model_tag, bundle=bundles.get(cid))
-        if not theirs["purposes"]:
-            continue                                     # 必要像の無い人は出さない
+        if not theirs["purposes"] and not theirs["has_offer"]:
+            continue                                     # 必要像も与え像も無い人は出さない
+        # 与え像だけの人（必要像が無い）は供給側にだけ出る（指示書65B-6。v4 の人が求める側にだけ出るのと対）
         r = match_pair(mine, theirs)
         prof = None
         done = offered.get(cid, set())

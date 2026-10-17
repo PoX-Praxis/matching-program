@@ -144,7 +144,8 @@ async function loadRecommendations() {
     return;
   }
   if (res.status === 503 || data.status === "unavailable") {
-    status.innerHTML = `<div class="notice">照合の準備中です。下の一覧から探せます。</div>`;
+    // 可用性（指示書65B-6・65-B §5）: 照合したが相手がいないのとは別の文言。理由（自分の登録の作り直し中など）を添える
+    status.innerHTML = `<div class="notice">いま照合できません。${data.reason ? escHtml(data.reason) + "。" : ""}下の一覧から探せます。</div>`;
     return;
   }
   checkMyStatus();   // 自分の準備状態（本人面では preparing と error を区別して出す）

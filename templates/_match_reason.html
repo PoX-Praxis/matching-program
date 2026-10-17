@@ -100,6 +100,8 @@ window.PoXReason = (function () {
     return h + `</div>`;
   }
   function approvalHtml(r) {
+    // 照合できない（可用性）と、照合したが根拠が無い、を分ける（指示書65B-6・65-B §5）
+    if (r && r.unavailable) return `<p class="ap-none">いま照合できません</p>`;
     const xs = (r && r.reasons) || [];
     if (!xs.length) return `<p class="ap-none">照合による根拠はありません</p>`;
     const basis = r.basis === "offer_time" ? "相手が申し出た時点のプロフィールにもとづく照合です"
@@ -138,7 +140,8 @@ window.PoXReason = (function () {
     try {
       const r = await fetch(`/api/connections/reason?with=${encodeURIComponent(otherId)}`);
       if (!r.ok) return null;
-      return (await r.json()).reason || null;
+      const d = await r.json();
+      return d.reason || (d.status === "unavailable" ? { unavailable: true } : null);
     } catch (e) { return null; }
   }
   /* 自分宛ての申し出の文 {申し出た人: 文}。 */

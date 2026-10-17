@@ -55,7 +55,7 @@ def test_t328_reason_not_stopped_by_others(world):
     r = _cli("me").get("/api/connections/reason?with=c_ok").get_json()
     assert r["reason"] and r["reason"]["reasons"]                             # 以前は {"reason": None} になった
     assert _cli("u_old").post("/approve", json={"to_id": "me"}).status_code == 200
-    assert _cli("me").get("/api/connections/reason?with=u_old").get_json() == {"reason": None}
+    assert _cli("me").get("/api/connections/reason?with=u_old").get_json() == {"reason": None, "status": "unavailable"}
 
 
 # ── 329 画面: システムの状態として伝える（個人の情報は出さない） ────────────────────────────────

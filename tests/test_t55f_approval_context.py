@@ -79,7 +79,7 @@ def test_reason_only_for_engaged_pairs(v4):
 def test_reason_absent_when_matching_unavailable(v4, monkeypatch):
     _pending("c1", "me")
     monkeypatch.setattr(appmod, "_matching_available", lambda: False)
-    assert _cli("me").get("/api/connections/reason?with=c1").get_json() == {"reason": None}
+    assert _cli("me").get("/api/connections/reason?with=c1").get_json() == {"reason": None, "status": "unavailable"}   # 可用性は別に伝える（65B-6）
 
 
 def test_approval_screens_show_reason_and_offer_message():

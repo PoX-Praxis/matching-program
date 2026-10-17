@@ -515,3 +515,19 @@
 | 330 | `test_t330_probe_runs_rules_and_labels`（擬似の値で最後まで動く・規則の判定・ラベル一覧に数値を載せない・最終ラベルを引き継ぐ・生テキスト等を書かない）。**印 slow**: 通常の実行では飛ばし、`pytest --run-slow` か `POX_RUN_SLOW=1` で実行する（テストの中では約 7 分かかる。原因は未特定） |
 | 331 | `test_t331_background_and_sets_versioned_with_provenance`（背景文集 bg-v1・群 el-v1 の件数・出どころ・ライセンス・本人の文を記録しない） |
 | 332 | `test_t332_same_paths_pinned_no_production`（本番と同じ経路・モデルの revision の固定・transformers 4.x・本番に触れない・local/ をコミットしない） |
+
+### 65B-2（2層の判定と目的ごとの表）— `tests/test_t65b2_two_layer.py`
+
+| 項目 | テスト |
+|---|---|
+| 333 | `test_t333_c4_hash_changes_when_must_flips`（65-B §9-1: 必須の印を反転すると c4 の内容ハッシュが変わる） |
+| 334 | `test_t334_elements_survive_failed_must`（届かない必須があっても要素の対が残る・上層は不成立） |
+| 335 | `test_t335_no_must_purpose_has_no_upper`（欠かせない要素が無い目的には上層が無い・v4 の全文は欠かせない要素とみなす） |
+| 336 | `test_t336_table_per_purpose_neutral_order`（結果の無い目的も表に出る・上層の印・目的全体の文言・id 順） |
+| 337 | `test_t337_lower_layer_flag_closed_by_default`（下層の表示のフラグ `POX_LOWER_LAYER_OPEN` は既定で閉じる・要素の行を返さない） |
+| 338 | `test_t338_lower_layer_rows_when_open`（開けると要素ごとに応える人が id 順で出る・数値なし） |
+| 339 | `test_t339_engaged_pairs_get_element_reasons`（65-B §1-3: 関わっている組は上層が不成立でも要素の対が根拠に出る・関わっていない組と見送りには出ない） |
+| 340 | `test_t340_upper_operating_point_is_a_setting`（追補 §3: 上層の作動点は設定値・未対応の形は止める） |
+| 341 | `test_t341_interest_vectors_saved_at_registration`（関心のベクトルを登録時に保存・照合では使わない） |
+
+既存のテストの書き換え: 211・213・244 の目的2 に欠かせない要素を置く（欠かせない要素が無い目的には上層が無いため）、57f（結果の無い目的も表に出る）。

@@ -30,7 +30,8 @@ def _doc(**over):
              "数値": {"gate_s": 0.9, "gate_u": 0.3, "alpha": 1.2, "beta": 1.0, "p_sharpness": 0.5},
              "根拠": "事業を一緒に立ち上げる人がほしい。"},
             {"purpose_id": "p2", "向かう先": "照合の論理を説明できる形にしたい。", "手段": "文単位で検証できるようにする。",
-             "必要像": [{"文": "論理の穴を指摘し、構造として組み直す関わり方をしてきた人。", "必須": False, "型": "資源"}],
+             # 目的2 にも欠かせない要素を置く（指示書65B-2: 欠かせない要素が無い目的には上層が無い）
+             "必要像": [{"文": "論理の穴を指摘し、構造として組み直す関わり方をしてきた人。", "必須": True, "型": "資源"}],
              "数値": {"gate_s": 0.0, "gate_u": 0.3, "alpha": 0.5, "beta": 1.5}, "根拠": "論理の穴を指摘してくれる人も。"}],
         "与え像": [{"文": "まだ形になっていない仕組みを試作として形にする立場で関われる。", "型": "関わり方"},
                  {"文": "照合の仕組みと、そこに集まる人と機会という場を提供できる。", "型": "資源"}],
@@ -326,7 +327,7 @@ def test_t57f_exclusion_is_per_purpose(world):
     _cli("me").post("/approve", json={"to_id": "c2", "purpose_id": pids[1]})     # この目的で申し出中
     d = _cli("me").post("/v4/match", json={}).get_json()
     by = {g["purpose_id"]: [r["candidate_id"] for r in g["results"]] for g in d["groups"]}
-    assert by.get(pids[0]) == ["c1"] and pids[1] not in by
+    assert by.get(pids[0]) == ["c1"] and by.get(pids[1]) == []      # 結果の無い目的も表に出る（指示書65B-2 §2-3）
     _cli("me").post("/approve", json={"to_id": "c1"})                            # 目的を指定しない申し出は全部から外す
     d = _cli("me").post("/v4/match", json={}).get_json()
     assert all(r["candidate_id"] != "c1" for g in d["groups"] for r in g["results"])

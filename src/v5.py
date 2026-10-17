@@ -356,7 +356,8 @@ def save_sentence_vectors(ref_kind: str, ref_id: str, texts: list, model_tag: st
                           db_path: str = "pox.db", role: str = None, indexes: list = None) -> int:
     """文ごとに埋め込んで保存する。戻り値＝本数。
     ref_kind: "necessity"（query）／"offer"（passage）／"dest"＝目的の向かう先（symmetric。共鳴の門・指示書61）／
-    "state"＝現状の欄（passage。idx は欄の番号。表示で該当する欄を選ぶため）。
+    "state"＝現状の欄（passage。idx は欄の番号。表示で該当する欄を選ぶため）／"interest"・"interest_doc"＝関心の文
+    （symmetric・passage。照合にも表示にも使わない。指示書65-B 追補 §2）。
     indexes を渡すと idx をその番号にする（既定は 0, 1, …）。"""
     role = role or {"necessity": "query", "dest": "symmetric"}.get(ref_kind, "passage")
     idxs = list(indexes) if indexes is not None else list(range(len(texts)))
@@ -418,6 +419,24 @@ def save_dest_vectors(subject_id: str, model_tag: str, embed_fn, db_path: str = 
         cur = get_sentence_vectors("dest", pid, model_tag, db_path=db_path)
         if not cur or cur[0][0] != text:
             made += save_sentence_vectors("dest", pid, [text], model_tag, embed_fn, db_path=db_path)
+    return made
+
+
+def save_interest_vectors(subject_id: str, model_tag: str, embed_fn, db_path: str = "pox.db") -> int:
+    """`関心` の文のベクトル（指示書65-B §3・追補 §2）。照合にも表示にも使わない（将来の計測用）。
+    65-A の 2 通りの比べ方のため、対称＝"interest"（symmetric）と、相手の側＝"interest_doc"（passage）を保存する。
+    文が変わった分だけ作り直し、無くなった分は消す。"""
+    doc = get_doc(subject_id, db_path=db_path) or {}
+    texts = [str((x or {}).get("文") or "").strip() for x in (doc.get("関心") or [])]
+    texts = [t for t in texts if t]
+    made = 0
+    for kind, role in (("interest", "symmetric"), ("interest_doc", "passage")):
+        have = dict(get_sentence_vectors_indexed(kind, subject_id, model_tag, db_path=db_path))
+        for i, t in enumerate(texts):
+            if i not in have or have[i][0] != t:
+                made += save_sentence_vectors(kind, subject_id, [t], model_tag, embed_fn, db_path=db_path,
+                                              role=role, indexes=[i])
+        delete_sentence_vectors(kind, subject_id, model_tag, keep=list(range(len(texts))), db_path=db_path)
     return made
 
 

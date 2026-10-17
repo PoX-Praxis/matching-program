@@ -42,6 +42,7 @@ window.PoXReason = (function () {
     will:   "意志が近い",
     fill:   "足りないところを埋める",
     mutual: "足りないところを互いに埋める",
+    element: "要素で応える",            // 関わっている組の要素の対（指示書65-B §1-3）
   };
   /* 根拠は常に「必要像の文 ↔ 与え像の文（無ければ現状の欄）」の引用の対（指示書61 §3）。数値は出さない。
      見出し（need_label / offer_label）はサーバーが付ける。照合のカード:
@@ -101,7 +102,10 @@ window.PoXReason = (function () {
     if (!xs.length) return `<p class="ap-none">照合による根拠はありません</p>`;
     const basis = r.basis === "offer_time" ? "相手が申し出た時点のプロフィールにもとづく照合です"
                                            : "現在のプロフィールにもとづく照合です";
-    return apSection("fill_theirs", xs.filter(x => x.kind === "fill_theirs"))
+    // 要素の対（指示書65-B §1-3）: 目的のすべてを満たす照合ではないことを、見出しで示す
+    const elem = r.axis === "element" ? `<div class="mr-axis fill">要素で応える</div>`
+      + `<p class="ap-note">目的のすべてを満たす照合ではなく、必要像の文ごとの照合です</p>` : "";
+    return elem + apSection("fill_theirs", xs.filter(x => x.kind === "fill_theirs"))
          + apSection("fill_mine", xs.filter(x => x.kind === "fill_mine"))
          + `<p class="ap-basis">※ ${basis}</p>`;
   }

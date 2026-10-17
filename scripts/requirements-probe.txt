@@ -1,0 +1,7 @@
+# 指示書64 §3・65-A の計測（scripts/discrimination_probe.py・scripts/element_probe.py）を手元で動かすための依存。
+# transformers は 4.x に固定する（5 では nomic-embed-text-v2-moe の remote code が動かない）。
+sentence-transformers>=5.0,<6
+transformers>=4.49,<5
+torch>=2.2.0
+numpy>=1.26.0
+einops>=0.7.0

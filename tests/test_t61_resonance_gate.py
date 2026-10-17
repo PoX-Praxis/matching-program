@@ -185,13 +185,25 @@ def test_t247_resonance_not_mixed_into_score():
     assert hi[:2] == mid[:2]                                      # 判定と引用の対は同じ（点数に混ざらない）
 
 
-def test_t248_gate_dropped_reason_not_shown_or_recorded(world):
+def test_t248_gate_dropped_reason_not_shown_or_recorded(world, monkeypatch):
+    """指示書65B-3 で書き換え: **閲覧者自身の目的**については、門の結果をラベルとして出してよい。
+    **相手の目的**の門の結果は、従来どおり出さない・記録しない。"""
     before = len(le.get_events(db_path=appmod.DB))
+    monkeypatch.delenv("POX_LOWER_LAYER_OPEN", raising=False)
     d, _ = _groups()
     blob = json.dumps(d, ensure_ascii=False)
-    assert "c_gate" not in blob                                    # 出さない
+    assert "c_gate" not in blob                                    # 下層の表示が閉じている間は出ない
+    monkeypatch.setenv("POX_LOWER_LAYER_OPEN", "1")
+    d, _ = _groups()
+    blob = json.dumps(d, ensure_ascii=False)
+    p1 = v5.live_necessities_v5("me", db_path=appmod.DB)[0]["purpose_id"]
+    g1 = next(g for g in d["groups"] if g["purpose_id"] == p1)
+    gate_people = [p for e in g1["elements"] for p in e["people"] if p["candidate_id"] == "c_gate"]
+    assert gate_people and all(p["label"] == "向かう先は異なるが、この要素には応える" and p["offer_candidate"] is False
+                               for p in gate_people)               # 自分の目的の門はラベルとして出る
+    assert all(r["candidate_id"] != "c_gate" for g in d["groups"] for r in g["results"])   # 上層には出ない
     for k in ("resonance", "共鳴", "gate", "門"):
-        assert k not in blob, k                                    # 理由を出さない
+        assert k not in blob.replace('"c_gate"', '""'), k          # 値・門という語は出さない（id は除く）
     assert len(le.get_events(db_path=appmod.DB)) == before         # 記録しない
     assert world.ledger == [] if hasattr(world, "ledger") else True
 

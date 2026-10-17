@@ -159,6 +159,7 @@ async function loadRecommendations() {
   }
   const groups = Array.isArray(data.groups) ? data.groups : [];
   const results = Array.isArray(data.results) ? data.results : [];
+  runId = data.match_run_id || null;
   if (!results.length) {
     renderGroups(groups, cards);                     // 結果が無くても目的ごとの表（目的全体の文言）は出す
     // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
@@ -192,13 +193,24 @@ function elementRows(g) {
   return g.elements.map((e, i) => `<div class="el-row">${"①②③④⑤⑥⑦⑧⑨⑩"[i] || (i + 1)} ${escHtml(e.need)}`
     + (e.must ? `（欠かせない要素）` : "")
     + `<span class="el-who">${(e.people || []).length
-        ? "この要素に応える人: " + e.people.map(p => `<a href="${profileHref(String(p.candidate_id), p.handle)}">${escHtml(p.name)}</a>`
+        ? "この要素に応える人: " + e.people.map(p => `<a data-cid="${escHtml(String(p.candidate_id))}" href="${profileHref(String(p.candidate_id), p.handle)}">${escHtml(p.name)}</a>`
             // 自分の目的の門が閉じた相手（指示書65B-3）: ラベルを付け、申し出の候補にしない
             + (p.label ? `<span class="el-label">（${escHtml(p.label)}）</span>`
-               : (p.offer_candidate ? ` <button class="btn-offer el-offer" data-to="${escHtml(String(p.candidate_id))}" data-purpose="${escHtml(g.purpose_id || "")}" onclick="offer(this)">つながりたいと伝える</button>` : ""))).join("、")
+               : (p.offer_candidate ? ` <button class="btn-offer el-offer" data-to="${escHtml(String(p.candidate_id))}" data-purpose="${escHtml(g.purpose_id || "")}" data-element="${i}" onclick="offer(this)">つながりたいと伝える</button>` : ""))).join("、")
         : NO_ELEMENT_TEXT}</span></div>`).join("");
 }
 let cardSeq = 0;
+let runId = null;
+/* 照合の結果から相手のプロフィールを開いた（提示の記録の「開いたか」。記録が閉じている間はサーバーが何も書かない） */
+function opened(cid) {
+  if (!runId || !navigator.sendBeacon) return;
+  try { navigator.sendBeacon("/api/presentations/opened",
+          new Blob([JSON.stringify({ run_id: runId, candidate_id: cid })], { type: "application/json" })); } catch (_) {}
+}
+document.addEventListener("click", ev => {
+  const a = ev.target.closest && ev.target.closest("#recCards a[data-cid]");
+  if (a) opened(a.dataset.cid);
+});
 function renderGroups(groups, cards) {
   cards.innerHTML = groups.map(g => {
     const mineGroup = g.purpose_id !== "_theirs";
@@ -217,7 +229,7 @@ function renderGroups(groups, cards) {
       return `<div class="card">
         ${mineGroup ? `<div class="cf-upper">欠かせない要素をすべて覆う人</div>` : ""}
         ${r.for_purpose ? `<div class="cf-for">${escHtml(r.for_purpose)}</div>` : ""}
-        <a class="cname" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
+        <a class="cname" data-cid="${escHtml(cid)}" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
         ${one}
         ${profileRows(r)}
         <div class="cf"><span class="cf-k">なぜこの人か</span>${PoXReason.reasonHtml(r)}</div>
@@ -238,6 +250,8 @@ async function offer(btn) {
                                        // 経路 "match" を記録する（画面には出さない。指示書63 段階1 §4-4）
                                        body: JSON.stringify({ to_id: btn.dataset.to, channel: "match",
                                                               purpose_id: btn.dataset.purpose || null,
+                                                              // どの要素についての申し出か（要素の行から。指示書65B-5 §7-2）
+                                                              element_idx: btn.dataset.element !== undefined ? Number(btn.dataset.element) : null,
                                                               message: ((box && box.value) || "").trim() })});
     if (PoX.handle(r)) { btn.disabled = false; return; }
     const d = await r.json().catch(() => ({}));

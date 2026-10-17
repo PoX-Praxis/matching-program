@@ -2255,6 +2255,8 @@ def _v5_match_response(store, me, model_tag):
             prof = prof or _card_profile(cid)
             them_need_me["results"].append(_card(cid, names, hs, prof, r["theirs_need_me"], mine, theirs, None))
     lower_open = lower_layer_open()
+    run_id = f"run_{uuid.uuid4().hex[:8]}"
+    _record_presentations(me, run_id, mine, groups, them_need_me, lower_open)
     out_groups = []
     for g in groups.values():
         rows = g.pop("_elements")
@@ -2269,7 +2271,43 @@ def _v5_match_response(store, me, model_tag):
         out_groups.append(them_need_me)
     flat = [c for g in out_groups for c in g["results"]]
     return {"status": "ok" if flat else "none", "groups": out_groups, "results": flat,
-            "has_offer": mine["has_offer"], "match_run_id": f"run_{uuid.uuid4().hex[:8]}"}
+            "has_offer": mine["has_offer"], "match_run_id": run_id}
+
+
+def _record_presentations(me, run_id, mine, groups, them_need_me, lower_open):
+    """提示の記録（指示書65B-5 §7-1）。記録の開始はフラグで閉じる（presentations.record が閉じていれば書かない）。
+    上層のカード（向き a＝自分の目的・b＝あなたを必要としている相手）と、下層の表示が開いているときの要素の行。
+    相手の目的（向き b）の目的 id・門の結果は記録しない。"""
+    import presentations
+    if not presentations.recording_open():
+        return 0
+    nref = {p["purpose_id"]: p.get("necessity_id") for p in mine["purposes"]}
+    rows = []
+    for pid, g in groups.items():
+        for r in g["results"]:
+            rows.append({"counterpart": r["candidate_id"], "purpose_id": pid, "necessity_ref": nref.get(pid),
+                         "element_idx": None, "direction": "a", "layer": "upper"})
+        if lower_open:
+            for i, e in enumerate(g["_elements"]):
+                for cid, _closed in e["people"]:
+                    rows.append({"counterpart": cid, "purpose_id": pid, "necessity_ref": nref.get(pid),
+                                 "element_idx": i, "direction": "a", "layer": "lower"})
+    for r in them_need_me["results"]:
+        rows.append({"counterpart": r["candidate_id"], "purpose_id": None, "necessity_ref": None,
+                     "element_idx": None, "direction": "b", "layer": "upper"})
+    return presentations.record(me, run_id, rows, db_path=DB)
+
+
+@app.post("/api/presentations/opened")
+@login_required
+def presentation_opened():
+    """照合の結果から相手のプロフィールを開いた（提示の記録の「開いたか」。指示書65B-5）。
+    記録の開始が閉じている間は何も書かない。本人の提示だけ（閲覧者はセッションの本人）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("id"))
+    import presentations
+    presentations.mark_opened(me, str(body.get("run_id") or ""), str(body.get("candidate_id") or ""), db_path=DB)
+    return ("", 204)
 
 
 def _card(cid, names, hs, prof, res, mine, theirs, purpose_id, for_purpose=None):
@@ -2341,6 +2379,17 @@ def post_approve():
         if purpose_id not in live:
             return jsonify({"error": "この目的では申し出られません（自分の生きている目的を選んでください）"}), 400
         necessity_ref = live[purpose_id]
+    # 指示書65B-5 §7-2: どの要素（必要像の文）についての申し出か。目的を指定したときだけ受け取る。
+    element_ref = None
+    if body.get("element_idx") is not None:
+        n_sentences = len((v5.necessity_body(necessity_ref, db_path=DB) or {}).get("sentences") or []) if necessity_ref else 0
+        try:
+            idx = int(body.get("element_idx"))
+        except (TypeError, ValueError):
+            idx = -1
+        if not necessity_ref or not (0 <= idx < n_sentences):
+            return jsonify({"error": "この要素では申し出られません"}), 400
+        element_ref = f"{necessity_ref}:{idx}"
     off = v5.latest_offer(from_id, db_path=DB)
     offer_ref = off["offer_id"] if off else None
 
@@ -2358,7 +2407,7 @@ def post_approve():
         ref_resolver=_conn_ref_resolver,          # 接続の根拠（指示書18 §1）
         require_grounding=True,                    # 両者に profile.structured が無ければ成立させない（§1-3）
         message=message or None,
-        purpose_id=purpose_id, necessity_ref=necessity_ref, offer_ref=offer_ref,
+        purpose_id=purpose_id, necessity_ref=necessity_ref, offer_ref=offer_ref, element_ref=element_ref,
     )
     if result.get("reason") == "declined":
         return jsonify({"error": "declined", "message": DECLINED_MESSAGE}), 409

@@ -557,3 +557,16 @@
 | 354 | `test_t354_elements_compared_regardless_of_gate`（門が閉じても要素を比べる・門の結果は自分の目的の分だけ返す） |
 
 既存のテストの書き換え: 302（根拠が無い相手を「どの要素にも応えない人」に。門で通らない相手は 65B-3 からラベルつきの要素一致が出る）、338（要素の行の人に offer_candidate）。
+
+### 65B-4（申し出る前の根拠）— `tests/test_t65b4_preview_reason.py`
+
+| 項目 | テスト（65-B §6-1 の制約） |
+|---|---|
+| 355 | `test_t355_self_times_other_only`（1・2: 自分 × 相手だけ・閲覧者の必要像 × 相手の文の対だけ・数値なし・他人として引けない） |
+| 356 | `test_t356_population_independent`（3: 無関係な人を足しても同じ） |
+| 357 | `test_t357_declined_excluded`（4: 見送りが効いている相手には出さない・承認待ちには出す） |
+| 358 | `test_t358_no_profile`（5: 閲覧者に目的が無ければ返さない） |
+| 359 | `test_t359_closed_upper_only_and_wording`（6: 閉じている間は上層の対だけ・通らなければ「要素単位の照合は準備中です」・開けると要素の対・無ければ「あなたの必要に応える文は見つかりませんでした」） |
+| 360 | `test_t360_rate_limited`（7: 閲覧者ごとのレート制限） |
+| 361 | `test_t361_other_sentences_follow_public_threshold`（8: 相手の文は公開の日時の閾値に従う） |
+| 362 | `test_t362_profile_shows_preview_and_availability`（プロフィールに根拠の欄・照合できないときは「いま照合できません」） |

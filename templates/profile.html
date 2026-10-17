@@ -29,6 +29,7 @@
 </style>
 {% include "_profile_view.html" %}
 {% include "_trajectory.html" %}
+{% include "_match_reason.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-prose pv">
@@ -42,6 +43,11 @@
   <!-- connect actions（接続CTA＝差3。owner ビューには無い） -->
   <div class="connect-block" id="connectBlock" style="display:none">
     <h2 class="pv-h">つながる<span class="en">CONNECT</span></h2>
+    <!-- 申し出る前の根拠（指示書65B-4）: あなたの必要像の文 × この人の公開の文。数値は出さない。 -->
+    <div id="previewBox" class="cf" style="display:none;margin-bottom:12px">
+      <div class="pv-blkcap" style="margin-bottom:4px">あなたの必要から見た、この人</div>
+      <div id="previewBody"></div>
+    </div>
     <!-- 申し出の文（任意・400 字まで）。受け取った本人だけが読める。接続前は申し出だけを送れる（DM は成立後）。 -->
     <div id="offerBox" style="display:none;margin-bottom:10px">
       <!-- どの目的の申し出か（指示書57。自分の目的が 2 つ以上あるときだけ選ぶ） -->
@@ -121,6 +127,8 @@ async function refreshConnectState() {
   const $ = id => document.getElementById(id);
   const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
   $("btnOffer").disabled = false;
+  // 申し出る前の根拠（指示書65B-4）。見送りが効いている相手には出さない（サーバーも 403）。
+  if (state !== "declined_out" && state !== "declined_in") loadPreview(); else show("previewBox", false);
   show("btnOffer", state === "none");
   show("offerBox", state === "none");
   if (state === "none") loadMyPurposes();
@@ -134,6 +142,19 @@ async function refreshConnectState() {
                      : state === "declined_out" ? "今回は見送られました。どちらかがプロフィールを作り直すと、もう一度申し出られます。"
                      : state === "declined_in" ? "この人からの申し出を見送りました。どちらかがプロフィールを作り直すと、申し出られるようになります。"
                      : "";
+}
+
+/* 申し出る前の根拠（指示書65B-4）。自分 × この人だけ。取れなければ欄を出さない。 */
+async function loadPreview() {
+  const box = document.getElementById("previewBox");
+  try {
+    const r = await fetch(`/api/connections/preview?with=${encodeURIComponent(profileId)}`);
+    if (!r.ok) { box.style.display = "none"; return; }
+    const d = await r.json();
+    if (d.status === "no_profile") { box.style.display = "none"; return; }
+    document.getElementById("previewBody").innerHTML = PoXReason.previewHtml(d);
+    box.style.display = "";
+  } catch (e) { box.style.display = "none"; }
 }
 
 /* 接続の申し出（指示書55 PR-B）。以前は旧 v3 の /match を先に呼んでいたため、v4 で登録した人は

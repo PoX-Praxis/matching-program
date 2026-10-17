@@ -9,6 +9,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "scripts")]
 
@@ -73,6 +75,7 @@ def _run(tmp_path, monkeypatch, labels=None):
 
 
 # ── 330 流れと出力（擬似の値で最後まで動く・規則の判定・ラベル一覧に数値を載せない・最終ラベルを引き継ぐ）────────
+@pytest.mark.slow           # テストの中では約 7 分かかる（単独の実行では約 15 秒。原因は未特定）。`pytest --run-slow` で実行する
 def test_t330_probe_runs_rules_and_labels(tmp_path, monkeypatch):
     res, out, lpath = _run(tmp_path, monkeypatch)
     md = (out / "element_probe_result.md").read_text(encoding="utf-8")

@@ -507,3 +507,11 @@
 | 329 | `test_t329_notice_is_system_state`（システムの状態として伝える） |
 
 既存のテストの書き換え: 185（全員を止める → その人だけ外す）。
+
+### 65-A（要素単位の接続の計測スクリプト）— `tests/test_t65a_element_probe.py`
+
+| 項目 | テスト |
+|---|---|
+| 330 | `test_t330_probe_runs_rules_and_labels`（擬似の値で最後まで動く・規則の判定・ラベル一覧に数値を載せない・最終ラベルを引き継ぐ・生テキスト等を書かない）。**印 slow**: 通常の実行では飛ばし、`pytest --run-slow` か `POX_RUN_SLOW=1` で実行する（テストの中では約 7 分かかる。原因は未特定） |
+| 331 | `test_t331_background_and_sets_versioned_with_provenance`（背景文集 bg-v1・群 el-v1 の件数・出どころ・ライセンス・本人の文を記録しない） |
+| 332 | `test_t332_same_paths_pinned_no_production`（本番と同じ経路・モデルの revision の固定・transformers 4.x・本番に触れない・local/ をコミットしない） |

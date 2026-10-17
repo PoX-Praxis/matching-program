@@ -52,9 +52,8 @@ SCHEME_NAMES = {"R": "R（現行 0.70）", "Rg": "Rg（全体で一つの 99% �
                 "C5": "C5（平均除去 + 必要像ごとの 99% 点）", "C6": "C6（クロスエンコーダ small + 必要像ごとの 99% 点）",
                 "C6m": "C6m（クロスエンコーダ bge-m3 + 必要像ごとの 99% 点）"}
 PROVISIONAL = {("1-1", "PA全文"): "応えない", ("1-2", "PA全文"): "応えない",     # 監査の 目的1①・②（②は偽陽性寄り）
-               ("2-1", "PA全文"): "応える", ("2-2", "PA全文"): "応える",        # 目的2①②
-               ("PA", "KAORU与え像1"): "応えない",                              # 話題で選ばれた（哲学の比較）
-               ("PA", "KAORU与え像2"): "応える"}                                # 役割での本命
+               ("2-1", "PA全文"): "応える", ("2-2", "PA全文"): "応える"}        # 目的2①②
+PA_TO_KAORU = {0: ("応えない", "話題で選ばれた（監査の 1 位）"), 1: ("応える", "役割での本命（監査の 2 位）")}
 
 
 def plain_style(text):
@@ -103,16 +102,54 @@ def versions():
     return out
 
 
+# ── 途中結果の保存（再起動しても続きから）───────────────────────────────────────────────
+class DiskCache:
+    """埋め込みとクロスエンコーダの値を手元のファイルに保存する。同じ出力先で実行しなおすと、保存済みの値は計算しない。"""
+
+    def __init__(self, path):
+        self.path, self._dirty = path, 0
+        self.data = {"emb": {}, "ce": {}}
+        if path and os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                self.data = json.load(f)
+
+    def tick(self, n=1, force=False):
+        self._dirty += n
+        if self.path and self._dirty and (force or self._dirty >= 100):
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self.data, f, ensure_ascii=False)
+            os.replace(tmp, self.path)
+            self._dirty = 0
+
+
+def cached_embedder(emb, cache):
+    store = cache.data.setdefault("emb", {})
+
+    def f(text, role):
+        k = role + "\x1f" + text
+        if k not in store:
+            store[k] = [float(x) for x in emb(text, role)]
+            cache.tick()
+        return store[k]
+    return f
+
+
+def log(msg):
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
 # ── スコア（案ごと）──────────────────────────────────────────────────────────────
 class Scorer:
     """必要像の文 × 相手の文の行列を、案ごとに返す。値は手元の計測にだけ使う（画面・API に出さない）。"""
 
-    def __init__(self, emb, est_texts, rerankers=None, role_q="query", role_p="passage"):
+    def __init__(self, emb, est_texts, rerankers=None, role_q="query", role_p="passage", cache=None):
         self.emb, self.role_q, self.role_p = emb, role_q, role_p
         self.rerankers = rerankers or {}
         self.mu_q = self._mat(est_texts, role_q).mean(axis=0)
         self.mu_p = self._mat(est_texts, role_p).mean(axis=0)
-        self._ce = {}
+        self.cache = cache
+        self._ce = cache.data.setdefault("ce", {}) if cache else {}
 
     def _mat(self, texts, role):
         return np.asarray([self.emb(t, role) for t in texts], dtype=float)
@@ -132,11 +169,15 @@ class Scorer:
     def ce(self, name, needs, texts):
         from pii_redaction import redact_text
         cache = self._ce.setdefault(name, {})
-        todo = sorted({(n, t) for n in needs for t in texts} - set(cache))
-        if todo:
-            scores = self.rerankers[name]([(redact_text(n), redact_text(t)) for n, t in todo])
-            cache.update(zip(todo, (float(s) for s in scores)))
-        return np.asarray([[cache[(n, t)] for t in texts] for n in needs], dtype=float)
+        key = "\x1f".join
+        todo = sorted({(n, t) for n in needs for t in texts if key((n, t)) not in cache})
+        for i in range(0, len(todo), 256):                      # 256 対ごとに保存する（再起動しても続きから）
+            part = todo[i:i + 256]
+            scores = self.rerankers[name]([(redact_text(n), redact_text(t)) for n, t in part])
+            cache.update(zip((key(x) for x in part), (float(v) for v in scores)))
+            if self.cache:
+                self.cache.tick(force=True)
+        return np.asarray([[cache[key((n, t))] for t in texts] for n in needs], dtype=float)
 
     def matrix(self, scheme, needs, texts):
         if scheme in ("R", "Rg", "C2"):
@@ -191,10 +232,11 @@ def pa_from_audit(audit, emb):
         if best is None or hits > best[0]:
             best = (hits, slots, text)
     hits, slots, text = best
-    need = next((s["need"] for e in ((audit or {}).get("v5") or {}).get("sentences") or []
-                 if e.get("direction") == "b_to_a" for s in e.get("sentences") or []), None)
+    b = next((e for e in ((audit or {}).get("v5") or {}).get("sentences") or [] if e.get("direction") == "b_to_a"), {})
+    need = next((s["need"] for s in b.get("sentences") or []), None)
     return {"whole": text, "slots": [(jp, slots[jp]) for _, jp, _ in DP.STATE_SLOTS if slots.get(jp)],
-            "need": need, "repro": {"matched": hits, "rows": len(rows)}}
+            "need": need, "b_top": [t.get("best") for t in b.get("top3") or []],
+            "repro": {"matched": hits, "rows": len(rows)}}
 
 
 # ── 要素の対の一覧（KAORU が最終ラベルを付ける）─────────────────────────────────────────
@@ -211,9 +253,10 @@ def build_label_list(kaoru, pa, el, needs, top):
             add(k, n["text"], "PA の現状（全文）", pa["whole"], PROVISIONAL.get((k, "PA全文"), "未定"),
                 "監査（10/13）の仮ラベル" if (k, "PA全文") in PROVISIONAL else "監査で仮ラベルの無い対")
     if pa and pa["need"]:
-        for i, o in enumerate(kaoru["offers"], 1):
-            add("PA", pa["need"], "KAORU の与え像", o, PROVISIONAL.get(("PA", f"KAORU与え像{i}"), "未定"),
-                {1: "話題で選ばれた（1位）", 2: "役割での本命（2位）"}.get(i, ""))
+        for o in kaoru["offers"]:                               # 監査の順位で対を決める（与え像の並び順に依らない）
+            rank = pa["b_top"].index(o) if o in pa["b_top"] else None
+            label, note = PA_TO_KAORU.get(rank, ("未定", "監査の上位に無い対" if rank is None else f"監査の {rank + 1} 位（仮ラベルなし）"))
+            add("PA", pa["need"], "KAORU の与え像", o, label, note)
     for k, n in needs:
         for c in el["C"]:
             if c["target"] == k:
@@ -255,7 +298,7 @@ def label_of(x):
 
 
 # ── 計測 ─────────────────────────────────────────────────────────────────────────
-def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None):
+def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None, cache=None):
     bg, el, code, people = sets
     t0 = time.time()
     rng = random.Random(SEED)
@@ -279,8 +322,11 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None):
     ctarget = {"C": [c["target"] for c in el["C"]], "Cplain": [c["target"] for c in el["C"]],
                "C_code": [c["target"] for c in code["C"]]}
     names = [s for s in SCHEMES if s in ("R", "Rg", "C2", "C5") or s in rerankers]
-    sc = Scorer(emb, est, rerankers)
-    M = {s: {g: sc.matrix(s, [ntext[k] for k in nkeys], texts) for g, texts in groups.items()} for s in names}
+    sc = Scorer(emb, est, rerankers, cache=cache)
+    M = {}
+    for s in names:
+        M[s] = {g: sc.matrix(s, [ntext[k] for k in nkeys], texts) for g, texts in groups.items()}
+        log(f"下層の行列: {s}")
 
     # 作動点（固定の文集の推定用だけから）
     tau = {}
@@ -448,6 +494,7 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None):
                                  "unrel_pass": neg_unrel, "unrel": len(persons_neg),
                                  "topic_pass": neg_topic, "topic": len(persons_topic)})
 
+    log("上層")
     # 4・5. 「該当なし」と母集団非依存性
     def none_rates(s, pool_n, keys):
         r = random.Random(SEED + pool_n)
@@ -496,6 +543,7 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None):
         return {"per_need": dict(zip(nkeys, (round(x, 2) for x in shown))), "mean": round(float(np.mean(shown)), 2)}
 
     lists = {s: {n: list_len(s, n) for n in LIST_N} for s in names}
+    log("該当なし・一覧の長さ")
 
     fixed = [(k, "C", j) for k in nkeys for j in cidx[k]] + [(k, "A", j) for k in nkeys for j in range(5)]
     if pa:
@@ -557,6 +605,9 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None):
                     ii_found += int(self_hit or any(row[a] > th[v] or row[b] > th[v] for a, b in pool[:-1]))
             nr[n] = {"i": i_none / tot, "ii": ii_found / tot, "ii_self": ii_self / tot}
         out["none"] = nr
+        ks = kaoru.get("interests") or []                       # KAORU 自身の関心 × 背景（検証用）。参考
+        out["kaoru"] = {"fp_bg": int(sum((isc.g([t], ival)[0] > q99(isc.g([t], iest)[0])).sum() for t in ks)),
+                        "bg": len(ks) * len(ival)}
         interest[mode] = out
     # 関心型の必要像 × 相手の関心（65-B §3 の (2)）
     ineed = {}
@@ -569,6 +620,7 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None):
                     "r070": int((isc2.g([ntext[k]], fn)[0] >= R_TH).sum()) if fn else 0,
                     "r070_bg": int((isc2.g([ntext[k]], ival)[0] >= R_TH).sum())}
 
+    log("関心の欄")
     # 7. 方向B・v5 × v5（架空の人の必要像。指示書64 で Code が書いた人）
     fneeds = [(p["id"], p["type"], qi, ni, n["文"], bool(n.get("必須")))
               for p in people for qi, q in enumerate(p["purposes"]) for ni, n in enumerate(q["必要像"])]
@@ -605,6 +657,7 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None):
                     c["purpose_n"] += 1
                     c["purpose"] += int(any(hits) and all(h for h, n in zip(hits, pur["必要像"]) if n.get("必須")))
         v5v5[s] = cells
+        log(f"方向B・v5 × v5: {s}")
 
     # 決定性（同じ入力を 2 回計算する）
     det = None
@@ -751,8 +804,9 @@ def to_markdown(res, info, ver):
     L += ["", "## 6. 下層の一覧の長さ（無関係な人だけのプールで、要素あたりに出る人数＝すべて偽り）", "",
           "| 案 | " + " | ".join(f"N={n}" for n in LIST_N) + " |", "|---|" + "---|" * len(LIST_N)]
     L += [f"| {s} | " + " | ".join(str(res["lists"][s][n]["mean"]) for n in LIST_N) + " |" for s in res["schemes"]]
-    L += ["", "## 7. 方向B・v5 × v5（指示書64 で Code が書いた架空の 18 人）", "",
-          "方向B: 架空の人の必要像のうち、KAORU の与え像のどれかで通る数（型ごと）。PA の必要像 × KAORU の与え像 1〜3 の通過。", "",
+    L += ["", "## 7. 方向B（暫定）・v5 × v5（指示書64 で Code が書いた架空の 18 人）", "",
+          "方向B: 架空の人の必要像のうち、KAORU の与え像のどれかで通る数（型ごと）。PA の必要像 × KAORU の与え像の通過"
+          "（与え像は KAORU の JSON の並び順）。", "",
           "| 案 | 合う | 話題だけ | 無関係 | PA の必要像 × 与え像 1・2・3 |", "|---|---|---|---|---|"]
     for s, d in res["dirb"].items():
         bt = d["by_type"]
@@ -766,10 +820,12 @@ def to_markdown(res, info, ver):
     L += ["", "## 関心の欄（(i) 対称・(ii) query × document）", "",
           "| 比べ方 | 作動点の背景 | 一致の通過 | 不一致の通過 | 背景（検証用）の通過 | 規則 |", "|---|---|---|---|---|---|"]
     for mode in ("i", "ii"):
-        for tname, x in ((k, v) for k, v in res["interest"][mode].items() if k != "none"):
+        for tname, x in ((k, v) for k, v in res["interest"][mode].items() if k not in ("none", "kaoru")):
             ok = V["interest"][mode]["ok"] if tname == "関心の文の節" else None
             L.append(f"| ({mode}) | {tname} | {x['recall']}/{x['resp']} | {x['fp_nonmatch']}/{x['nonmatch']} | {x['fp_bg']}/{x['bg']} | "
                      f"{'' if ok is None else '満たす' if ok else '満たさない'} |")
+    L += ["", "KAORU 自身の関心 × 背景（検証用）の通過（参考）: " + "・".join(
+        f"({m}) {res['interest'][m]['kaoru']['fp_bg']}/{res['interest'][m]['kaoru']['bg']}" for m in ("i", "ii"))]
     L += ["", "関心型の必要像 × 相手の関心（query × document・関心の文の節の 99% 点。括弧内は現行 0.70）:", "",
           "| 必要像 | 応える関心の文の通過 | 背景（検証用）の通過 |", "|---|---|---|"]
     L += [f"| {k} | {v['recall']}/{v['resp']}（{v['r070']}） | {v['fp_bg']}/{v['bg']}（{v['r070_bg']}） |" for k, v in res["ineed"].items()]
@@ -807,7 +863,9 @@ def compare(res, other_path):
 
 def main(argv=None, encode=None, rerankers=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--kaoru", default=os.path.join(ROOT, "local", "kaoru_v5_from_audit.json"))
+    ap.add_argument("--kaoru", default=next((p for p in (os.path.join(ROOT, "local", n) for n in
+                                                          ("kaoru_v5_public.json", "kaoru_v5_from_audit.json"))
+                                             if os.path.exists(p)), os.path.join(ROOT, "local", "kaoru_v5_public.json")))
     ap.add_argument("--audit", default=os.path.join(ROOT, "local", "audit_sentences.json"))
     ap.add_argument("--labels", default=os.path.join(ROOT, "local", "65a", "labels_v1.json"))
     ap.add_argument("--dtype", default=None, help="bfloat16（既定）／float32")
@@ -832,7 +890,13 @@ def main(argv=None, encode=None, rerankers=None):
     if args.audit and os.path.exists(args.audit):
         with open(args.audit, encoding="utf-8") as f:
             audit = json.load(f)
-    res = run(kaoru, audit, load_sets(), emb, rerankers, labels_path=args.labels, emb_raw=_default_embed)
+    os.makedirs(args.out, exist_ok=True)
+    cache = DiskCache(os.path.join(args.out, "cache.json"))
+    log(f"開始（保存済み: 埋め込み {len(cache.data.get('emb', {}))} 件・クロスエンコーダ "
+        f"{sum(len(v) for v in cache.data.get('ce', {}).values())} 件）")
+    res = run(kaoru, audit, load_sets(), cached_embedder(emb, cache), rerankers, labels_path=args.labels,
+              emb_raw=_default_embed, cache=cache)
+    cache.tick(force=True)
     if args.compare:
         res["compare"] = compare(res, args.compare)
     os.makedirs(args.out, exist_ok=True)

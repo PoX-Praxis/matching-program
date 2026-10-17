@@ -20,3 +20,22 @@ os.environ.setdefault("POX_TEST_ALLOW_STUB", "1")
 # 力になれること（与え像）の公開の閾値（指示書64 §1-2）。本番は既定値（PR-64A のデプロイ日時）。テストは
 # 壁時計に左右されないよう、いま作られた版を「閾値より後」として扱う。閾値より前を確かめるテストは個別に上書きする。
 os.environ.setdefault("POX_OFFER_PUBLIC_SINCE", "2000-01-01T00:00:00+00:00")
+
+
+# 遅いテスト（指示書65-A のテスト 330 など）。通常の実行では飛ばし、`pytest --run-slow` か POX_RUN_SLOW=1 で実行する。
+def pytest_addoption(parser):
+    parser.addoption("--run-slow", action="store_true", default=False, help="印 slow の付いたテストも実行する")
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "slow: 時間のかかるテスト（--run-slow か POX_RUN_SLOW=1 で実行する）")
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-slow") or os.environ.get("POX_RUN_SLOW") == "1":
+        return
+    import pytest
+    skip = pytest.mark.skip(reason="遅いテスト（--run-slow か POX_RUN_SLOW=1 で実行する）")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip)

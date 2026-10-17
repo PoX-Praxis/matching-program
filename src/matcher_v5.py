@@ -122,7 +122,7 @@ def elements(purpose, other):
     """下層（指示書65B-2 §2-2）: 必要像の文ごとに、判定を通る相手の文。上層の成否と独立に、通った対を捨てない。
 
     戻り値: [{"text", "must", "offers": [相手の文（相手の与え像の並び順。g の順にしない）]}]。数値は返さない。
-    門で落ちた方向は、いまは比べない（門のラベル化は 65B-3）。
+    門の成否によらず比べる（指示書65B-3: 門はラベルに効かせる）。門の結果をどう出すかは呼び出し側が決める。
     """
     offers = other.get("offers") or []
     must_texts = {n["text"] for n in musts_of(purpose)}
@@ -146,11 +146,13 @@ def match_pair(mine, theirs):
             b_ok, b_pairs = True, pairs
             break
     b_cards = [{"kind": "fill_theirs", "mine": p["offer"], "theirs": p["need"]} for p in b_pairs]
-    out = {"by_purpose": {}, "theirs_need_me": None, "elements": {}}
+    out = {"by_purpose": {}, "theirs_need_me": None, "elements": {}, "own_gate_closed": {}}
     for p in mine["purposes"]:
         ok, pairs, info = judge_direction(p, theirs)
-        # 下層は上層の成否によらず計算して保持する（表示はフラグ。指示書65-B §0 前提4）
-        out["elements"][p["purpose_id"]] = elements(p, theirs) if info["gate_passed"] else []
+        # 下層は上層の成否・門の成否によらず計算して保持する（表示はフラグ。指示書65-B §0 前提4・65B-3）。
+        # 門の結果は**自分の目的**の分だけ返す（ラベル用）。相手の目的の門の結果は返さない（65-B §4）。
+        out["elements"][p["purpose_id"]] = elements(p, theirs)
+        out["own_gate_closed"][p["purpose_id"]] = not info["gate_passed"]
         if not ok:
             continue
         a_cards = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in pairs]

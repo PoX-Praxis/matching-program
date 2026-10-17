@@ -143,7 +143,7 @@ def test_t338_lower_layer_rows_when_open(world2, monkeypatch):
     assert [p["candidate_id"] for p in g[pids[1]]["elements"][0]["people"]] == ["c_z"]
     for x in rows:
         for p in x["people"]:
-            assert set(p) == {"candidate_id", "name", "handle"}            # 数値を出さない
+            assert set(p) == {"candidate_id", "name", "handle", "offer_candidate"}   # 数値を出さない（門が通る相手）
 
 
 # ── 339 関わっている組は、上層が不成立でも要素の対が根拠に出る。関わっていない組・見送りには出ない ─────────────

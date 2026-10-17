@@ -176,8 +176,12 @@ def test_t301_v4_counterpart_whole_state_note(world):
 
 # ── 302 根拠が無いときは「照合による根拠はありません」だけ ───────────────────────────────────
 def test_t302_no_reason(world):
-    _offer("c_gate")                                                            # 門で通らない相手
-    assert _cli("me").get("/api/connections/reason?with=c_gate").get_json() == {"reason": None}
+    # どの要素にも応えない相手（与え像も必要像も、こちらと噛み合わない）。門で通らない相手（c_gate）は、
+    # 指示書65B-3 から自分の目的の要素一致がラベルつきで出るので、ここでは使わない（テスト 352）。
+    _v5_person(world, "c_none", needs1=[[0.0, 0.0, -1.0]] * 2, needs2=[[0.0, 0.0, -1.0]],
+               offers=[[0.0, 0.0, -1.0]] * 2, dest=Z)
+    _offer("c_none")
+    assert _cli("me").get("/api/connections/reason?with=c_none").get_json() == {"reason": None}
     part = TPL("_match_reason.html")
     body = part[part.index("function approvalHtml("):part.index("/* 申し出の文（受けた本人だけに届く）。 */")]
     assert "照合による根拠はありません" in body and "互いに" not in body and "mr-arrow" not in body

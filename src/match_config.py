@@ -48,6 +48,11 @@ UPPER_OPERATING_POINT = {"form": "fixed", "threshold": 0.70}
 LOWER_OPERATING_POINT = {"form": "fixed", "threshold": 0.70}
 
 
+# 閲覧者自身の目的で、向かう先の共鳴の門が閉じた相手の要素一致に付けるラベル（指示書65B-3）。
+# その要素一致は申し出の候補にしない。相手の目的の門の結果は出さない・記録しない。
+OWN_GATE_LABEL = "向かう先は異なるが、この要素には応える"
+
+
 def _flag(name):
     return os.environ.get(name, "").strip().lower() in ("1", "true", "on", "open")
 

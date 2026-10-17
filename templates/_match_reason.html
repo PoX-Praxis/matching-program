@@ -90,6 +90,8 @@ window.PoXReason = (function () {
     items.forEach(x => {
       h += `<div class="ap-row"><span class="ap-k">${esc(x.need_label)}</span>：${quote(x.need)}`
          + (x.must ? `<span class="ap-must">欠かせない要素</span>` : "") + `</div>`;
+      // 自分の目的の門が閉じた要素一致（指示書65B-3）。相手の目的の門の結果は出さない
+      if (x.label) h += `<div class="ap-note">${esc(x.label)}</div>`;
       h += `<div class="ap-row"><span class="ap-k">${esc(x.offer_label)}</span>：${quote(x.offer)}`
          + (x.state_slot ? ` <span class="ap-sub">（現状の「${esc(x.state_slot)}」から）</span>` : "") + `</div>`;
     });

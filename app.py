@@ -1867,7 +1867,7 @@ def connection_reason():
     if not a and not b:
         # 関わっている組（申し出中・承認待ち・接続中）は、上層が不成立でも要素の対を「要素で応える」として出す
         # （指示書65-B §1-3。下層の表示のフラグによらない）。判定は下層と同じ 1 組ごと・現行の閾値。数値なし・g の順にしない。
-        a, b = _element_pairs(mine, theirs), _element_pairs(theirs, mine, give="mine")
+        a, b = _element_pairs(mine, theirs, own=True), _element_pairs(theirs, mine)
         element = True
         if not a and not b:
             return jsonify({"reason": None}), 200
@@ -1875,6 +1875,7 @@ def connection_reason():
     b_pairs = [{"kind": "fill_theirs", "mine": x["offer"], "theirs": x["need"]} for x in (b[1] if b else [])]
     axis = "element" if element else ("mutual" if (a_pairs and b_pairs) else "fill")
     # 承認は自分の引き受けの判断なので、補完B（相手が求めていること）を先に出す。
+    own_gate_closed = bool(element and a and a[0].get("_own_gate_closed"))
     if element:
         chosen = b_pairs + a_pairs
     else:
@@ -1892,22 +1893,28 @@ def connection_reason():
             it["purpose_label"] = _my_purpose_label(me, p)
             it["purpose_text"] = _purpose_text(me, p)
             it["must"] = _need_required(p, it["need"])
+            if own_gate_closed:
+                from match_config import OWN_GATE_LABEL
+                it["label"] = OWN_GATE_LABEL           # 自分の目的の門の結果だけをラベルに（指示書65B-3）
     _mark_noindex()
     # basis: current＝両者とも現在の版で照合した／offer_time＝申し出の時点の版を含む（申し出の後に作り直した）。
     return jsonify({"reason": {"axis": axis, "reasons": items, "current_profile": current,
                                "basis": "current" if current else "offer_time"}}), 200
 
 
-def _element_pairs(need_side, give_side, give="theirs"):
+def _element_pairs(need_side, give_side, own=False):
     """要素の対（下層。指示書65-B §1-3）: need_side の目的のうち、並び順で最初に対を持つ目的と、その対。
-    対は必要像の文の並び順に、相手の文は相手の並び順で最初に通るもの（g の順にしない）。門で落ちる目的は使わない。"""
+    対は必要像の文の並び順に、相手の文は相手の並び順で最初に通るもの（g の順にしない）。
+    門（65B-3）: 自分の目的（own=True）は門が閉じても比べ、閉じたことを目的に印す（ラベル用）。
+    相手の目的は、門が閉じたら従来どおり使わない（相手の門の結果を出さない）。"""
     from matcher_v5 import elements, judge_direction
     for p in need_side.get("purposes") or []:
-        if not judge_direction(p, give_side)[2]["gate_passed"]:
+        closed = not judge_direction(p, give_side)[2]["gate_passed"]
+        if closed and not own:
             continue
         rows = [r for r in elements(p, give_side) if r["offers"]]
         if rows:
-            return p, [{"need": r["text"], "offer": r["offers"][0]} for r in rows]
+            return {**p, "_own_gate_closed": closed}, [{"need": r["text"], "offer": r["offers"][0]} for r in rows]
     return None
 
 
@@ -2117,7 +2124,7 @@ def _v5_match_response(store, me, model_tag):
     """
     from matcher_v5 import match_pair, musts_of
     from ledger import engaged_by_purpose
-    from match_config import lower_layer_open
+    from match_config import OWN_GATE_LABEL, lower_layer_open
     mine = _side_of(store, me, model_tag)
     if not mine["purposes"]:
         return {"status": "no_necessity", "groups": [], "results": []}
@@ -2149,10 +2156,11 @@ def _v5_match_response(store, me, model_tag):
         for pid, rows in r["elements"].items():
             if pid in done:
                 continue                                 # その目的では申し出中
+            closed = r["own_gate_closed"].get(pid, False)
             for i, row in enumerate(rows):
                 groups[pid]["_elements"][i]["must"] = row["must"]
                 if row["offers"]:
-                    groups[pid]["_elements"][i]["people"].append(cid)       # id 順（中立。g の順にしない）
+                    groups[pid]["_elements"][i]["people"].append((cid, closed))   # id 順（中立。g の順にしない）
         for pid, res in r["by_purpose"].items():
             if pid in done:
                 continue                                 # その目的では申し出中
@@ -2167,9 +2175,11 @@ def _v5_match_response(store, me, model_tag):
     for g in groups.values():
         rows = g.pop("_elements")
         if lower_open:
+            # 自分の目的の門が閉じた相手は、ラベルを付けて出し、申し出の候補にしない（指示書65B-3）
             g["elements"] = [{"need": e["need"], "must": e["must"],
-                              "people": [{"candidate_id": c, "name": names.get(c) or UNNAMED_LABEL, "handle": hs.get(c)}
-                                         for c in e["people"]]} for e in rows]
+                              "people": [{"candidate_id": c, "name": names.get(c) or UNNAMED_LABEL, "handle": hs.get(c),
+                                          "offer_candidate": not closed, **({"label": OWN_GATE_LABEL} if closed else {})}
+                                         for c, closed in e["people"]]} for e in rows]
         out_groups.append(g)                             # 結果が無い目的も表に出す（目的全体の文言のため）
     if them_need_me["results"]:
         out_groups.append(them_need_me)

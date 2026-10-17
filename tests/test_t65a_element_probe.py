@@ -81,7 +81,7 @@ def test_t330_probe_runs_rules_and_labels(tmp_path, monkeypatch):
     md = (out / "element_probe_result.md").read_text(encoding="utf-8")
     assert "仮ラベルでの結果" in md
     for h in ("## 1. 背景の分布", "## 2. 要素 1 組あたりの偽陽性・取りこぼし", "### 較正曲線", "## 3. 必須の数ごとの目的の成立",
-              "## 4. 母集団非依存性", "## 5. 「該当なし」", "## 6. 下層の一覧の長さ", "## 7. 方向B・v5 × v5",
+              "## 4. 母集団非依存性", "## 5. 「該当なし」", "## 6. 下層の一覧の長さ", "## 7. 方向B（暫定）・v5 × v5",
               "## 関心の欄（(i) 対称・(ii) query × document）", "## 規則に照らした判定", "## 8. 要素の対の一覧"):
         assert h in md, h
     assert res["schemes"] == ["R", "Rg", "C2", "C5", "C6"]

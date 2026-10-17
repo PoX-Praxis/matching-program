@@ -34,7 +34,7 @@ window.PoXTrajectory = (function(){
   const date = at => at ? new Date(at).toLocaleDateString("ja-JP") : "";
   const NOTE = "並び順は時間順であり、因果ではありません。";
   const LABEL = {connection:"接続", connection_ended:"接続の終了", joined_project:"参加",
-                 joined_community:"加入", completed:"完了", declared:"宣言"};
+                 joined_community:"加入", completed:"完了", declared:"宣言", must_changed:"優先度"};
   const STATE = {state_have:"持っているもの", state_can_type:"繰り返し現れる固有の型", state_bound:"縛られているもの", state_unsorted:"その他"};
   const ver = n => (n == null ? "?" : n);
 
@@ -48,6 +48,7 @@ window.PoXTrajectory = (function(){
     else if (b.kind === "joined_project" || b.kind === "completed") text = `プロジェクト「${link(b.title)}」`;
     else if (b.kind === "joined_community") text = `コミュニティ「${link(b.title)}」`;
     else if (b.kind === "declared") text = `提議「${link(b.title)}」を立ち上げ`;
+    else if (b.kind === "must_changed") text = `欠かせない要素を変えました（目的: ${esc(b.purpose)}）`;
     else text = esc(b.kind);
     const red = b.partially_redacted ? `<span class="tj-redacted">一部が伏せられています</span>` : "";
     return `<li><span class="tj-tag tj-${esc(b.kind)}">${esc(LABEL[b.kind] || b.kind)}</span>${text}<span class="d">${esc(date(b.at))}</span>${red}</li>`;

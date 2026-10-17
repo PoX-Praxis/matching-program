@@ -340,6 +340,87 @@ def publish_necessity(owner_ref: str, owner_kind: str, necessity: dict, *,
             "content_hash": content_hash, "prev_necessity": prev_id, "skipped": False}
 
 
+# ── 必須の優先度の変更（指示書65-B 追補 §1・65B-7）────────────────────────────────────────
+MAX_MUSTS_PER_PURPOSE = 2
+
+
+def republish_musts(necessity_id: str, musts: list, *, actor: str = None, db_path: str = "pox.db"):
+    """文ごとの「必須」だけを変えた necessity.published の新しい版を書く（本人の判断）。
+
+    - 文・型・数値・evidence_commit・offer_hash・正準形の版は前の版と同じ。変わるのは文ごとの「必須」だけ。
+      c3・c4 の内容ハッシュは「必須」を含むので、ハッシュが変わり新しい版になる
+    - **profile.structured は書かない**（作り直しではない）。新しいイベントの型も作らない
+    - 台帳の payload は前の版と同じ任意キー（source_snapshot_hash・generator_tag・purpose_id・offer_hash）を引き継ぐ
+      （attempt_n は生成の試行なので引き継がない）。根拠の平文と salt は削除可能な別テーブルに写す
+    - 何も変わらなければ書かない（None を返す）。目的ごとの必須は MAX_MUSTS_PER_PURPOSE まで（ValueError）
+    戻り値: {"necessity_id", "n", "content_hash", "prev_necessity"} または None。
+    """
+    with _connect(db_path) as con:
+        r = con.execute(
+            "SELECT owner_ref, owner_kind, will_text, necessity_text, gate_s, gate_u, p_sharpness, alpha, beta, "
+            "evidence_commit, origin, generator, seeking, canon_version, purpose_id, body_json, offer_hash "
+            "FROM necessities WHERE necessity_id=%s", (necessity_id,)).fetchone()
+    if not r or not r[15]:
+        raise ValueError("目的ごとの必要像（v5）ではありません")
+    (owner, owner_kind, will_text, necessity_text, gs, gu, ps, al, be, ev_commit, origin, gen, seeking,
+     canon, purpose_id, body, offer_hash) = r
+    sentences = json.loads(body)
+    musts = [bool(m) for m in musts]
+    if len(musts) != len(sentences):
+        raise ValueError("必要像の文の数と合いません")
+    if sum(musts) > MAX_MUSTS_PER_PURPOSE:
+        raise ValueError(f"目的ごとに欠かせない要素は {MAX_MUSTS_PER_PURPOSE} つまでです")
+    if [bool(x.get("必須")) for x in sentences] == musts:
+        return None                                    # 何も変わらない（版を書かない）
+    new_sentences = [{**x, "必須": m} for x, m in zip(sentences, musts)]
+    numbers = dict(zip(_NUM_KEYS, (gs, gu, ps, al, be)))
+    content_hash = compute_content_hash(necessity_text, numbers, ev_commit, seeking, canon_version=canon,
+                                        sentences=new_sentences, offer_hash=offer_hash)
+    new_id = f"nec_{uuid.uuid4().hex[:12]}"
+    with _connect(db_path) as con:
+        n = (con.execute("SELECT max(n) FROM necessities WHERE owner_ref=%s", (owner,)).fetchone()[0] or 0) + 1
+        con.execute(
+            "INSERT INTO necessities (necessity_id, owner_ref, owner_kind, n, will_text, "
+            "will_vec, necessity_text, necessity_vec, gate_s, gate_u, p_sharpness, alpha, beta, "
+            "evidence_commit, content_hash, origin, generator, prev_necessity, created_at, "
+            "seeking, canon_version, purpose_id, body_json, offer_hash) "
+            "VALUES (%s,%s,%s,%s,%s,NULL,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (new_id, owner, owner_kind, n, will_text, necessity_text, gs, gu, ps, al, be, ev_commit, content_hash,
+             origin, gen, necessity_id, _now(), seeking, canon, purpose_id,
+             json.dumps(new_sentences, ensure_ascii=False), offer_hash))
+        ev = con.execute("SELECT evidence_span, salt FROM necessity_evidence WHERE necessity_id=%s",
+                         (necessity_id,)).fetchone()
+        if ev:
+            con.execute("INSERT INTO necessity_evidence (necessity_id, evidence_span, salt) VALUES (%s,%s,%s)",
+                        (new_id, ev[0], ev[1]))
+    prev_payload = next((e["payload"] for e in le.get_events(type_="necessity.published", db_path=db_path)
+                         if e["payload"].get("necessity_id") == necessity_id), {})
+    payload = {"necessity_id": new_id, "owner_ref": owner, "owner_kind": owner_kind, "n": n,
+               "content_hash": content_hash, "prev_necessity": necessity_id, "origin": origin, "generator": gen}
+    for k in ("source_snapshot_hash", "generator_tag", "purpose_id", "offer_hash"):
+        if prev_payload.get(k) is not None:
+            payload[k] = prev_payload[k]
+    le.append_event(actor or owner, "necessity.published", payload, db_path=db_path)
+    return {"necessity_id": new_id, "n": n, "content_hash": content_hash, "prev_necessity": necessity_id}
+
+
+def is_priority_change(necessity_id: str, db_path: str = "pox.db") -> bool:
+    """この版が「必須の優先度の変更」（本人の判断）か。台帳の履歴から導く（追加の欄は持たない）。
+    前の版と、文・型・数値・evidence_commit・offer_hash がすべて同じで「必須」だけが違う版。作り直しは根拠の
+    コミットメント（salt は版ごとの乱数）が必ず変わるので、ここには当たらない。"""
+    cols = "necessity_text, gate_s, gate_u, evidence_commit, offer_hash, body_json, prev_necessity, canon_version"
+    with _connect(db_path) as con:
+        cur = con.execute(f"SELECT {cols} FROM necessities WHERE necessity_id=%s", (necessity_id,)).fetchone()
+        prev = con.execute(f"SELECT {cols} FROM necessities WHERE necessity_id=%s",
+                           (cur[6],)).fetchone() if cur and cur[6] else None
+    if not cur or not prev or not cur[5] or not prev[5]:
+        return False
+    a, b = json.loads(cur[5]), json.loads(prev[5])
+    same_text = [(x.get("文"), x.get("型")) for x in a] == [(x.get("文"), x.get("型")) for x in b]
+    return (same_text and cur[:5] == prev[:5] and cur[7] == prev[7]
+            and [bool(x.get("必須")) for x in a] != [bool(x.get("必須")) for x in b])
+
+
 def retire_necessity(necessity_id: str, reason: str = "", *, actor: str = None,
                      db_path: str = "pox.db") -> dict:
     """自主取り下げ（§7-6）。necessity.retired を書くのはこの経路のみ。

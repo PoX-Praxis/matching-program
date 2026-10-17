@@ -201,7 +201,7 @@ function renderGroups(groups, cards) {
                : (g.label ? `<h3 class="grp">${escHtml(g.purpose_label || "目的")}: ${escHtml(g.label)}</h3>` : "");
     const res = g.results || [];
     const note = !mineGroup ? ""
-               : g.no_must ? `<p class="grp-note">${NO_MUST_TEXT}</p>`
+               : g.no_must ? `<p class="grp-note">${NO_MUST_TEXT}。<a href="/mypage#mustEditor">欠かせない要素を選ぶ →</a></p>`
                : !res.length ? `<p class="grp-note">${NO_UPPER_TEXT}</p>` : "";
     return head + note + (mineGroup ? elementRows(g) : "") + res.map(r => {
       const i = cardSeq++;

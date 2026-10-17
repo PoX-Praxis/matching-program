@@ -371,6 +371,20 @@ def save_sentence_vectors(ref_kind: str, ref_id: str, texts: list, model_tag: st
     return len(texts)
 
 
+def copy_sentence_vectors(ref_kind: str, src_id: str, dst_id: str, db_path: str = "pox.db") -> int:
+    """保存済みの文ごとのベクトルを、別の id に紐づけ直す（埋め込みは呼ばない）。全モデルタグの分を写す。
+    必須の優先度の変更（指示書65-B 追補 §1-2）は文が同じなので、新しい版の id にこれで紐づける。"""
+    with _connect(db_path) as con:
+        rows = con.execute("SELECT idx, model_tag, text, vec FROM sentence_vectors WHERE ref_kind=%s AND ref_id=%s",
+                           (ref_kind, src_id)).fetchall()
+        for idx, tag, text, vec in rows:
+            con.execute("DELETE FROM sentence_vectors WHERE ref_kind=%s AND ref_id=%s AND idx=%s AND model_tag=%s",
+                        (ref_kind, dst_id, idx, tag))
+            con.execute("INSERT INTO sentence_vectors (ref_kind, ref_id, idx, model_tag, text, vec) "
+                        "VALUES (%s,%s,%s,%s,%s,%s)", (ref_kind, dst_id, idx, tag, text, vec))
+    return len(rows)
+
+
 def delete_sentence_vectors(ref_kind: str, ref_id: str, model_tag: str, keep: list = None,
                             db_path: str = "pox.db") -> None:
     """ref の文ベクトルを消す（keep の idx は残す）。現状の欄が空になったときの掃除用。"""

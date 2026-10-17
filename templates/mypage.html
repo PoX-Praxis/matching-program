@@ -41,6 +41,17 @@
   .mypage .v4status.info {background:#eef2ff;color:#33417a}
   .mypage .v4status.warn {background:#fff3cd;color:#856404}
   .mypage .v4status.err  {background:#f8d7da;color:#721c24}
+  /* 欠かせない要素の切り替え（指示書65-B 追補 §1・65B-7） */
+  .mypage .mu-purpose{margin:0 0 16px}
+  .mypage .mu-ptitle{font-size:13.5px;font-weight:700;color:var(--navy);margin:0 0 6px}
+  .mypage .mu-need{padding:8px 0;border-top:1px solid #eef0f3;font-size:13.5px;line-height:1.6}
+  .mypage .mu-choice{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;font-size:13px}
+  .mypage .mu-choice label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+  .mypage .mu-note{font-size:12px;color:#7a4a1a;margin-top:2px}
+  .mypage .mu-warn{font-size:12.5px;color:#856404;background:#fff3cd;border-radius:6px;padding:6px 10px;margin:4px 0}
+  .mypage .mu-confirm{background:#eef2ff;color:#33417a;border-radius:6px;padding:10px 14px;font-size:13px;margin-top:10px}
+  .mypage .mu-msg{font-size:13px;margin-top:8px;color:#1a6a3a}
+  .mypage .mu-msg .nomust{display:block;color:#555}
   .mypage .v4status .restructure{margin-left:8px;font-weight:700;color:var(--navy);white-space:nowrap;text-decoration:none}
 
   /* ---------- 接続状態バッジ ---------- */
@@ -75,6 +86,19 @@
   <!-- ProfileView 本体（表示名編集・背景〜必要としている相手〜本人より・編集リンク）。
        PoXProfileView.render() が owner モードで流し込む。 -->
   <div id="pvRoot"></div>
+
+  <!-- 欠かせない要素の切り替え（本人のみ・v5 の人だけ。指示書65-B 追補 §1・65B-7） -->
+  <section id="mustEditor" style="display:none">
+    <h2 class="pv-h">欠かせない要素<span class="en">PRIORITY</span></h2>
+    <p class="pv-blkcap">目的ごとに、必要像の文を「欠かせない要素」か「あれば嬉しい」かに切り替えられます（目的ごとに 2 つまで・0 も可）。
+      文の中身は変えられません（変えたいときは作り直してください）。</p>
+    <div id="mustBody"></div>
+    <div id="mustConfirm" class="mu-confirm" style="display:none">欠かせない要素を変えると、照合の結果が変わります。この変更は記録に残ります。
+      <div><button class="pv-btn" id="mustDo" onclick="saveMusts()">変更する</button>
+        <button class="pv-btn" onclick="cancelMusts()">やめる</button></div></div>
+    <button class="pv-btn" id="mustSave" onclick="askMusts()">まとめて保存</button>
+    <div id="mustMsg" class="mu-msg"></div>
+  </section>
 
   <!-- 接続（owner のみのセクション。公開ビューは代わりに接続CTA＝差3） -->
   <h2 class="pv-h">接続<span class="en">CONNECTIONS</span></h2>
@@ -204,12 +228,88 @@ async function init() {
     loadV4Status(myId);        // 照合の準備状態（所有者のみ）
     loadOfferNotice();         // 与え像が無い間の 1 行（v4 互換・指示書57）
     loadOwnerNecessity(myId);  // 自分の必要像（本文=公開・根拠は本人のみ＝差2）
+    loadMustEditor();          // 欠かせない要素の切り替え（v5 の人だけ。65B-7）
     loadTimeline(myId, myId);  // 軌跡（本人ビュー）
   } catch (e) {
     document.getElementById("loading").innerHTML =
       `<span style="color:#c00">読み込みに失敗しました（${escHtml(String(e && e.message || e))}）。`
       + `<a href="#" onclick="location.reload();return false">再読み込み</a></span>`;
   }
+}
+
+/* ── 欠かせない要素の切り替え（指示書65-B 追補 §1・65B-7）────────────────────────────
+   切り替えはまとめて保存（1 回ごとに記録しない）。保存の前に確認を 1 回挟む（ブラウザの確認ダイアログは使わず、画面の中で確かめる）。
+   目的ごとに 2 つまで（3 つ目は選べない理由を出す）。0 も可（保存後に上層が無いことを伝える）。
+   関心を表す文を欠かせない要素にしようとしたら、止めずに 1 行添える。v4 の人（目的が無い）には出さない。 */
+const MUST_TOO_MANY = "目的ごとに欠かせない要素は 2 つまでです。ほかの文を「あれば嬉しい」にしてから選んでください。";
+const MUST_INTEREST = "関心を表す文は、照合では補完として数えません";
+const MUST_NONE = "この目的には欠かせない要素がありません。補完の照合（目的を満たす相手）は行われません";
+let mustData = null, mustFlash = "";
+async function loadMustEditor() {
+  const box = document.getElementById("mustEditor");
+  try {
+    const r = await fetch(`/api/my/musts?id=${encodeURIComponent(myId)}`);
+    mustData = r.ok ? await r.json() : null;
+  } catch (_) { mustData = null; }
+  if (!mustData || !(mustData.purposes || []).length) { box.style.display = "none"; return; }
+  box.style.display = "";
+  document.getElementById("mustBody").innerHTML = mustData.purposes.map((p, pi) =>
+    `<div class="mu-purpose" data-pid="${escHtml(p.purpose_id)}">
+      <div class="mu-ptitle">目的 ${p.number}${p.label ? `: ${escHtml(p.label)}` : ""}</div>
+      <div class="mu-warn" id="muWarn_${pi}" style="display:none">${MUST_TOO_MANY}</div>
+      ${p.needs.map((n, ni) => `<div class="mu-need">${escHtml(n.text)}
+        <div class="mu-choice">
+          <label><input type="radio" name="mu_${pi}_${ni}" value="1" ${n.must ? "checked" : ""}
+                  onchange="mustChanged(${pi}, ${ni}, true)">欠かせない要素</label>
+          <label><input type="radio" name="mu_${pi}_${ni}" value="0" ${n.must ? "" : "checked"}
+                  onchange="mustChanged(${pi}, ${ni}, false)">あれば嬉しい</label></div>
+        <div class="mu-note" id="muNote_${pi}_${ni}" style="display:${n.interest && n.must ? "block" : "none"}">${MUST_INTEREST}</div>
+      </div>`).join("")}
+    </div>`).join("");
+  document.getElementById("mustMsg").innerHTML = mustFlash;
+  mustFlash = "";
+}
+function mustValues(pi) {
+  return mustData.purposes[pi].needs.map((_, ni) =>
+    (document.querySelector(`input[name="mu_${pi}_${ni}"]:checked`) || {}).value === "1");
+}
+function mustChanged(pi, ni, on) {
+  const warn = document.getElementById(`muWarn_${pi}`);
+  if (on && mustValues(pi).filter(Boolean).length > (mustData.max_musts || 2)) {
+    document.querySelector(`input[name="mu_${pi}_${ni}"][value="0"]`).checked = true;   // 3 つ目は選べない
+    warn.style.display = "block";
+    return;
+  }
+  warn.style.display = "none";
+  document.getElementById(`muNote_${pi}_${ni}`).style.display =
+    (on && mustData.purposes[pi].needs[ni].interest) ? "block" : "none";
+  document.getElementById("mustMsg").innerHTML = "";
+}
+function askMusts() {
+  document.getElementById("mustConfirm").style.display = "block";
+  document.getElementById("mustSave").style.display = "none";
+}
+function cancelMusts() {
+  document.getElementById("mustConfirm").style.display = "none";
+  document.getElementById("mustSave").style.display = "";
+}
+async function saveMusts() {
+  const btn = document.getElementById("mustDo");
+  btn.disabled = true;
+  const purposes = mustData.purposes.map((p, pi) => ({ purpose_id: p.purpose_id, musts: mustValues(pi) }));
+  try {
+    const r = await fetch("/api/my/musts", { method: "POST", headers: {"Content-Type": "application/json"},
+                                            body: JSON.stringify({ purposes }) });
+    if (handleAuth(r)) { btn.disabled = false; return; }
+    const d = await r.json().catch(() => ({}));
+    cancelMusts();
+    btn.disabled = false;
+    if (!r.ok) { document.getElementById("mustMsg").textContent = d.error || "保存できませんでした"; return; }
+    const label = pid => { const p = mustData.purposes.find(x => x.purpose_id === pid); return p ? `目的 ${p.number}` : "目的"; };
+    mustFlash = (d.changed || []).length ? "保存しました。次の照合から新しい印で判定します。" : "変更はありません（記録は増えません）。";
+    mustFlash += (d.no_must || []).map(pid => `<span class="nomust">${escHtml(label(pid))}: ${MUST_NONE}</span>`).join("");
+    if ((d.changed || []).length) { init(); } else { loadMustEditor(); }
+  } catch (e) { btn.disabled = false; }
 }
 
 /* 自分の目的・与え像の有無・v5 かどうか（本人のみ）。一度だけ取りに行く。 */

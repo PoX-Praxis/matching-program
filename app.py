@@ -1999,8 +1999,10 @@ def _side_of(store, sid, model_tag, bundle=None):
     will_vec = vecs4.get("will_symmetric")
     doc = v5.get_doc(sid, db_path=DB) or {}
     labels = {p.get("purpose_id"): str(p.get("向かう先") or "") for p in (doc.get("purposes") or [])}
+    # 並びは登録した目的の順（プロフィールの番号と同じ）。必須の優先度の変更（65B-7）で版が新しくなっても動かさない。
+    rank = {pid: i for i, pid in enumerate(labels)}
     purposes = []
-    for n in v5.live_necessities_v5(sid, db_path=DB):
+    for n in sorted(v5.live_necessities_v5(sid, db_path=DB), key=lambda x: rank.get(x["purpose_id"], len(rank))):
         vecs = v5.get_sentence_vectors("necessity", n["necessity_id"], model_tag, db_path=DB)
         if not vecs:
             continue
@@ -2332,6 +2334,67 @@ def my_purposes():
     return jsonify({"purposes": [{"purpose_id": p, "label": labels.get(p, "")} for p in live],
                     "has_offer": bool((v5.latest_offer(me, db_path=DB) or {}).get("sentences")),
                     "is_v5": _is_v5_subject(me)}), 200
+
+
+def _purpose_order(me):
+    """プロフィールの番号と同じ並び（登録した JSON の目的の順。生きている目的だけ）。"""
+    import v5
+    doc = v5.get_doc(me, db_path=DB) or {}
+    live = {n["purpose_id"]: n for n in v5.live_necessities_v5(me, db_path=DB)}
+    order = [p.get("purpose_id") for p in (doc.get("purposes") or []) if p.get("purpose_id") in live]
+    order += [pid for pid in live if pid not in order]
+    labels = {p.get("purpose_id"): str(p.get("向かう先") or "") for p in (doc.get("purposes") or [])}
+    return [(pid, labels.get(pid, ""), live[pid]) for pid in order]
+
+
+@app.get("/api/my/musts")
+@login_required
+def my_musts():
+    """本人の目的ごとの必要像の文と「欠かせない要素」の印（優先度の変更の画面。指示書65-B 追補 §1）。本人のみ。
+    v4 の人（目的が無い）は purposes が空。数値は返さない。"""
+    me = require_self(request.args.get("id"))
+    import necessities as _nec
+    out = [{"purpose_id": pid, "label": label, "number": i + 1,
+            "needs": [{"text": str(x.get("文") or ""), "must": bool(x.get("必須")), "interest": x.get("型") == "関心"}
+                      for x in (n.get("sentences") or [])]}
+           for i, (pid, label, n) in enumerate(_purpose_order(me))]
+    _mark_noindex()
+    return jsonify({"purposes": out, "max_musts": _nec.MAX_MUSTS_PER_PURPOSE}), 200
+
+
+@app.post("/api/my/musts")
+@login_required
+def save_my_musts():
+    """必須の優先度の変更（65B-7）。目的ごとに文ごとの「必須」をまとめて受け取り、変わった目的だけ
+    necessity.published の新しい版を書く（profile.structured は書かない・ベクトルは作り直さず紐づけ直す）。
+    本文: {"purposes": [{"purpose_id", "musts": [bool, ...]}]}。本人の目的だけ（他人の目的は 403）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("id"))
+    import necessities as _nec
+    import v5
+    live = {pid: n for pid, _, n in _purpose_order(me)}
+    if not live:
+        return jsonify({"error": "目的ごとの必要像がありません（v5 で登録した人だけが変えられます）"}), 400
+    items = body.get("purposes")
+    if not isinstance(items, list):
+        return jsonify({"error": "purposes が必要です"}), 400
+    for it in items:                                    # 先にすべて確かめる（一部だけ書かない）
+        pid, musts = (it or {}).get("purpose_id"), (it or {}).get("musts")
+        if pid not in live:
+            return jsonify({"error": "あなたの目的ではありません"}), 403
+        if not isinstance(musts, list) or len(musts) != len(live[pid].get("sentences") or []):
+            return jsonify({"error": "必要像の文の数と合いません"}), 400
+        if sum(bool(m) for m in musts) > _nec.MAX_MUSTS_PER_PURPOSE:
+            return jsonify({"error": f"目的ごとに欠かせない要素は {_nec.MAX_MUSTS_PER_PURPOSE} つまでです"}), 400
+    changed = []
+    for it in items:
+        pid, old = it["purpose_id"], live[it["purpose_id"]]["necessity_id"]
+        r = _nec.republish_musts(old, it["musts"], actor=me, db_path=DB)
+        if r:
+            v5.copy_sentence_vectors("necessity", old, r["necessity_id"], db_path=DB)   # 文が同じなので作り直さない
+            changed.append(pid)
+    no_must = [it["purpose_id"] for it in items if not any(bool(m) for m in it["musts"])]
+    return jsonify({"changed": changed, "no_must": no_must}), 200
 
 
 @app.get("/api/connections/state")

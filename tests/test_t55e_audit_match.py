@@ -98,11 +98,13 @@ def _match(sid="u_k"):
 
 
 def test_t185_no_matching_while_someone_lacks_current_tag(v4):
+    """指示書65B-1 で書き換え: 旧タグだけの人がいても全員は止めない。その人だけが照合から外れる。"""
     assert _match()["status"] == "ok"
     v4.save_vectors("u_old", "nomic-emb-v1", _vecs([1.0, 0.0]))            # 旧タグだけの人がいる
     assert v4.count_missing_tag(MODEL_TAG) == 1
     d = _match()
-    assert d["status"] == "unavailable" and d["results"] == []
+    assert d["status"] == "ok" and d["partial_pool"] is True
+    assert "u_old" not in [r["candidate_id"] for r in d["results"]]
 
 
 def test_t185_old_tag_rows_alone_do_not_stop_matching(v4):
@@ -114,7 +116,7 @@ def test_t185_old_tag_rows_alone_do_not_stop_matching(v4):
 
 def test_t185_postgres_query_counts_vectorized_only():
     import inspect, db_v4
-    src = inspect.getsource(db_v4.PostgresStore.count_missing_tag)
+    src = inspect.getsource(db_v4.PostgresStore.missing_tag_ids)          # 65B-1 で id の集合を返す形に
     assert "NOT IN" in src and "model_tag=%s AND is_active=true" in src
 
 

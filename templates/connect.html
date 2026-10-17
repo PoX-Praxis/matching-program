@@ -109,6 +109,9 @@ function profileRows(r) {
     + ((r.offers || []).length ? `<div class="cf"><span class="cf-k">力になれること</span>${offersHtml(r.offers)}</div>` : "");
 }
 
+/* 照合の準備が済んでいない登録者がいる（システムの状態。誰か・何人かは出さない。指示書65B-1）。 */
+const PARTIAL_POOL_HTML = `<div class="notice" id="partialPoolNotice" style="margin-bottom:10px">照合の準備が済んでいない登録者がいるため、その人たちは、いまの照合の対象に入っていません。</div>`;
+
 /* ── 照合の結果（v4 照合）── 4 状態: 未ログイン／必要像なし／該当なし／該当あり */
 async function loadRecommendations() {
   const status = document.getElementById("recStatus");
@@ -152,6 +155,7 @@ async function loadRecommendations() {
     // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
     status.innerHTML = `<div class="notice">まだ照合できる相手がいません。
       <a href="#directory">登録者一覧を見る →</a></div>`;
+    if (data.partial_pool) status.insertAdjacentHTML("beforeend", PARTIAL_POOL_HTML);
     // 自分宛ての未承認の申し出があれば受信箱へ（本人の未処理の通知。相手ごとの除外理由ではない。指示書58 1-4）
     const offers = await PoXReason.fetchOffers();
     if (Object.keys(offers).length) {
@@ -161,6 +165,8 @@ async function loadRecommendations() {
     return;
   }
   status.innerHTML = "";
+  // 照合の準備が済んでいない登録者がいる（システムの状態。誰か・何人かは出さない。指示書65B-1）
+  if (data.partial_pool) status.innerHTML = PARTIAL_POOL_HTML;
   // 目的ごとにグループ化する（指示書57）。「この目的にはこの人／別の目的には別の人」。
   let k = 0;
   cards.innerHTML = groups.map(g => {

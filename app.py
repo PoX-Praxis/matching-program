@@ -1760,17 +1760,23 @@ def post_v4_match():
     except Exception as e:
         return jsonify({"error": f"移行失敗: {e}"}), 500
 
-    # モデルの切替が済んでいない（現行タグを持たないベクトル化済みの人がいる）間は照合しない（185）。
-    if store.count_missing_tag(MODEL_TAG):
+    # 現行タグのベクトルを持たない人（モデルの切替の途中）は、**その人だけ**照合から外す（指示書65B-1。以前は 1 人でも
+    # いると全員の照合を止めていた＝自分の判定が他人の登録で変わる）。候補は現行タグの行だけから取るので、他の人は
+    # もともと候補に入らない。外したことはシステムの状態として伝える（その人の情報は出さない）。
+    stale = store.missing_tag_ids(MODEL_TAG)
+    if seeker_id in stale:
         return jsonify({"status": "unavailable", "results": [],
-                        "reason": "照合の準備中です（埋め込みのモデルを切り替えています）"}), 200
+                        "reason": "照合の準備中です（あなたの登録の埋め込みを作り直しています）"}), 200
     # 必要像が無い人は照合しない（言語化への導線を出す。指示書55 §2-2）。
     if not nec_id and not ((store.get_necessity(seeker_id, MODEL_TAG) or {}).get("necessity_text") or "").strip():
         return jsonify({"status": "no_necessity", "results": []}), 200
     try:
-        return jsonify(_v5_match_response(store, seeker_id, MODEL_TAG))
+        out = _v5_match_response(store, seeker_id, MODEL_TAG)
     except Exception as e:  # noqa: BLE001
         return jsonify({"error": f"照合失敗: {e}"}), 500
+    if stale - {seeker_id}:
+        out["partial_pool"] = True          # 照合の準備が済んでいない登録者がいる（人数・誰かは出さない）
+    return jsonify(out)
 
 
 def _matching_available():
@@ -1830,7 +1836,8 @@ def connection_reason():
         return jsonify({"reason": None}), 200
     from embedding_config import MODEL_TAG
     store = _v4_store()
-    if store.count_missing_tag(MODEL_TAG):
+    # 2 人のどちらかが現行タグのベクトルを持たないときだけ根拠を出さない（他の人の切替で止めない。指示書65B-1）
+    if store.missing_tag_ids(MODEL_TAG) & {me, other}:
         return jsonify({"reason": None}), 200
     mine = _side_of(store, me, MODEL_TAG)
     theirs = _side_of(store, other, MODEL_TAG)

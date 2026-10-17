@@ -579,3 +579,13 @@
 | 364 | `test_t364_rows_written_when_open`（開けると、誰に・誰を・目的・要素・向き・判定の版・時刻・見せた／開いたが書かれる・台帳には書かない・数値は持たない） |
 | 365 | `test_t365_retention`（保存期間 `POX_PRESENTATION_RETENTION_DAYS`（既定 180 日）を過ぎた行は消える） |
 | 366 | `test_t366_offer_records_element`（申し出に、どの要素についての申し出かを記録する・範囲外や目的なしは 400） |
+
+### 65B-6（与え像だけの人を候補に・根拠が無い理由の区別）— `tests/test_t65b6_supply_and_wording.py`
+
+| 項目 | テスト |
+|---|---|
+| 367 | `test_t367_offer_only_person_is_supply_candidate`（与え像だけの人が供給側の候補に出る・求める側には出ない・応えなければ出ない） |
+| 368 | `test_t368_availability_wording`（可用性は「いま照合できません」。受信箱の根拠も「根拠はありません」と分ける） |
+| 369 | `test_t369_wording_split`（65-B §5 の文言の書き分け: 要素・目的全体・可用性・下層が閉じている間） |
+
+既存のテストの書き換え: 55f・328（照合できないときの根拠の応答に `status: "unavailable"`）。

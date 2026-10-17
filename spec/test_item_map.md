@@ -531,3 +531,18 @@
 | 341 | `test_t341_interest_vectors_saved_at_registration`（関心のベクトルを登録時に保存・照合では使わない） |
 
 既存のテストの書き換え: 211・213・244 の目的2 に欠かせない要素を置く（欠かせない要素が無い目的には上層が無いため）、57f（結果の無い目的も表に出る）。
+
+### 65B-7（必須の優先度の変更・65-B 追補 §1）— `tests/test_t65b7_must_priority.py`
+
+| 項目 | テスト（追補 §1-4 の番号） |
+|---|---|
+| 342 | `test_t342_only_necessity_published`（1: necessity.published が 1 件増え、profile.structured は増えない） |
+| 343 | `test_t343_same_body_except_must_and_hash_changes`（2・3: 文・型・数値・evidence_commit・offer_hash が同じで必須だけが違い、ハッシュが変わる。内容ハッシュの検証が通る） |
+| 344 | `test_t344_third_must_refused`（4: 目的ごとの上限を越える必須はサーバーでも拒否） |
+| 345 | `test_t345_zero_musts_allowed`（5: 0 にできる・上層が無い・文言） |
+| 346 | `test_t346_vectors_relinked_not_reembedded`（6: 埋め込みを呼ばず、新しい版の id に紐づけ直す） |
+| 347 | `test_t347_next_match_uses_new_marks`（7: 次の照合から新しい印・目的の並びは登録の順・申し出中の組は申し出の時点） |
+| 348 | `test_t348_only_owner`（8: 未ログインは 401・他人の目的は 403） |
+| 349 | `test_t349_not_for_v4`（9: v4 の人には出ない） |
+| 350 | `test_t350_no_change_no_version`（10: 何も変えずに保存したら版を書かない） |
+| 351 | `test_t351_trajectory_shows_change`（追補 §1-3: 軌跡に日付と目的の名前だけ・第三者は必要像と同じ閾値・作り直しは当たらない） |

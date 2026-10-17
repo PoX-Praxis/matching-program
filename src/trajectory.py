@@ -169,6 +169,22 @@ def _branches(user_id, vessels, names, other_versions, own_version_of, *, db_pat
     return out
 
 
+def _must_changes(user_id, public_for, db_path):
+    """「欠かせない要素を変えた」（指示書65-B 追補 §1-3）。日付と目的の名前だけ（どの文かは現在の表示で分かる）。
+    台帳の履歴から導く（文が同じで必須だけが違う版）。公開の範囲は必要像と同じ閾値（public_for）。"""
+    import necessities as N
+    out = []
+    for e in le.get_events(type_="necessity.published", db_path=db_path):
+        p = e["payload"]
+        if p.get("owner_ref") != user_id or not p.get("prev_necessity"):
+            continue
+        if not N.is_priority_change(p["necessity_id"], db_path=db_path) or not public_for(e["at"]):
+            continue
+        out.append({"kind": "must_changed", "at": e["at"],
+                    "purpose": _purpose_label(user_id, e["event_hash"], db_path) or "目的"})
+    return out
+
+
 def build(user_id, role, snaps, vessels, *, names, necessity_public_for, other_snaps_of,
           offer_public_for=None, db_path="pox.db"):
     """版ツリーを組み立てる。台帳・DB には書かない。
@@ -206,8 +222,9 @@ def build(user_id, role, snaps, vessels, *, names, necessity_public_for, other_s
         versions.append(node)
 
     before = []                            # 最初の版より前に起きた関係
-    for b in sorted(_branches(user_id, vessels, names, other_versions, own_version_of,
-                              db_path=db_path), key=lambda x: _ts(x["at"]) or datetime.min.replace(tzinfo=timezone.utc)):
+    branches = _branches(user_id, vessels, names, other_versions, own_version_of, db_path=db_path) \
+        + _must_changes(user_id, necessity_public_for, db_path)
+    for b in sorted(branches, key=lambda x: _ts(x["at"]) or datetime.min.replace(tzinfo=timezone.utc)):
         # 接続は「どの版から結ばれたか」を台帳の結合で持つ。無ければ時刻で直前の版に置く。
         idx = None
         if b["kind"] == "connection" and b.get("self_version") is not None:

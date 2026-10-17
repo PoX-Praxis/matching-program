@@ -276,6 +276,22 @@ _SQLITE_DDL = [
         vec         TEXT NOT NULL,
         PRIMARY KEY (ref_kind, ref_id, idx, model_tag)
     )""",
+    # 提示の記録（指示書65B-5 §7-1）。通常 DB。記録の開始はフラグで閉じる（src/presentations.py）。
+    """CREATE TABLE IF NOT EXISTS presentation_log (
+        id               TEXT PRIMARY KEY,
+        run_id           TEXT,
+        viewer           TEXT NOT NULL,
+        counterpart      TEXT NOT NULL,
+        purpose_id       TEXT,
+        necessity_ref    TEXT,
+        element_idx      INTEGER,
+        direction        TEXT NOT NULL,
+        layer            TEXT NOT NULL,
+        judgment_version TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        shown            INTEGER NOT NULL DEFAULT 1,
+        opened_at        TEXT
+    )""",
     """CREATE TABLE IF NOT EXISTS profile_v5 (
         subject_id  TEXT PRIMARY KEY,
         doc_json    TEXT NOT NULL,
@@ -557,6 +573,22 @@ _PG_DDL = [
         vec         TEXT NOT NULL,
         PRIMARY KEY (ref_kind, ref_id, idx, model_tag)
     )""",
+    # 提示の記録（指示書65B-5 §7-1）。通常 DB。記録の開始はフラグで閉じる（src/presentations.py）。
+    """CREATE TABLE IF NOT EXISTS presentation_log (
+        id               TEXT PRIMARY KEY,
+        run_id           TEXT,
+        viewer           TEXT NOT NULL,
+        counterpart      TEXT NOT NULL,
+        purpose_id       TEXT,
+        necessity_ref    TEXT,
+        element_idx      INTEGER,
+        direction        TEXT NOT NULL,
+        layer            TEXT NOT NULL,
+        judgment_version TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        shown            INTEGER NOT NULL DEFAULT 1,
+        opened_at        TEXT
+    )""",
     """CREATE TABLE IF NOT EXISTS profile_v5 (
         subject_id  TEXT PRIMARY KEY,
         doc_json    TEXT NOT NULL,
@@ -636,7 +668,8 @@ def _migrate_columns(con) -> None:
     # connection_requests のチャネル来歴（指示書18 §3。ledger.py は SQLite のみ ALTER していた）。
     # offer_message（申し出の文・指示書55 §3-5）も同じく後付け。
     for col in ("predicted_role", "channel", "match_run_id", "offer_message",
-                "purpose_id", "necessity_ref", "offer_ref"):      # 後ろの 3 つは指示書57
+                "purpose_id", "necessity_ref", "offer_ref",       # 後ろの 3 つは指示書57
+                "element_ref"):                                   # 指示書65B-5 §7-2（どの要素についての申し出か）
         _add_column_if_missing(con, "connection_requests", col, "TEXT")
     # profiles の後付け列（db.py は SQLite のみ自己修復）。
     _add_column_if_missing(con, "profiles", "view_overrides", "TEXT NOT NULL DEFAULT '{}'")

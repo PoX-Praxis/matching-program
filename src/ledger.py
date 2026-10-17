@@ -74,7 +74,7 @@ def _connect(db_path: str = "pox.db"):
         # offer_message: 申し出の文（指示書55 §3-5。受けた本人だけが読む・取り下げで消える）。
         # purpose_id・necessity_ref・offer_ref: 指示書57（どの目的の申し出か・申し出た時点の版の参照）
         for col in ("predicted_role", "channel", "match_run_id", "offer_message",
-                    "purpose_id", "necessity_ref", "offer_ref"):
+                    "purpose_id", "necessity_ref", "offer_ref", "element_ref"):
             try:
                 con.execute(f"ALTER TABLE connection_requests ADD COLUMN {col} TEXT")
             except Exception:  # noqa: BLE001（既存なら無視）
@@ -105,6 +105,7 @@ def approve(
     purpose_id: str = None,
     necessity_ref: str = None,
     offer_ref: str = None,
+    element_ref: str = None,
 ) -> dict:
     """
     from_id が to_id を承認する（成立の前段は connection_requests）。
@@ -122,7 +123,8 @@ def approve(
     message（申し出の文・指示書55 §3-5）も通常DBだけに置く。**1 人 1 通**: 既に申し出中なら
     上書きしない（書き直すには取り下げてから送り直す）。
     指示書57: purpose_id（どの目的の申し出か）と、申し出た時点の版の参照（自分の必要像 necessity_ref・
-    与え像 offer_ref）を保存する。**冪等は「相手 × 目的」**。成立時の根拠 a_ref/b_ref の necessity_hash は、
+    与え像 offer_ref）を保存する。指示書65B-5 §7-2: element_ref（どの要素についての申し出か＝「必要像の版:文の番号」）。
+    **冪等は「相手 × 目的」**。成立時の根拠 a_ref/b_ref の necessity_hash は、
     各自の申し出の目的の最新の必要像（ref_resolver(subject, purpose_id)）。
     戻り値: {"vessel_id", "established": bool[, "reason"]}。
     """
@@ -146,11 +148,11 @@ def approve(
             con.execute(
                 "INSERT INTO connection_requests "
                 "(id, from_subject, to_subject, necessity_id, status, created_at, responded_at, "
-                " predicted_role, channel, match_run_id, offer_message, purpose_id, necessity_ref, offer_ref) "
-                "VALUES (%s,%s,%s,%s,'pending',%s,NULL,%s,%s,%s,%s,%s,%s,%s)",
+                " predicted_role, channel, match_run_id, offer_message, purpose_id, necessity_ref, offer_ref, element_ref) "
+                "VALUES (%s,%s,%s,%s,'pending',%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (f"cr_{uuid.uuid4().hex[:10]}", from_id, to_id, None, _now(),
                  predicted_role, channel, match_run_id, (message or None),
-                 purpose_id, necessity_ref, offer_ref),
+                 purpose_id, necessity_ref, offer_ref, element_ref),
             )
         recip = con.execute(
             "SELECT created_at, purpose_id FROM connection_requests WHERE from_subject=%s AND to_subject=%s "

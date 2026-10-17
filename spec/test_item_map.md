@@ -570,3 +570,12 @@
 | 360 | `test_t360_rate_limited`（7: 閲覧者ごとのレート制限） |
 | 361 | `test_t361_other_sentences_follow_public_threshold`（8: 相手の文は公開の日時の閾値に従う） |
 | 362 | `test_t362_profile_shows_preview_and_availability`（プロフィールに根拠の欄・照合できないときは「いま照合できません」） |
+
+### 65B-5（提示の記録と、申し出への要素の記録）— `tests/test_t65b5_presentation_log.py`
+
+| 項目 | テスト |
+|---|---|
+| 363 | `test_t363_closed_by_default_writes_nothing`（フラグ `POX_PRESENTATION_LOG_OPEN` は既定で閉じる・閉じている間は照合でも「開いた」でも何も書かない） |
+| 364 | `test_t364_rows_written_when_open`（開けると、誰に・誰を・目的・要素・向き・判定の版・時刻・見せた／開いたが書かれる・台帳には書かない・数値は持たない） |
+| 365 | `test_t365_retention`（保存期間 `POX_PRESENTATION_RETENTION_DAYS`（既定 180 日）を過ぎた行は消える） |
+| 366 | `test_t366_offer_records_element`（申し出に、どの要素についての申し出かを記録する・範囲外や目的なしは 400） |

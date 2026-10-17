@@ -494,3 +494,16 @@
 | 323 | `test_t323_probe_runs_and_writes_results`（擬似ベクトルで最後まで動く・監査の g を再現する欄の割り当て・生テキスト等を書かない） |
 | 324 | `test_t324_fictional_data_shape`（A 20・B 10・C 10、架空の人 18 人の内訳） |
 | 325 | `test_t325_same_paths_no_production_local_ignored`（本番と同じ経路・本番に触れない・local/ をコミットしない） |
+
+## 指示書65
+
+### 65B-1（可用性の修正）— `tests/test_t65b1_availability.py`
+
+| 項目 | テスト |
+|---|---|
+| 326 | `test_t326_others_keep_matching`（版の揃わない人がいても他の人の照合は動く・その人は候補に出ない） |
+| 327 | `test_t327_self_stale_unavailable`（本人が揃っていなければ本人だけ準備中） |
+| 328 | `test_t328_reason_not_stopped_by_others`（根拠も止まらない） |
+| 329 | `test_t329_notice_is_system_state`（システムの状態として伝える） |
+
+既存のテストの書き換え: 185（全員を止める → その人だけ外す）。

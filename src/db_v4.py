@@ -278,10 +278,14 @@ class MemoryStore:
     def candidate_ids(self, seeker_id, model_tag):
         return [pid for (pid, mt) in self.vectors if mt == model_tag and pid != seeker_id]
 
+    def missing_tag_ids(self, model_tag):
+        """ベクトル化済みなのに現行タグの行を持たないプロフィールの id（指示書65B-1）。"""
+        have = {pid for (pid, mt) in self.vectors if mt == model_tag}
+        return {pid for (pid, _mt) in self.vectors} - have
+
     def count_missing_tag(self, model_tag):
         """ベクトル化済みなのに現行タグの行を持たないプロフィールの数（指示書55-4 §4-1・185）。"""
-        have = {pid for (pid, mt) in self.vectors if mt == model_tag}
-        return len({pid for (pid, _mt) in self.vectors} - have)
+        return len(self.missing_tag_ids(model_tag))
 
     def write_ledger(self, seeker_id, candidate_id, event, payload):
         self.ledger.append({"seeker_id": seeker_id, "candidate_id": candidate_id,
@@ -500,21 +504,26 @@ class PostgresStore:
             out[pid] = {"vectors": vecs, "necessity": nec_by_id.get(pid, {})}
         return out
 
-    def count_missing_tag(self, model_tag):
-        """ベクトル化済み（どれかのタグの有効行がある）なのに、現行タグの有効行を持たないプロフィールの数。
+    def missing_tag_ids(self, model_tag):
+        """ベクトル化済み（どれかのタグの有効行がある）なのに、現行タグの有効行を持たないプロフィールの id。
 
-        指示書55-4 §4-1・テスト 185: これが 0 でない間は「モデルの切替が済んでいない」ので照合しない。
-        「他のタグの行がある」では判定しない（旧タグの行は切替後も is_active で残るため、止まり続ける）。
-        まだ一度もベクトル化されていない人（準備中・失敗）は数えない（全員の照合を止めないため）。
+        指示書65B-1: 以前はこの数が 0 でない間、全員の照合を止めていた（他人の登録で自分の照合が止まる＝母集団への
+        依存）。いまは**その人だけ**を照合から外す（候補は現行タグの行だけから取るので、もともと候補には入らない）。
+        「他のタグの行がある」では判定しない（旧タグの行は切替後も is_active で残るため）。
+        まだ一度もベクトル化されていない人（準備中・失敗）は数えない。
         """
         with self._get_connection(self.db_path) as con:
-            r = con.execute(
-                """SELECT count(DISTINCT profile_id) FROM profile_vectors
+            rows = con.execute(
+                """SELECT DISTINCT profile_id FROM profile_vectors
                    WHERE is_active = true AND profile_id NOT IN
                      (SELECT profile_id FROM profile_vectors WHERE model_tag=%s AND is_active=true)""",
                 (model_tag,),
-            ).fetchone()
-        return int(r[0])
+            ).fetchall()
+        return {r[0] for r in rows}
+
+    def count_missing_tag(self, model_tag):
+        """現行タグを持たないベクトル化済みのプロフィールの数（監査・運用の確認用）。照合は止めない（指示書65B-1）。"""
+        return len(self.missing_tag_ids(model_tag))
 
     def candidate_ids(self, seeker_id, model_tag):
         """同 model_tag・is_active の候補 profile_id を全件返す（stage1 総当たり）。"""

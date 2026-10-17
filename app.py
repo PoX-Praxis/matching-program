@@ -1332,6 +1332,8 @@ def _v5_sentence_job(pid, offer):
                                      MODEL_TAG, _nec._default_embed, db_path=DB)
         # 共鳴の門（指示書61）: 目的ごとの向かう先。与え像が 0 文なら現状の欄も（表示で該当する欄を選ぶ）。
         v5.save_dest_vectors(pid, MODEL_TAG, _nec._default_embed, db_path=DB)
+        # 関心の文（指示書65-B §3・追補 §2）。照合にも表示にも使わない（将来の計測用）
+        v5.save_interest_vectors(pid, MODEL_TAG, _nec._default_embed, db_path=DB)
         _state_slot_job(pid)
     except Exception as e:  # noqa: BLE001
         app.logger.warning(f"[v5-sentences] 文単位ベクトルの作成に失敗（確定は成立済み）: {e}")
@@ -1861,13 +1863,22 @@ def connection_reason():
         if ok:
             b = (q, prs)
             break
+    element = False
     if not a and not b:
-        return jsonify({"reason": None}), 200
+        # 関わっている組（申し出中・承認待ち・接続中）は、上層が不成立でも要素の対を「要素で応える」として出す
+        # （指示書65-B §1-3。下層の表示のフラグによらない）。判定は下層と同じ 1 組ごと・現行の閾値。数値なし・g の順にしない。
+        a, b = _element_pairs(mine, theirs), _element_pairs(theirs, mine, give="mine")
+        element = True
+        if not a and not b:
+            return jsonify({"reason": None}), 200
     a_pairs = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in (a[1] if a else [])]
     b_pairs = [{"kind": "fill_theirs", "mine": x["offer"], "theirs": x["need"]} for x in (b[1] if b else [])]
-    axis = "mutual" if (a_pairs and b_pairs) else "fill"
+    axis = "element" if element else ("mutual" if (a_pairs and b_pairs) else "fill")
     # 承認は自分の引き受けの判断なので、補完B（相手が求めていること）を先に出す。
-    chosen = (b_pairs[:1] + a_pairs[:1]) if axis == "mutual" else (b_pairs or a_pairs)
+    if element:
+        chosen = b_pairs + a_pairs
+    else:
+        chosen = (b_pairs[:1] + a_pairs[:1]) if axis == "mutual" else (b_pairs or a_pairs)
     items = _reason_items(chosen, mine, theirs, context="approval")
     # 受信箱のカード（指示書63 段階1 §4-2）: 方向ごとの目的（v4 は意志）と、必要像の文の「欠かせない要素」の印。
     for it in items:
@@ -1885,6 +1896,19 @@ def connection_reason():
     # basis: current＝両者とも現在の版で照合した／offer_time＝申し出の時点の版を含む（申し出の後に作り直した）。
     return jsonify({"reason": {"axis": axis, "reasons": items, "current_profile": current,
                                "basis": "current" if current else "offer_time"}}), 200
+
+
+def _element_pairs(need_side, give_side, give="theirs"):
+    """要素の対（下層。指示書65-B §1-3）: need_side の目的のうち、並び順で最初に対を持つ目的と、その対。
+    対は必要像の文の並び順に、相手の文は相手の並び順で最初に通るもの（g の順にしない）。門で落ちる目的は使わない。"""
+    from matcher_v5 import elements, judge_direction
+    for p in need_side.get("purposes") or []:
+        if not judge_direction(p, give_side)[2]["gate_passed"]:
+            continue
+        rows = [r for r in elements(p, give_side) if r["offers"]]
+        if rows:
+            return p, [{"need": r["text"], "offer": r["offers"][0]} for r in rows]
+    return None
 
 
 def _ref_is_current(sid, ref):
@@ -2089,8 +2113,9 @@ def _v5_match_response(store, me, model_tag):
     除外: 必要像が無い人／本人と紐づいていない id／既に接続済みの相手／相手から申し出が来ている相手／
     **その目的で**申し出中の相手（別の目的のグループには出る）。相手ごとの理由は出さない。
     """
-    from matcher_v5 import match_pair
+    from matcher_v5 import match_pair, musts_of
     from ledger import engaged_by_purpose
+    from match_config import lower_layer_open
     mine = _side_of(store, me, model_tag)
     if not mine["purposes"]:
         return {"status": "no_necessity", "groups": [], "results": []}
@@ -2104,8 +2129,12 @@ def _v5_match_response(store, me, model_tag):
     hs = handles.get_many(ids, db_path=DB)
     # 「あなたの目的 N」（プロフィールの番号と同じ。指示書63 段階1 §4-5）。v4 の人（目的なし）は付けない。
     plabel = {p["purpose_id"]: (_my_purpose_label(me, p) if p["purpose_id"] else None) for p in mine["purposes"]}
+    # 目的ごとの表（指示書65B-2 §2-3）。上層＝欠かせない要素をすべて覆う人（results）。欠かせない要素が無い目的は
+    # 上層が無い（no_must）。下層（要素ごとに応える人）は常に計算し、表示はフラグ（lower_layer_open）が開いたときだけ返す。
     groups = {p["purpose_id"]: {"purpose_id": p["purpose_id"], "label": p["label"],
-                                "purpose_label": plabel[p["purpose_id"]], "results": []}
+                                "purpose_label": plabel[p["purpose_id"]], "results": [],
+                                "no_must": not musts_of(p),
+                                "_elements": [{"need": n["text"], "must": False, "people": []} for n in p["needs"]]}
               for p in mine["purposes"]}
     them_need_me = {"purpose_id": "_theirs", "label": "", "results": []}
     for cid in ids:
@@ -2115,6 +2144,13 @@ def _v5_match_response(store, me, model_tag):
         r = match_pair(mine, theirs)
         prof = None
         done = offered.get(cid, set())
+        for pid, rows in r["elements"].items():
+            if pid in done:
+                continue                                 # その目的では申し出中
+            for i, row in enumerate(rows):
+                groups[pid]["_elements"][i]["must"] = row["must"]
+                if row["offers"]:
+                    groups[pid]["_elements"][i]["people"].append(cid)       # id 順（中立。g の順にしない）
         for pid, res in r["by_purpose"].items():
             if pid in done:
                 continue                                 # その目的では申し出中
@@ -2124,7 +2160,15 @@ def _v5_match_response(store, me, model_tag):
         if r["theirs_need_me"] and not done:
             prof = prof or _card_profile(cid)
             them_need_me["results"].append(_card(cid, names, hs, prof, r["theirs_need_me"], mine, theirs, None))
-    out_groups = [g for g in groups.values() if g["results"]]
+    lower_open = lower_layer_open()
+    out_groups = []
+    for g in groups.values():
+        rows = g.pop("_elements")
+        if lower_open:
+            g["elements"] = [{"need": e["need"], "must": e["must"],
+                              "people": [{"candidate_id": c, "name": names.get(c) or UNNAMED_LABEL, "handle": hs.get(c)}
+                                         for c in e["people"]]} for e in rows]
+        out_groups.append(g)                             # 結果が無い目的も表に出す（目的全体の文言のため）
     if them_need_me["results"]:
         out_groups.append(them_need_me)
     flat = [c for g in out_groups for c in g["results"]]

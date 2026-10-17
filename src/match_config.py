@@ -39,3 +39,20 @@ MATCH_ENTRY_THRESHOLD = 0.70   # 【暫定】判定の再設計は段2〜3（指
 # 値は【暫定】。手作業の検証（指示書61 §8）で校正する。画面にも公開 API にも出さない（監査ルートだけ）。
 RES_GATE_MIN = 0.5    # 【暫定】これ以上なら門を立てる
 RES_THRESHOLD = 0.70  # 【暫定】門を通るための共鳴（g(cos) の尺度）
+
+# ── 2層の判定（指示書65B-2・65-B 追補 §3）──────────────────────────────────────────
+# 上層（目的を満たす相手＝欠かせない要素の連言）と下層（この要素に応える相手＝1 組ごと）の作動点。
+# 作動点は設定値として持ち、後から C2（必要像ごとの背景の 99% 点）に差し替えられる形にする。
+# いまはどちらも現行の 0.70（g(cos) の尺度）。値を変えるのは別の指示書（65-A・bg-v2 の後）。
+UPPER_OPERATING_POINT = {"form": "fixed", "threshold": 0.70}
+LOWER_OPERATING_POINT = {"form": "fixed", "threshold": 0.70}
+
+
+def _flag(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "on", "open")
+
+
+def lower_layer_open():
+    """下層（この要素に応える相手）の**表示**を開けるか。既定は閉じる（指示書65-B §0 前提1）。
+    閉じていても計算と保持はする（前提4。関わっている組の根拠＝§1-3 が使う）。"""
+    return _flag("POX_LOWER_LAYER_OPEN")

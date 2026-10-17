@@ -16,15 +16,35 @@
 - 数値は外に出さない。返すのは引用の対（文の本文）と軸の名前だけ。
 """
 from embedding_service import cosine, guard
-from match_config import RES_GATE_MIN, RES_THRESHOLD
+from match_config import LOWER_OPERATING_POINT, RES_GATE_MIN, RES_THRESHOLD, UPPER_OPERATING_POINT
 
-SENTENCE_JUDGE_THRESHOLD = 0.70   # 【暫定】g(cos) の尺度。手作業検証（偽陽性・偽陰性の 2 条件）で調整する
+SENTENCE_JUDGE_THRESHOLD = UPPER_OPERATING_POINT["threshold"]   # 【暫定】g(cos) の尺度（指示書65-A の後に別の指示書で決める）
 MAX_PAIRS = 2                     # 根拠に出す引用の対は 1〜2 組
 
 
+def _passes(point, need_vec, offer_vec) -> bool:
+    if point.get("form") != "fixed":
+        raise ValueError(f"作動点の形が未対応です: {point.get('form')}")
+    return guard(cosine(need_vec, offer_vec)) >= point["threshold"]
+
+
 def judge(need_vec, offer_vec) -> bool:
-    """1 対の判定（差し替え点）。いまは文単位の cos。"""
-    return guard(cosine(need_vec, offer_vec)) >= SENTENCE_JUDGE_THRESHOLD
+    """上層の 1 対の判定（差し替え点）。いまは文単位の cos と設定値の作動点（match_config.UPPER_OPERATING_POINT）。"""
+    return _passes(UPPER_OPERATING_POINT, need_vec, offer_vec)
+
+
+def lower_judge(need_vec, offer_vec) -> bool:
+    """下層の 1 対の判定（指示書65B-2 §2-2）。作動点は match_config.LOWER_OPERATING_POINT（いまは現行の 0.70）。"""
+    return _passes(LOWER_OPERATING_POINT, need_vec, offer_vec)
+
+
+def musts_of(purpose):
+    """上層を決める欠かせない要素。v4 の人（目的 id なし・必要像の全文 1 つ）は、その全文を欠かせない要素とみなす。"""
+    needs = purpose.get("needs") or []
+    musts = [n for n in needs if n.get("required")]
+    if not musts and not purpose.get("purpose_id") and len(needs) == 1:
+        return needs
+    return musts
 
 
 def _strength(need_vec, offer_vec) -> float:
@@ -32,26 +52,32 @@ def _strength(need_vec, offer_vec) -> float:
     return cosine(need_vec, offer_vec)
 
 
-def direction(needs, offers):
-    """一方向の補完の判定。
+def direction(needs, offers, musts=None):
+    """一方向の補完の判定（上層＝欠かせない要素の連言。指示書65B-2 §2-1）。
 
     needs : [{"text", "vec", "required"}]（ある目的の必要像の文）
     offers: [{"text", "vec"}]（相手の与え像の文。v4・0 文なら現状）
+    musts : 欠かせない要素（既定は required の文）。**欠かせない要素が無い目的では上層は定義されない**（不成立）。
     戻り値: (成立したか, 引用の対 [{"need", "offer"}]（**必須の文の対を先に**、次に歓迎の文。各々強い順。最大 2 組）)
+    要素ごとの結果（下層）は elements() が別に返す（ここでは届かない必須があっても捨てるのは上層の引用だけ）。
     """
     if not needs or not offers:
         return False, []
+    musts = [n for n in needs if n.get("required")] if musts is None else musts
+    if not musts:
+        return False, []                           # 欠かせない要素が無い目的には上層が無い（§2-4）
+    must_texts = {n["text"] for n in musts}
     matched = []
     for n in needs:
         hits = [(o, _strength(n["vec"], o["vec"])) for o in offers if judge(n["vec"], o["vec"])]
         if hits:
             o, st = max(hits, key=lambda x: x[1])
             matched.append((n, o, st))
-        elif n.get("required"):
-            return False, []                       # 必須の文が満たされない
+        elif n["text"] in must_texts:
+            return False, []                       # 欠かせない要素が満たされない（上層は不成立）
     if not matched:
         return False, []
-    matched.sort(key=lambda x: (not x[0].get("required"), -x[2]))
+    matched.sort(key=lambda x: (x[0]["text"] not in must_texts, -x[2]))
     return True, [{"need": n["text"], "offer": o["text"]} for n, o, _ in matched[:MAX_PAIRS]]
 
 
@@ -87,9 +113,22 @@ def judge_direction(purpose, other):
     if not passed:
         info["complement"] = None
         return False, [], info
-    ok, pairs = direction(purpose.get("needs") or [], other.get("offers") or [])
+    ok, pairs = direction(purpose.get("needs") or [], other.get("offers") or [], musts=musts_of(purpose))
     info["complement"] = ok
     return ok, pairs, info
+
+
+def elements(purpose, other):
+    """下層（指示書65B-2 §2-2）: 必要像の文ごとに、判定を通る相手の文。上層の成否と独立に、通った対を捨てない。
+
+    戻り値: [{"text", "must", "offers": [相手の文（相手の与え像の並び順。g の順にしない）]}]。数値は返さない。
+    門で落ちた方向は、いまは比べない（門のラベル化は 65B-3）。
+    """
+    offers = other.get("offers") or []
+    must_texts = {n["text"] for n in musts_of(purpose)}
+    return [{"text": n["text"], "must": n["text"] in must_texts,
+             "offers": [o["text"] for o in offers if lower_judge(n["vec"], o["vec"])]}
+            for n in purpose.get("needs") or []]
 
 
 def match_pair(mine, theirs):
@@ -107,9 +146,11 @@ def match_pair(mine, theirs):
             b_ok, b_pairs = True, pairs
             break
     b_cards = [{"kind": "fill_theirs", "mine": p["offer"], "theirs": p["need"]} for p in b_pairs]
-    out = {"by_purpose": {}, "theirs_need_me": None}
+    out = {"by_purpose": {}, "theirs_need_me": None, "elements": {}}
     for p in mine["purposes"]:
-        ok, pairs, _ = judge_direction(p, theirs)
+        ok, pairs, info = judge_direction(p, theirs)
+        # 下層は上層の成否によらず計算して保持する（表示はフラグ。指示書65-B §0 前提4）
+        out["elements"][p["purpose_id"]] = elements(p, theirs) if info["gate_passed"] else []
         if not ok:
             continue
         a_cards = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in pairs]

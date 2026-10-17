@@ -39,6 +39,12 @@
   .cf-more { font-size: 12.5px; color: #555; }
   .cf-more > summary { cursor: pointer; color: #1a3a5c; }
   .cf-for { font-size: 12px; font-weight: 700; color: #1f3a5f; }
+  /* 目的ごとの表（指示書65B-2 §2-3）。上層の印・目的全体の文言・要素の行（下層の表示が開いているときだけ） */
+  .cf-upper { display: inline-block; font-size: 11.5px; font-weight: 700; color: #1a6a3a; border: 1px solid #b6d4c0;
+              border-radius: 3px; padding: 0 6px; margin-bottom: 4px; }
+  .grp-note { font-size: 13px; color: #555; margin: 0 0 10px; }
+  .el-row { font-size: 13px; color: #333; margin: 0 0 8px; padding-left: 1em; }
+  .el-row .el-who { display: block; color: #555; padding-left: 1em; }
   .inbox-note { font-size: 12.5px; color: #555; margin: 6px 0 0; }
   .muted { color: #888; font-size: 13px; }
 </style>
@@ -152,6 +158,7 @@ async function loadRecommendations() {
   const groups = Array.isArray(data.groups) ? data.groups : [];
   const results = Array.isArray(data.results) ? data.results : [];
   if (!results.length) {
+    renderGroups(groups, cards);                     // 結果が無くても目的ごとの表（目的全体の文言）は出す
     // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
     status.innerHTML = `<div class="notice">まだ照合できる相手がいません。
       <a href="#directory">登録者一覧を見る →</a></div>`;
@@ -167,18 +174,43 @@ async function loadRecommendations() {
   status.innerHTML = "";
   // 照合の準備が済んでいない登録者がいる（システムの状態。誰か・何人かは出さない。指示書65B-1）
   if (data.partial_pool) status.innerHTML = PARTIAL_POOL_HTML;
-  // 目的ごとにグループ化する（指示書57）。「この目的にはこの人／別の目的には別の人」。
-  let k = 0;
+  renderGroups(groups, cards);
+}
+
+/* 目的ごとの表（指示書57・65B-2 §2-3）。「この目的にはこの人／別の目的には別の人」。
+   - 上層: 欠かせない要素をすべて覆う人（カードに印）。並びはサーバーの id 順（g の順にしない）
+   - 欠かせない要素が無い目的: 上層が無いことを伝える
+   - 上層の相手がいない目的: 控えめに「いまは、この目的をすべて満たす相手はいません」
+   - 要素の行（この要素に応える人／見つかりませんでした）は、下層の表示が開いているとき（サーバーが elements を返す）だけ */
+const NO_MUST_TEXT = "この目的には欠かせない要素がありません";
+const NO_UPPER_TEXT = "いまは、この目的をすべて満たす相手はいません";
+const NO_ELEMENT_TEXT = "この要素に応える人が見つかりませんでした";
+function elementRows(g) {
+  if (!Array.isArray(g.elements)) return "";
+  return g.elements.map((e, i) => `<div class="el-row">${"①②③④⑤⑥⑦⑧⑨⑩"[i] || (i + 1)} ${escHtml(e.need)}`
+    + (e.must ? `（欠かせない要素）` : "")
+    + `<span class="el-who">${(e.people || []).length
+        ? "この要素に応える人: " + e.people.map(p => `<a href="${profileHref(String(p.candidate_id), p.handle)}">${escHtml(p.name)}</a>`).join("、")
+        : NO_ELEMENT_TEXT}</span></div>`).join("");
+}
+let cardSeq = 0;
+function renderGroups(groups, cards) {
   cards.innerHTML = groups.map(g => {
-    const head = g.purpose_id === "_theirs" ? `<h3 class="grp">あなたを必要としている相手</h3>`
+    const mineGroup = g.purpose_id !== "_theirs";
+    const head = !mineGroup ? `<h3 class="grp">あなたを必要としている相手</h3>`
                : (g.label ? `<h3 class="grp">${escHtml(g.purpose_label || "目的")}: ${escHtml(g.label)}</h3>` : "");
-    return head + (g.results || []).map(r => {
-      const i = k++;
+    const res = g.results || [];
+    const note = !mineGroup ? ""
+               : g.no_must ? `<p class="grp-note">${NO_MUST_TEXT}</p>`
+               : !res.length ? `<p class="grp-note">${NO_UPPER_TEXT}</p>` : "";
+    return head + note + (mineGroup ? elementRows(g) : "") + res.map(r => {
+      const i = cardSeq++;
       const cid = String(r.candidate_id);
       const one = r.one_liner ? `<div class="oneliner clamp-2">${escHtml(r.one_liner)}</div>` : "";
       const pur = (r.purpose_id && r.purpose_id !== "_theirs") ? r.purpose_id : "";
       // 申し出の文の入力欄はプロフィールからの申し出と同じ（任意・400 字。経路で有無が変わらない）
       return `<div class="card">
+        ${mineGroup ? `<div class="cf-upper">欠かせない要素をすべて覆う人</div>` : ""}
         ${r.for_purpose ? `<div class="cf-for">${escHtml(r.for_purpose)}</div>` : ""}
         <a class="cname" href="${profileHref(cid, r.handle)}">${escHtml(r.name)}</a>
         ${one}

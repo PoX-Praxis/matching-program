@@ -1902,6 +1902,90 @@ def connection_reason():
                                "basis": "current" if current else "offer_time"}}), 200
 
 
+# ── 申し出る前の根拠（指示書65B-4）────────────────────────────────────────────────────
+PREVIEW_RATE = (30, 600)          # 閲覧者ごとに 600 秒で 30 回まで（一覧の総なめを防ぐ）
+_PREVIEW_HITS = {}
+_PREVIEW_LOCK = threading.Lock()
+PREVIEW_PREPARING = "要素単位の照合は準備中です"
+PREVIEW_NONE = "あなたの必要に応える文は見つかりませんでした"
+PREVIEW_UNAVAILABLE = "いま照合できません"
+
+
+def _preview_allowed(me):
+    """閲覧者ごとの回数の上限（直近 PREVIEW_RATE[1] 秒で PREVIEW_RATE[0] 回まで）。"""
+    import time
+    limit, window = PREVIEW_RATE
+    now = time.time()
+    with _PREVIEW_LOCK:
+        hits = [t for t in _PREVIEW_HITS.get(me, []) if now - t < window]
+        if len(hits) >= limit:
+            _PREVIEW_HITS[me] = hits
+            return False
+        hits.append(now)
+        _PREVIEW_HITS[me] = hits
+    return True
+
+
+@app.get("/api/connections/preview")
+@login_required
+def connection_preview():
+    """申し出る前の根拠（指示書65B-4）。**常に「自分 × 相手」**（自分はセッションの本人。任意の 2 人は引けない）。
+
+    返すのは、閲覧者自身の必要像の文 × 相手の公開の文のうち、判定を通った対だけ（数値なし）。
+    - 2 人の版だけで決まる（母集団に依存しない）。見送りが効いている相手には出さない（403）
+    - 閲覧者に目的（必要像）が無ければ返さない（no_profile）
+    - 下層の表示が閉じている間は、上層（欠かせない要素をすべて覆う）で通った対だけ。無ければ「要素単位の照合は準備中です」
+    - 下層の表示が開いているときは要素の対（自分の目的の門が閉じた要素一致はラベルつき）。無ければ
+      「あなたの必要に応える文は見つかりませんでした」
+    - 相手の文は公開の日時の閾値に従う（与え像の版が閾値より前なら、文を出さない。つながるのカードと同じ）
+    - レート制限（閲覧者ごと）
+    """
+    me = require_self(request.args.get("me"))
+    other = (request.args.get("with") or "").strip()
+    if not other or other == me:
+        return jsonify({"error": "with が必要です"}), 400
+    from ledger import connection_state
+    if connection_state(me, other, db_path=DB) in ("declined_out", "declined_in"):
+        return jsonify({"error": "この相手の根拠は出せません"}), 403
+    if not _preview_allowed(me):
+        return jsonify({"error": "しばらくしてからもう一度お試しください"}), 429
+    _mark_noindex()
+    if not is_postgres() or not _matching_available():
+        return jsonify({"status": "unavailable", "message": PREVIEW_UNAVAILABLE, "reasons": []}), 200
+    from embedding_config import MODEL_TAG
+    from match_config import OWN_GATE_LABEL, lower_layer_open
+    from matcher_v5 import elements, judge_direction
+    store = _v4_store()
+    if store.missing_tag_ids(MODEL_TAG) & {me, other}:
+        return jsonify({"status": "unavailable", "message": PREVIEW_UNAVAILABLE, "reasons": []}), 200
+    mine = _side_of(store, me, MODEL_TAG)
+    if not mine["purposes"]:
+        return jsonify({"status": "no_profile", "message": None, "reasons": []}), 200
+    theirs = _side_of(store, other, MODEL_TAG)
+    items = []
+    lower_open = lower_layer_open()
+    for p in mine["purposes"]:
+        ok, prs, info = judge_direction(p, theirs)
+        if lower_open:
+            closed = not info["gate_passed"]
+            pairs = [{"need": r["text"], "offer": r["offers"][0]} for r in elements(p, theirs) if r["offers"]]
+        else:
+            closed, pairs = False, (prs if ok else [])            # 閉じている間は上層で通った対だけ
+        cards = [{"kind": "fill_mine", "mine": x["need"], "theirs": x["offer"]} for x in pairs]
+        for it in _reason_items(cards, mine, theirs, context="card"):
+            it["purpose_label"] = _my_purpose_label(me, p)
+            it["purpose_text"] = _purpose_text(me, p)
+            it["must"] = _need_required(p, it["need"])
+            if closed:
+                it["label"] = OWN_GATE_LABEL
+            items.append(it)
+    if not items:
+        return jsonify({"status": "none", "message": PREVIEW_NONE if lower_open else PREVIEW_PREPARING,
+                        "reasons": []}), 200
+    return jsonify({"status": "ok", "message": None, "reasons": items,
+                    "layer": "element" if lower_open else "upper"}), 200
+
+
 def _element_pairs(need_side, give_side, own=False):
     """要素の対（下層。指示書65-B §1-3）: need_side の目的のうち、並び順で最初に対を持つ目的と、その対。
     対は必要像の文の並び順に、相手の文は相手の並び順で最初に通るもの（g の順にしない）。

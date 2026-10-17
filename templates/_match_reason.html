@@ -111,6 +111,23 @@ window.PoXReason = (function () {
          + apSection("fill_mine", xs.filter(x => x.kind === "fill_mine"))
          + `<p class="ap-basis">※ ${basis}</p>`;
   }
+  /* 申し出る前の根拠（指示書65B-4）。あなたの必要像の文 ↑ この人の公開の文。目的ごとにまとめる。数値は出さない。
+     通った対が無いときはサーバーの文言（準備中／見つかりませんでした／いま照合できません）をそのまま出す。 */
+  function previewHtml(d) {
+    if (!d) return "";
+    const xs = d.reasons || [];
+    if (!xs.length) return d.message ? `<p class="ap-none">${esc(d.message)}</p>` : "";
+    let h = d.layer === "element" ? `<div class="mr-axis fill">要素で応える</div>` : `<div class="mr-axis fill">${AXIS.fill}</div>`;
+    let last = null;
+    xs.forEach(x => {
+      if (x.purpose_text && x.purpose_label !== last) {
+        h += `<div class="ap-row"><span class="ap-k">${esc(x.purpose_label)}</span>：${quote(x.purpose_text)}</div>`;
+        last = x.purpose_label;
+      }
+      h += line(x) + (x.label ? `<div class="ap-note">${esc(x.label)}</div>` : "");
+    });
+    return h;
+  }
   /* 申し出の文（受けた本人だけに届く）。 */
   function offerHtml(text) {
     if (!text) return "";
@@ -137,6 +154,6 @@ window.PoXReason = (function () {
     return `<div class="mr-compose"><label for="${id}">なぜつながりたいか（任意・400字まで。相手だけが読めます）</label>
       <textarea id="${id}" maxlength="400" rows="2"></textarea></div>`;
   }
-  return { esc, AXIS, cut, quote, reasonHtml, approvalHtml, offerHtml, fetchReason, fetchOffers, composeHtml };
+  return { esc, AXIS, cut, quote, reasonHtml, approvalHtml, previewHtml, offerHtml, fetchReason, fetchOffers, composeHtml };
 })();
 </script>

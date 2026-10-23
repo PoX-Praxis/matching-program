@@ -99,9 +99,16 @@ def test_t330_probe_runs_rules_and_labels(tmp_path, monkeypatch):
     assert {p["provisional"] for p in pairs} <= {"応える", "応えない", "判断できない", "未定"}
     # 最終ラベルを書くと次の実行で引き継ぎ、見出しが変わる
     pairs[0]["final"] = "応えない"
+    # 一覧の対は最終ラベルで数える（判断できないは数えない・未定だった対も「応えない」なら応えない側に入る）
+    pa = {p["need_key"]: p for p in pairs if p["other_kind"].startswith("PA の現状")}
+    pa["1-3"]["final"] = "応えない"                                   # 仮ラベルは「未定」
+    pa["2-2"]["final"] = "判断できない"                               # 仮ラベルは「応える」
     res2, out2, _ = _run(tmp_path, monkeypatch, labels={"pairs": pairs})
     assert res2["has_final"] and res2["labels"][0]["final"] == "応えない"
-    assert "最終ラベルでの結果" in (out2 / "element_probe_result.md").read_text(encoding="utf-8")
+    md2 = (out2 / "element_probe_result.md").read_text(encoding="utf-8")
+    assert "最終ラベルでの結果" in md2 and f"判断できない（数えない）: {res2['undecided']} 対" in md2
+    e1, e2 = res["elem"]["R"]["all"], res2["elem"]["R"]["all"]
+    assert (e1["D_neg"], e1["D_resp"]) == (2, 2) and (e2["D_neg"], e2["D_resp"]) == (3, 1) and e2["undecided"] == 1
 
 
 # ── 331 背景の文集と群（版・件数・出どころ・ライセンス）───────────────────────────────────

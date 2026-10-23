@@ -355,41 +355,61 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None, cach
                    for i, k in enumerate(nkeys)}
 
     # 2. 要素 1 組あたりの偽陽性・取りこぼし
-    lab_pairs = []
-    if pa:
-        for i, k in enumerate(nkeys):
-            if (k, "PA全文") in PROVISIONAL:
-                lab_pairs.append((k, "D", 0))
+    # 一覧に載った対はラベル（最終があれば最終）で数える。「判断できない」は数えない。一覧に無い対は群の既定
+    # （A・背景・役割の必要像に対する B＝応えない、C の target＝応える）。label_map は一覧を作ったあとで埋める。
+    label_map = {}
 
     def element_metrics(s, keys, resp_group="C"):
         fp_n = fp_d = 0
         per = {}
+        undecided = 0
         for k in keys:
             i = nkeys.index(k)
             neg = ["A", "bg_val"] + ([] if is_interest(ntext[k]) else ["B"])
-            n_pass = sum(int(P[s][g][i].sum()) for g in neg)
-            n_all = sum(len(groups[g]) for g in neg)
+            n_pass = n_all = rec_k = resp_k = 0
+            for g in neg:
+                for j, t in enumerate(groups[g]):
+                    lab = label_map.get((ntext[k], t))
+                    hit = int(P[s][g][i][j])
+                    if lab == "判断できない":
+                        undecided += 1
+                    elif lab == "応える":
+                        resp_k, rec_k = resp_k + 1, rec_k + hit
+                    else:
+                        n_all, n_pass = n_all + 1, n_pass + hit
+            for j, t in enumerate(ctarget[resp_group]):
+                if t != k:
+                    continue
+                # 常体の版は元の文のラベルで数える
+                lab = label_map.get((ntext[k], el["C"][j]["text"] if resp_group in ("C", "Cplain") else groups[resp_group][j]))
+                hit = int(P[s][resp_group][i][j])
+                if lab == "判断できない":
+                    undecided += 1
+                elif lab == "応えない":
+                    n_all, n_pass = n_all + 1, n_pass + hit
+                else:
+                    resp_k, rec_k = resp_k + 1, rec_k + hit
             ins = int(P[s]["bg_est"][i].sum())
-            cp = [j for j, t in enumerate(ctarget[resp_group]) if t == k]
-            per[k] = {"fp": n_pass, "neg": n_all, "fp_est": ins, "est": len(est),
-                      "recall": sum(int(P[s][resp_group][i][j]) for j in cp), "resp": len(cp)}
+            per[k] = {"fp": n_pass, "neg": n_all, "fp_est": ins, "est": len(est), "recall": rec_k, "resp": resp_k}
             fp_n, fp_d = fp_n + n_pass, fp_d + n_all
         resp = sum(per[k]["resp"] for k in keys)
         rec = sum(per[k]["recall"] for k in keys)
         d_hits = d_n = 0
         d_fp = d_neg = 0
-        for k, g, j in lab_pairs:
-            if k not in keys:
+        for x in LABELS:                                   # 実在の相手（PA の現状の全文）× KAORU の必要像
+            if not pa or x["need_key"] not in keys or not x["other_kind"].startswith("PA の現状"):
                 continue
-            lab = label_of(next((x for x in LABELS if x["need_key"] == k and x["other_kind"].startswith("PA")),
-                                {"provisional": PROVISIONAL[(k, "PA全文")], "final": None}))
-            hit = bool(P[s][g][nkeys.index(k)][j])
+            lab = label_of(x)
+            hit = bool(P[s]["D"][nkeys.index(x["need_key"])][0])
             if lab == "応える":
                 d_n, d_hits = d_n + 1, d_hits + int(hit)
             elif lab == "応えない":
                 d_neg, d_fp = d_neg + 1, d_fp + int(hit)
+            elif lab == "判断できない":
+                undecided += 1
         return {"per": per, "fp": fp_n, "neg": fp_d, "fp_rate": fp_n / fp_d if fp_d else None,
                 "recall": rec, "resp": resp, "D_recall": d_hits, "D_resp": d_n, "D_fp": d_fp, "D_neg": d_neg,
+                "undecided": undecided,
                 "recall_rate": (rec + d_hits) / (resp + d_n) if (resp + d_n) else None}
 
     # 一覧（ラベル）は閾値に依らない選び方で作る（各要素に最も近い文。g で選ぶ）
@@ -402,6 +422,22 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None, cach
             top[("self", k, j + 1)] = float(M["R"]["self"][i][j])
     global LABELS
     LABELS, has_final = merge_labels(build_label_list(kaoru, pa, el, needs, top), labels_path)
+    label_map.update({(x["need"], x["other"]): label_of(x) for x in LABELS if x["need_key"] != "PA"})
+    # ラベルつきの対（方向B の PA × KAORU の与え像・KAORU 自身の与え像のサニティ）を案ごとに
+    labeled = {}
+    for s in names:
+        rows = []
+        for x in LABELS:
+            if x["need_key"] == "PA" and pa and pa["need"]:
+                v = sc.matrix(s, [pa["need"]], [x["other"]])[0][0]
+                th = R_TH if s == "R" else (tau["Rg"][nkeys[0]] if s == "Rg" else q99(sc.matrix(s, [pa["need"]], est)[0]))
+                rows.append({"id": x["id"], "kind": "PA の必要像 × KAORU の与え像", "label": label_of(x),
+                             "pass": bool(v >= th if s == "R" else v > th)})
+            elif x["other_kind"].startswith("KAORU 自身の与え像"):
+                i, j = nkeys.index(x["need_key"]), kaoru["offers"].index(x["other"])
+                rows.append({"id": x["id"], "kind": "KAORU 自身（サニティ）", "label": label_of(x),
+                             "pass": bool(P[s]["self"][i][j])})
+        labeled[s] = rows
 
     elem = {s: {"all": element_metrics(s, nkeys), "role": element_metrics(s, role_keys),
                 "plain": element_metrics(s, nkeys, "Cplain"), "code_C": element_metrics(s, nkeys, "C_code")}
@@ -674,7 +710,8 @@ def run(kaoru, audit, sets, emb, rerankers, labels_path=None, emb_raw=None, cach
             "dist": dist, "elem": elem, "extra_neg": extra_neg, "c_cross": c_cross, "calib": calib, "graw": graw,
             "upper": upper, "none": none, "lists": lists, "indep": indep, "interest": interest, "ineed": ineed,
             "dirb": dirb, "v5v5": v5v5, "det": det, "fingerprint": fingerprint,
-            "labels": LABELS, "has_final": has_final, "pa_repro": pa["repro"] if pa else None,
+            "labels": LABELS, "has_final": has_final, "pa_repro": pa["repro"] if pa else None, "labeled": labeled,
+            "undecided": sum(1 for x in LABELS if label_of(x) == "判断できない"),
             "sizes": {g: len(v) for g, v in groups.items()} | {"interest_est": len(iest), "interest_val": len(ival)},
             "kaoru_interests": len(kaoru.get("interests") or []), "seconds": round(time.time() - t0, 1)}
 
@@ -763,6 +800,11 @@ def to_markdown(res, info, ver):
         x = res["extra_neg"][s]
         L.append(f"| {s} | {e['D_recall']}/{e['D_resp']} | {e['D_fp']}/{e['D_neg']} | {p['recall']}/{p['resp']} | "
                  f"{c['recall']}/{c['resp']} | A {x['A_code']}/{6 * 20}・B {x['B_code']}/{6 * 10} | {res['c_cross'][s]} |")
+    L += ["", f"判断できない（数えない）: {res['undecided']} 対", "",
+          "ラベルつきの対（方向B の PA の必要像 × KAORU の与え像・KAORU 自身のサニティ）の通過:", "",
+          "| 案 | " + " | ".join(f"{x['id']}（{x['label']}）" for x in next(iter(res['labeled'].values()))) + " |",
+          "|---|" + "---|" * len(next(iter(res['labeled'].values())))]
+    L += [f"| {s} | " + " | ".join("通る" if x["pass"] else "通らない" for x in rows) + " |" for s, rows in res["labeled"].items()]
     L += ["", "### 較正曲線（背景の推定用に対する位置の帯ごとの件数と、応えている割合）", ""]
     for s, rows in res["calib"].items():
         L += [f"**{SCHEME_NAMES[s]}**", "", "| 帯（背景での分位） | 応える | 応えない（A・B） | 背景（検証用） | 応えている割合 |",

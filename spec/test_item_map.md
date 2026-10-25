@@ -589,3 +589,11 @@
 | 369 | `test_t369_wording_split`（65-B §5 の文言の書き分け: 要素・目的全体・可用性・下層が閉じている間） |
 
 既存のテストの書き換え: 55f・328（照合できないときの根拠の応答に `status: "unavailable"`）。
+
+### 66 順4（背景文集 bg-v2・正解集合 el-v2）— `tests/test_t66a_background_v2.py`
+
+| 項目 | テスト（registration_v2 §2・§3） |
+|---|---|
+| 370 | `test_t370_background_v2_sections_split_and_provenance`（40 分野・束ごとの文末の型の数・型ごとに i mod 4 = 0 を推定用・必要像の形はすべて推定用・条件の全文が registration_v2 と同じ・bg-v1 を残す） |
+| 371 | `test_t371_element_sets_v2_c_hn_and_spot_check`（C 群 36 文＝el-v1 の 12 ＋ 足した 24・hard negative a 30／b 30・抜き取りの番号が seed 6604 で再現する・本人の文を伏せたほかは条件の全文） |
+| 372 | `test_t372_no_personal_text_committed`（本人の必要像の文が文集に入っていない） |

@@ -48,6 +48,7 @@ SOFT_STEP = 0.01                            # b-2 の軟らかい版: 同時に�
 NOMIC, NOMIC_CODE = EP.NOMIC, EP.NOMIC_CODE
 CE_NAME = "C6m"
 CE = EP.RERANKERS[CE_NAME]                  # BAAI/bge-reranker-v2-m3（Apache-2.0）revision 953dc6f6…
+CE_KEY = "C6m_logit"                        # 保存する値は logit（sentence-transformers の既定のシグモイドを通さない）
 
 
 def fp_max(pi, se=SE_MIN, prec=PREC):
@@ -186,7 +187,7 @@ def gmat(Q, P):
 def ce_matrix(cache, scorer, needs, texts, log_every=2000):
     """必要像 × 相手の文のクロスエンコーダの logit（PII をマスクした文で）。保存済みの対は計算しない。"""
     from pii_redaction import redact_text
-    store = cache.ce.setdefault(CE_NAME, {})
+    store = cache.ce.setdefault(CE_KEY, {})
     key = "\x1f".join
     todo = sorted({(n, t) for n in needs for t in texts if key((n, t)) not in store})
     done = 0
@@ -200,6 +201,15 @@ def ce_matrix(cache, scorer, needs, texts, log_every=2000):
         if done % log_every < 256:
             log(f"クロスエンコーダ {done}/{len(todo)}")
     return np.asarray([[store[key((n, t))] for t in texts] for n in needs], dtype=float)
+
+
+def load_ce():
+    """クロスエンコーダ（bge-reranker-v2-m3）を、logit をそのまま返す形で読み込む（registration_v2 §6 は logit の差で掃引する）。
+    sentence-transformers の CrossEncoder は出力が 1 つのモデルに既定でシグモイドを当てるので、恒等関数を指定する。"""
+    import torch
+    from sentence_transformers import CrossEncoder
+    model = CrossEncoder(CE[0], revision=CE[1], max_length=512, activation_fn=torch.nn.Identity())
+    return lambda pairs: model.predict(pairs, batch_size=32, show_progress_bar=False)
 
 
 # ── 入力 ─────────────────────────────────────────────────────────────────────────
@@ -639,7 +649,7 @@ def run(kaoru, audit, sets, emb, scorer, labels=None, spot=None, cache=None, emb
         rr = random.Random(SEED_DET)
         pick = [(ntext[rr.randrange(len(ntext))], val[rr.randrange(len(val))]) for _ in range(32)]
         a = np.asarray(scorer([(redact_text(n), redact_text(t)) for n, t in pick]), dtype=float)
-        b = np.asarray([cache.ce[CE_NAME]["\x1f".join(p)] for p in pick], dtype=float) if cache else a
+        b = np.asarray([cache.ce[CE_KEY]["\x1f".join(p)] for p in pick], dtype=float) if cache else a
         det["cross_encoder"] = {"pairs": len(pick), "max_abs_diff": float(np.abs(a - b).max())}
 
     return {"needs": [{"key": k, "must": n["must"], "interest": EP.is_interest(n["text"])} for k, n in needs],
@@ -840,8 +850,9 @@ def main(argv=None, encode=None, scorer=None, sets=None):
     if encode is None and str(ver.get("transformers") or "").split(".")[0] != "4":
         raise SystemExit(f"transformers は 4.x に固定してください（いま {ver.get('transformers')}）")
     if scorer is None and not args.no_ce:
-        scorer = EP.load_rerankers([CE_NAME])[CE_NAME]
-        ver.update({"ce_model": CE[0], "ce_revision": CE[1], "ce_license": CE[2], "ce_revision_cached": EP.hf_revision(CE[0])})
+        scorer = load_ce()
+        ver.update({"ce_model": CE[0], "ce_revision": CE[1], "ce_license": CE[2], "ce_revision_cached": EP.hf_revision(CE[0]),
+                    "ce_output": "logit（恒等関数。シグモイドを通さない）"})
 
     def read(path):
         if path and os.path.exists(path):

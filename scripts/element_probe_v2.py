@@ -20,6 +20,7 @@ L（含意の判定）の案は PR-66C で足す（この版では測らない�
 """
 import argparse
 import json
+import math
 import os
 import random
 import sys
@@ -80,22 +81,63 @@ def grid_of(s):
 
 
 # ── 統計 ─────────────────────────────────────────────────────────────────────────
+def _binom_cdf(x, n, p):
+    """P(X ≤ x)、X ~ Bin(n, p)（項を順に掛けて足す）。"""
+    if p <= 0:
+        return 1.0
+    if p >= 1:
+        return 1.0 if x >= n else 0.0
+    t = (1 - p) ** n if n < 700 else math.exp(n * math.log1p(-p))
+    if t == 0.0:                                         # 下に溢れるときは対数で
+        lt = n * math.log1p(-p)
+        acc = 0.0
+        for k in range(0, x + 1):
+            acc += math.exp(lt)
+            lt += math.log((n - k) / (k + 1)) + math.log(p / (1 - p))
+        return min(acc, 1.0)
+    acc = 0.0
+    for k in range(0, x + 1):
+        acc += t
+        t *= (n - k) / (k + 1) * p / (1 - p)
+    return min(acc, 1.0)
+
+
+def _solve(f, target, increasing):
+    lo, hi = 0.0, 1.0
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if (f(mid) < target) == increasing:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
 def cp_upper(x, n, conf=0.95):
-    """片側の Clopper–Pearson 上限。"""
-    from scipy.stats import beta
+    """片側の Clopper–Pearson 上限（scipy があれば beta 分布、無ければ二項分布の累積を二分法で解く）。"""
     if n == 0:
         return None
-    return 1.0 if x >= n else float(beta.ppf(conf, x + 1, n - x))
+    if x >= n:
+        return 1.0
+    try:
+        from scipy.stats import beta
+        return float(beta.ppf(conf, x + 1, n - x))
+    except ImportError:
+        return _solve(lambda p: _binom_cdf(x, n, p), 1 - conf, increasing=False)
 
 
 def cp_interval(x, n, conf=0.95):
     """両側の Clopper–Pearson 区間。"""
-    from scipy.stats import beta
     if n == 0:
         return (None, None)
     a = (1 - conf) / 2
-    lo = 0.0 if x == 0 else float(beta.ppf(a, x, n - x + 1))
-    hi = 1.0 if x == n else float(beta.ppf(1 - a, x + 1, n - x))
+    try:
+        from scipy.stats import beta
+        lo = 0.0 if x == 0 else float(beta.ppf(a, x, n - x + 1))
+        hi = 1.0 if x == n else float(beta.ppf(1 - a, x + 1, n - x))
+    except ImportError:
+        lo = 0.0 if x == 0 else _solve(lambda p: 1 - _binom_cdf(x - 1, n, p), a, increasing=True)
+        hi = 1.0 if x == n else _solve(lambda p: _binom_cdf(x, n, p), a, increasing=False)
     return (lo, hi)
 
 

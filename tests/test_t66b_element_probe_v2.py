@@ -64,6 +64,8 @@ def test_t373_rule_arithmetic_and_grids():
         assert abs(E2.cp_upper(x, 2400) - want) < 0.00001, x
     for x, want in ((0, 0.00249), (1, 0.00395)):                   # Q5: 半分の 1200
         assert abs(E2.cp_upper(x, 1200) - want) < 0.00001, x
+    for x, want in ((0, 0.00125), (1, 0.00198), (4, 0.00381)):     # scipy が無いときの計算（二項分布の累積を二分法で）
+        assert abs(E2._solve(lambda p: E2._binom_cdf(x, 2400, p), 0.05, increasing=False) - want) < 0.00001, x
     lo, hi = E2.cp_interval(17, 24)
     assert 0.48 < lo < 0.50 and 0.86 < hi < 0.88
     g, r, ce = E2.GRIDS["g"], E2.GRIDS["R"], E2.GRIDS["ce"]

@@ -264,8 +264,10 @@ def passes(s, G, delta, sets):
     out = np.zeros_like(G.d, dtype=bool)
     for n, S in enumerate(sets):
         if s == "C2+b2s":
-            k = (G.d[S] > delta).sum(axis=0)
-            out[n] = G.d[n] > delta + SOFT_STEP * (k - 1)
+            # k(s) は n を含む（registration_v2 §6）: k − 1 は n のほかに δ を超える要素の数。作動点を下げる向きには使わない
+            others = [j for j in S if j != n]
+            k1 = (G.d[others] > delta).sum(axis=0) if others else 0
+            out[n] = G.d[n] > delta + SOFT_STEP * k1
             continue
         base = G.b1 if s == "C2+b123" else G.d
         ok = base[n] > delta

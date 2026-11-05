@@ -96,6 +96,7 @@ def test_t374_persons_and_scheme_definitions():
     assert E2.passes("C2+b2h", G, 0.0, S)[:, 0].tolist() == [True, False, False]    # 最も近い 1 要素にだけ
     k2 = E2.passes("C2+b2s", G, 0.075, S)[:, 0].tolist()                             # 2 要素が通る → 0.01 上げる
     assert k2 == [True, False, False]
+    assert not E2.passes("C2+b2s", G, -0.035, S)[0, 2]               # k は n を含む（他に通る要素が無ければ作動点は δ のまま）
     assert E2.passes("C2+b3", G, 0.0, S)[:, 1].tolist() == [False, True, False]      # 自分の他の役割の要素より近い
     assert E2.passes("R", G, 0.70, S)[:, 1].tolist() == [True, True, True]
 

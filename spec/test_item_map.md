@@ -597,3 +597,11 @@
 | 370 | `test_t370_background_v2_sections_split_and_provenance`（40 分野・束ごとの文末の型の数・型ごとに i mod 4 = 0 を推定用・必要像の形はすべて推定用・条件の全文が registration_v2 と同じ・bg-v1 を残す） |
 | 371 | `test_t371_element_sets_v2_c_hn_and_spot_check`（C 群 36 文＝el-v1 の 12 ＋ 足した 24・hard negative a 30／b 30・抜き取りの番号が seed 6604 で再現する・本人の文を伏せたほかは条件の全文） |
 | 372 | `test_t372_no_personal_text_committed`（本人の必要像の文が文集に入っていない） |
+
+### 66 順6（PR-66B: bg-v2 での計測）— `tests/test_t66b_element_probe_v2.py`
+
+| 項目 | テスト（registration_v2 §4〜§7） |
+|---|---|
+| 373 | `test_t373_rule_arithmetic_and_grids`（上限 0.2405%・π＝1%／10% の値・約 2400 と 1200 での片側 95% 上限・作動点の格子（g の差 41 点・R 61 点・クロスエンコーダ 101 点）・案の並び） |
+| 374 | `test_t374_persons_and_scheme_definitions`（負例の人物 599 人・5 文ずつ重ねない・正例の背景 4 文（seed 6601・6602）・b-1・硬い／軟らかい b-2・b-3 の定義・関心型の要素の比べる組） |
+| 375 | `test_t375_runs_outputs_and_rules`（擬似の値で最後まで動く・報告する作動点の選び方・試行の数・「判断できない」の hard negative を数えない・母集団非依存性・生テキスト・根拠・門の申告値・本人の文を書かない）、`test_t375b_pinned_and_no_production`（文集と版の固定・本番に触れない・手元のファイルをコミットしない） |

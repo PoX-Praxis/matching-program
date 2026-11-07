@@ -324,35 +324,70 @@ def passes(s, G, delta, sets):
 
 
 # ── 計測 ─────────────────────────────────────────────────────────────────────────
-def run(kaoru, audit, sets, emb, scorer, labels=None, spot=None, cache=None, emb_raw=None, schemes=SCHEMES):
-    t0 = time.time()
+def eval_persons(Pv, Pcm, neg, pos_bg, nkeys, ctarget, csrc, keys_idx, delta):
+    """人 × 要素の偽陽性（負例の人物）と通過（正例の人物）。Pv＝必要像 × 検証用、Pcm＝必要像 × C 群の通過（bool）。"""
+    neg_hit = np.stack([Pv[:, p].any(axis=1) for p in neg], axis=1)                 # 要素 × 人
+    per = {}
+    fp = trials = 0
+    for n in keys_idx:
+        f = int(neg_hit[n].sum())
+        per[nkeys[n]] = {"fp": f, "trials": len(neg), "rate": f / len(neg)}
+        fp, trials = fp + f, trials + len(neg)
+    pos = pos_c = pos_n = 0
+    added = added_c = added_n = 0
+    for j, k in enumerate(ctarget):
+        n = nkeys.index(k)
+        if n not in keys_idx:
+            continue
+        hit_c = bool(Pcm[n, j])
+        hit = hit_c or bool(Pv[n, pos_bg[j]].any())
+        pos_n, pos, pos_c = pos_n + 1, pos + hit, pos_c + hit_c
+        if csrc[j] == "el-v2":
+            added_n, added, added_c = added_n + 1, added + hit, added_c + hit_c
+    sent_fp = int(Pv[keys_idx].sum())
+    sent_c = int(sum(Pcm[nkeys.index(k), j] for j, k in enumerate(ctarget) if nkeys.index(k) in keys_idx))
+    return {"delta": delta, "fp": fp, "trials": trials, "fp_rate": fp / trials if trials else None,
+            "fp_upper": cp_upper(fp, trials), "pos": pos, "pos_n": pos_n,
+            "se": pos / pos_n if pos_n else None, "se_ci": cp_interval(pos, pos_n),
+            "pos_by_c": pos_c, "added": added, "added_n": added_n, "added_by_c": added_c,
+            "sent_fp": sent_fp, "sent_n": Pv.shape[1] * len(keys_idx), "sent_c": sent_c, "per": per}
+
+
+def choose(curve, tie=lambda r: (r["delta"],)):
+    """報告する作動点: 規則を満たすうち通過率が最も高いもの（同じなら tie が大きいもの）。満たさなければ参考の作動点
+    （通過率 70% 以上で偽陽性が最も少ない点。同じなら tie が大きいもの。それも無ければ通過率が最も高い点）。"""
+    ok = [r for r in curve if r["fp_upper"] is not None and r["fp_upper"] <= FP_MAX and (r["se"] or 0) >= SE_MIN]
+    if ok:
+        return max(ok, key=lambda r: (r["se"],) + tuple(tie(r))), True
+    meet_se = [r for r in curve if (r["se"] or 0) >= SE_MIN]
+    if meet_se:
+        return min(meet_se, key=lambda r: (r["fp"],) + tuple(-x for x in tie(r))), False
+    return max(curve, key=lambda r: (r["se"] or 0,) + tuple(tie(r))), False
+
+
+def prepare(kaoru, sets, emb, scorer=None, cache=None):
+    """文集・必要像・埋め込み（と、あればクロスエンコーダ）の値・人物を用意する（PR-66B と PR-66C で共通）。"""
     bg, el, el1 = sets
     off = bg["sections"]["offer"]
-    est = [x["text"] for x in off if x["split"] == "est"]
-    val = [x["text"] for x in off if x["split"] == "val"]
-    nform = [x["text"] for x in bg["sections"]["need"] if x["split"] == "est"]
-    iest = [x["text"] for x in bg["sections"]["interest"] if x["split"] == "est"]
-    ival = [x["text"] for x in bg["sections"]["interest"] if x["split"] == "val"]
+    X = {"est": [x["text"] for x in off if x["split"] == "est"], "val": [x["text"] for x in off if x["split"] == "val"],
+         "nform": [x["text"] for x in bg["sections"]["need"] if x["split"] == "est"],
+         "iest": [x["text"] for x in bg["sections"]["interest"] if x["split"] == "est"],
+         "ival": [x["text"] for x in bg["sections"]["interest"] if x["split"] == "val"]}
     needs = DP.need_keys(kaoru)
     nkeys = [k for k, _ in needs]
     C = [c for c in el["C"] if c["target"] in nkeys]
-    ctext, ctarget, csrc = [c["text"] for c in C], [c["target"] for c in C], [c["src"] for c in C]
-    hn_a, hn_b = el["HN"]["a"], el["HN"]["b"]
-    hn = [(x["text"], "a", x["target"]) for x in hn_a] + [(t, "b", None) for t in hn_b]
-    spot_hn = {h["index"]: h["label"] for h in (spot or {}).get("HN", [])}
     ntext = [n["text"] for _, n in needs]
     role = [i for i, t in enumerate(ntext) if not EP.is_interest(t)]
-    inter = [i for i in range(len(nkeys)) if i not in role]
-    S = comp_sets(nkeys, role)
-    pa = EP.pa_from_audit(audit, emb) if audit else None
-    schemes = [s for s in schemes if scorer or not s.startswith("C6m")]
-
-    # 埋め込み
-    log(f"埋め込み（与え像の形 {len(est) + len(val)}・必要像の形 {len(nform)}・C {len(C)}・hard negative {len(hn)}）")
+    X.update(needs=needs, nkeys=nkeys, ntext=ntext, role=role, inter=[i for i in range(len(nkeys)) if i not in role],
+             S=comp_sets(nkeys, role), C=C, ctext=[c["text"] for c in C], ctarget=[c["target"] for c in C],
+             csrc=[c["src"] for c in C],
+             hn=[(x["text"], "a", x["target"]) for x in el["HN"]["a"]] + [(t, "b", None) for t in el["HN"]["b"]])
+    est, val, hn = X["est"], X["val"], X["hn"]
+    log(f"埋め込み（与え像の形 {len(est) + len(val)}・必要像の形 {len(X['nform'])}・C {len(C)}・hard negative {len(hn)}）")
     Qn = mat(emb, ntext, "query")
     Pest, Pval = mat(emb, est, "passage"), mat(emb, val, "passage")
-    Pc, Ph = mat(emb, ctext, "passage"), mat(emb, [t for t, _, _ in hn], "passage")
-    Nf = mat(emb, nform, "query")
+    Pc, Ph = mat(emb, X["ctext"], "passage"), mat(emb, [t for t, _, _ in hn], "passage")
+    Nf = mat(emb, X["nform"], "query")
     log("埋め込み: 与え像の形・必要像の形・C・hard negative")
     q99n = q99(gmat(Qn, Pest), axis=1)
 
@@ -364,55 +399,35 @@ def run(kaoru, audit, sets, emb, scorer, labels=None, spot=None, cache=None, emb
         ce_est = ce_matrix(cache, scorer, ntext, est)
         q99ce = q99(ce_est, axis=1)
         ce_val = ce_matrix(cache, scorer, ntext, val)
-        ce_c = ce_matrix(cache, scorer, ntext, ctext)
+        ce_c = ce_matrix(cache, scorer, ntext, X["ctext"])
         ce_h = ce_matrix(cache, scorer, ntext, [t for t, _, _ in hn])
         log("クロスエンコーダ: 推定用・検証用・C・hard negative")
-    Gv = Group(gmat(Qn, Pval), q99n, q99s_of(Pval), ce_val, q99ce)
-    Gc = Group(gmat(Qn, Pc), q99n, q99s_of(Pc), ce_c, q99ce)
-    Gh = Group(gmat(Qn, Ph), q99n, q99s_of(Ph), ce_h, q99ce)
-    Ge = Group(gmat(Qn, Pest), q99n, q99s_of(Pest), ce_est, q99ce)
+    X.update(Qn=Qn, Pest=Pest, Nf=Nf, q99n=q99n, q99s_of=q99s_of, q99ce=q99ce, ce_est=ce_est,
+             Gv=Group(gmat(Qn, Pval), q99n, q99s_of(Pval), ce_val, q99ce),
+             Gc=Group(gmat(Qn, Pc), q99n, q99s_of(Pc), ce_c, q99ce),
+             Gh=Group(gmat(Qn, Ph), q99n, q99s_of(Ph), ce_h, q99ce),
+             Ge=Group(gmat(Qn, Pest), q99n, q99s_of(Pest), ce_est, q99ce))
+    X["neg"], X["pos_bg"], X["leftover"] = make_persons(len(val), len(C))
+    X["cidx"] = {k: [j for j, t in enumerate(X["ctarget"]) if t == k] for k in nkeys}
+    return X
 
-    neg, pos_bg, leftover = make_persons(len(val), len(C))
-    cidx = {k: [j for j, t in enumerate(ctarget) if t == k] for k in nkeys}
 
-    # 人 × 要素の評価（δ ごと）
+def run(kaoru, audit, sets, emb, scorer, labels=None, spot=None, cache=None, emb_raw=None, schemes=SCHEMES):
+    t0 = time.time()
+    pa = EP.pa_from_audit(audit, emb) if audit else None
+    X = prepare(kaoru, sets, emb, scorer, cache)
+    el1 = sets[2]
+    est, val, nform, iest, ival = X["est"], X["val"], X["nform"], X["iest"], X["ival"]
+    needs, nkeys, ntext, role, inter, S = X["needs"], X["nkeys"], X["ntext"], X["role"], X["inter"], X["S"]
+    C, ctext, ctarget, csrc, hn = X["C"], X["ctext"], X["ctarget"], X["csrc"], X["hn"]
+    Qn, Pest, q99n, q99s_of = X["Qn"], X["Pest"], X["q99n"], X["q99s_of"]
+    Gv, Gc, Gh = X["Gv"], X["Gc"], X["Gh"]
+    neg, pos_bg, leftover, cidx = X["neg"], X["pos_bg"], X["leftover"], X["cidx"]
+    spot_hn = {h["index"]: h["label"] for h in (spot or {}).get("HN", [])}
+    schemes = [s for s in schemes if scorer or not s.startswith("C6m")]
+
     def evaluate(s, delta, keys_idx):
-        Pv, Pcm = passes(s, Gv, delta, S), passes(s, Gc, delta, S)
-        neg_hit = np.stack([Pv[:, p].any(axis=1) for p in neg], axis=1)             # 要素 × 人
-        per = {}
-        fp = trials = 0
-        for n in keys_idx:
-            f = int(neg_hit[n].sum())
-            per[nkeys[n]] = {"fp": f, "trials": len(neg), "rate": f / len(neg)}
-            fp, trials = fp + f, trials + len(neg)
-        pos = pos_c = pos_n = 0
-        added = added_c = added_n = 0
-        for j, k in enumerate(ctarget):
-            n = nkeys.index(k)
-            if n not in keys_idx:
-                continue
-            hit_c = bool(Pcm[n, j])
-            hit = hit_c or bool(Pv[n, pos_bg[j]].any())
-            pos_n, pos, pos_c = pos_n + 1, pos + hit, pos_c + hit_c
-            if csrc[j] == "el-v2":
-                added_n, added, added_c = added_n + 1, added + hit, added_c + hit_c
-        sent_fp = int(Pv[keys_idx].sum())
-        sent_c = int(sum(Pcm[nkeys.index(k), j] for j, k in enumerate(ctarget) if nkeys.index(k) in keys_idx))
-        return {"delta": delta, "fp": fp, "trials": trials, "fp_rate": fp / trials if trials else None,
-                "fp_upper": cp_upper(fp, trials), "pos": pos, "pos_n": pos_n,
-                "se": pos / pos_n if pos_n else None, "se_ci": cp_interval(pos, pos_n),
-                "pos_by_c": pos_c, "added": added, "added_n": added_n, "added_by_c": added_c,
-                "sent_fp": sent_fp, "sent_n": len(val) * len(keys_idx), "sent_c": sent_c, "per": per}
-
-    def choose(curve):
-        ok = [r for r in curve if r["fp_upper"] is not None and r["fp_upper"] <= FP_MAX and (r["se"] or 0) >= SE_MIN]
-        if ok:
-            best = max(ok, key=lambda r: (r["se"], r["delta"]))
-            return best, True
-        meet_se = [r for r in curve if (r["se"] or 0) >= SE_MIN]
-        if meet_se:                                         # 参考の作動点: 通過率 70% を満たす中で偽陽性が最も少ない点
-            return min(meet_se, key=lambda r: (r["fp"], -r["delta"])), False
-        return max(curve, key=lambda r: (r["se"] or 0, r["delta"])), False
+        return eval_persons(passes(s, Gv, delta, S), passes(s, Gc, delta, S), neg, pos_bg, nkeys, ctarget, csrc, keys_idx, delta)
 
     curves, chosen, interest_ref = {}, {}, {}
     for s in schemes:

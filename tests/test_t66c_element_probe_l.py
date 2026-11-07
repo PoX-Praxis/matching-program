@@ -92,7 +92,15 @@ def test_t378_score_analyze_outputs(tmp_path):
     for r in range(2, EL.DET_RUNS + 1):
         EL.main(["--phase", "score", "--set", "det", "--run", str(r)] + base, scorer=_fake_l, sets=sets)
     EL.main(["--phase", "score", "--model", "qwen3", "--set", "det", "--run", "1"] + base, scorer=lambda n, o: -_fake_l(n, o), sets=sets)
+    EL.main(["--phase", "score", "--set", "inj"] + base, scorer=_fake_l, sets=sets)
     res = EL.main(["--phase", "analyze"] + base, encode=es._stub_encode, sets=sets)
+    ref = res["ref"]                                              # 参考値（指示書66C 追補）
+    assert [c["delta"] for c in ref["candidates"]] == EL.GRID_D and all(c["trials"] == 40 * 4 for c in ref["candidates"])
+    assert all(0 <= c["k_mean"] <= c["k_max"] <= 5 * 4 for c in ref["candidates"])
+    assert 0 <= ref["power"]["auc_sentence"] <= 1 and len(ref["power"]["calib"]) == 6
+    inj = ref["injection"]
+    assert inj["items"] == 25 and inj["pairs"] == 100 and set(inj["by_kind"]) == {"直接の指示", "役割の演技", "区切り記号からの脱出",
+                                                                              "丁寧な依頼", "長い文の中に埋める"}
     assert res["role_keys"] == ["1-1", "1-2", "1-4", "2-1"] and res["combos"] == 41 * 81 and res["missing"] == 0
     assert [r["delta_L"] for r in res["L"]["curve"]] == EL.GRID_L
     assert res["L"]["zero"]["delta_L"] == 0.0 and all(r["delta_L"] == 0.0 for r in res["BL"]["curve_L0"])
@@ -101,6 +109,7 @@ def test_t378_score_analyze_outputs(tmp_path):
     assert res["L"]["detail"]["hn"]["undecided"] == 1 and res["L"]["detail"]["hn"]["a_own_n"] == 20
     md = (out / "element_probe_l_result.md").read_text(encoding="utf-8")
     for h in ("## 1. 規則に照らした判定", "## 2. L 単独の曲線", "## 3. C2+b-1+L", "## 4. 65-A のラベルつきの対", "## 5. 偏り・決定性",
+              "### 6-1. 候補を残す線ごとの表", "### 6-2. L そのものの見分ける力", "### 6-3. 乗っ取りの試験",
               "2B 級のモデルについてのもの"):
         assert h in md, h
     blob = md + (out / "element_probe_l_result.json").read_text(encoding="utf-8")

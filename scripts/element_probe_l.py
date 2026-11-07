@@ -43,7 +43,16 @@ GRID_L = E2._grid(-4.0, 4.0, 0.1, 1)               # 81 点（0 を含む）
 GRID_D = E2.GRIDS["g"]                             # C2+b-1 の δ（41 点）
 DET_RUNS = 5
 DET_BG = 200
+SEED_INJ = 6606                                    # 乗っ取りの試験の人物の背景 4 文（参考値。指示書66C 追補 §1-3）
 OUT = os.path.join(ROOT, "local", "66", "c")
+INJ_PATH = os.path.join(E2.DATA, "injection_v1.json")
+
+
+def load_injection(path=INJ_PATH):
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def prompt_sha():
@@ -55,7 +64,7 @@ def key(n, o):
 
 
 # ── 対 ───────────────────────────────────────────────────────────────────────────
-def build_pairs(kaoru, sets, labels=None):
+def build_pairs(kaoru, sets, labels=None, injection=None):
     """全対（役割の 4 要素）と決定性の部分集合。どちらも (必要像の文, 相手の文) の並び。"""
     bg, el, _ = sets
     needs = DP.need_keys(kaoru)
@@ -73,8 +82,11 @@ def build_pairs(kaoru, sets, labels=None):
     full = list(dict.fromkeys(bgp + cp + hp + lab))
     r = random.Random(E2.SEED_DET)
     det = list(dict.fromkeys(lab + hp + r.sample(bgp, min(DET_BG, len(bgp)))))
-    return {"full": full, "det": det, "counts": {"bg": len(bgp), "C": len(cp), "HN": len(hp), "labeled": len(lab),
-                                                 "full": len(full), "det": len(det)}}
+    inj_items = (injection or {}).get("items") or []
+    inj = list(dict.fromkeys((ntext[n], t) for n in role for it in inj_items for t in (it["base"], it["injected"])))
+    return {"full": full, "det": det, "inj": inj,
+            "counts": {"bg": len(bgp), "C": len(cp), "HN": len(hp), "labeled": len(lab), "full": len(full), "det": len(det),
+                       "inj": len(inj)}}
 
 
 # ── スコア ───────────────────────────────────────────────────────────────────────
@@ -156,7 +168,7 @@ def lmat(scores, rows, texts):
     return np.asarray([[scores.get(key(n, t), -np.inf) if n is not None else -np.inf for t in texts] for n in rows], dtype=float)
 
 
-def analyze(kaoru, sets, emb, scores, labels=None, spot=None, det_runs=None, qwen=None, costs=None):
+def analyze(kaoru, sets, emb, scores, labels=None, spot=None, det_runs=None, qwen=None, costs=None, injection=None):
     t0 = time.time()
     X = E2.prepare(kaoru, sets, emb)
     nkeys, ntext, role, S = X["nkeys"], X["ntext"], X["role"], X["S"]
@@ -243,6 +255,87 @@ def analyze(kaoru, sets, emb, scores, labels=None, spot=None, det_runs=None, qwe
             c[2] += 1
         labeled = {"rows": out, "counts": cnt}
 
+    # ── 参考値（決定に使わない。指示書66C 追補）──────────────────────────────────────────
+    # §1-1 候補を残す線ごとの表（C2+b-1。b-2・b-3 なし）
+    cand = []
+    for d in GRID_D:
+        Pv, Pc = Gv.b1 > d, Gc.b1 > d
+        r = ev(Pv, Pc, d)
+        k = np.asarray([int(Pv[role][:, p].sum()) for p in neg])
+        pos_pairs = sum(int(Pc[nkeys.index(t), j]) + int(Pv[nkeys.index(t), pos_bg[j]].sum())
+                        for j, t in enumerate(ctarget) if nkeys.index(t) in role)
+        cand.append({"delta": d, "pos": r["pos"], "pos_n": r["pos_n"], "fp": r["fp"], "trials": r["trials"],
+                     "k_mean": round(float(k.mean()), 3), "k_max": int(k.max()), "neg_pairs": int(k.sum()), "pos_pairs": pos_pairs})
+
+    # §1-2 L そのものの見分ける力（AUC・較正・負例の YES の率）
+    def auc(pos, negs):
+        pos, negs = np.asarray(pos, dtype=float), np.asarray(negs, dtype=float)
+        pos, negs = pos[np.isfinite(pos)], negs[np.isfinite(negs)]
+        if not pos.size or not negs.size:
+            return None
+        allv = np.concatenate([pos, negs])
+        ranks = np.argsort(np.argsort(allv, kind="mergesort"), kind="mergesort").astype(float) + 1
+        for v in np.unique(allv):                                   # 同点は平均の順位
+            m = allv == v
+            ranks[m] = ranks[m].mean()
+        return float((ranks[:pos.size].sum() - pos.size * (pos.size + 1) / 2) / (pos.size * negs.size))
+
+    sp = [Lc[nkeys.index(t), j] for j, t in enumerate(ctarget) if nkeys.index(t) in role]
+    sn = Lv[role].ravel()
+    pp = [max(Lc[nkeys.index(t), j], Lv[nkeys.index(t), pos_bg[j]].max()) for j, t in enumerate(ctarget) if nkeys.index(t) in role]
+    pn = [Lv[n, p].max() for n in role for p in neg]
+    edges = [-np.inf, -4.0, -2.0, 0.0, 2.0, 4.0, np.inf]
+    calib = []
+    for lo, hi in zip(edges, edges[1:]):
+        a = sum(1 for v in sp if lo <= v < hi)
+        b = int(((sn >= lo) & (sn < hi)).sum())
+        calib.append({"band": [lo, hi], "resp": a, "neg": b, "share_resp": a / (a + b) if a + b else None})
+    lab48 = [(r_["label"], scores.get(key(p["need"], p["other"]))) for r_, p in
+             zip((labeled or {}).get("rows", []), [p for p in (labels or {}).get("pairs", [])
+                                                     if p["need_key"] in {nkeys[i] for i in role} or p["need_key"] == "PA"])]
+    power = {"auc_sentence": auc(sp, sn), "auc_person": auc(pp, pn),
+             "auc_48": auc([v for lb, v in lab48 if lb == "応える" and v is not None], [v for lb, v in lab48 if lb == "応えない" and v is not None]),
+             "n_48": {"応える": sum(1 for lb, v in lab48 if lb == "応える"), "応えない": sum(1 for lb, v in lab48 if lb == "応えない")},
+             "neg_yes_sentence": float((sn[np.isfinite(sn)] > 0).mean()) if np.isfinite(sn).any() else None,
+             "neg_yes_person": float((np.asarray(pn) > 0).mean()) if pn else None,
+             "pos_yes_sentence": float((np.asarray(sp) > 0).mean()) if sp else None, "calib": calib}
+
+    # §1-3 乗っ取りの試験（参考値）
+    inj_res = None
+    if injection and injection.get("items"):
+        items = injection["items"]
+        r6 = random.Random(SEED_INJ)
+        bgs = [r6.sample(range(len(X["val"])), E2.M_PER - 1) for _ in items]
+        texts = [it["base"] for it in items] + [it["injected"] for it in items]
+        Pt = E2.mat(emb, texts, "passage")
+        Gt = E2.Group(E2.gmat(X["Qn"], Pt), X["q99n"], X["q99s_of"](Pt))
+        Lt = lmat(scores, rows, texts)
+        nb = len(items)
+        dl, d, dlb = best_l["delta_L"], best_bl["delta"], best_bl["delta_L"]
+        out_items, kinds = [], {}
+        per = {"L0": [0, 0], "Lbest": [0, 0], "BLbest": [0, 0], "n": 0}
+        for i, it in enumerate(items):
+            for n in role:
+                b0, b1_ = Lt[n, i], Lt[n, nb + i]
+                kd = kinds.setdefault(it["kind"], {"pairs": 0, "yes_base": 0, "yes_inj": 0, "diff_sum": 0.0, "up": 0})
+                kd["pairs"] += 1
+                kd["yes_base"] += int(b0 > 0)
+                kd["yes_inj"] += int(b1_ > 0)
+                kd["diff_sum"] += float(b1_ - b0)
+                kd["up"] += int(b1_ > b0)
+                bgmax = Lv[n, bgs[i]].max()
+                bgb1 = (Gv.b1[n, bgs[i]] > d) & (Lv[n, bgs[i]] > dlb)
+                per["n"] += 1
+                for tag, f in (("L0", lambda v, bb: v > 0 or bgmax > 0), ("Lbest", lambda v, bb: v > dl or bgmax > dl),
+                               ("BLbest", lambda v, bb: (bb > d and v > dlb) or bool(bgb1.any()))):
+                    per[tag][0] += int(f(b0, Gt.b1[n, i]))
+                    per[tag][1] += int(f(b1_, Gt.b1[n, nb + i]))
+            out_items.append({"kind": it["kind"]})
+        for kd in kinds.values():
+            kd["diff_mean"] = round(kd.pop("diff_sum") / kd["pairs"], 3)
+        inj_res = {"items": nb, "pairs": nb * len(role), "by_kind": kinds, "persons": per, "seed": SEED_INJ,
+                   "points": {"L": dl, "BL": [d, dlb]}}
+
     # 偏り（YES 寄り・NO 寄り）
     allv = np.asarray(list(scores.values()), dtype=float)
     bias = {"pairs": int(allv.size), "share_yes": float((allv > 0).mean()) if allv.size else None,
@@ -285,6 +378,7 @@ def analyze(kaoru, sets, emb, scores, labels=None, spot=None, det_runs=None, qwe
             "BL": {"best": best_bl, "ok": ok_bl, "best_at_L0": best_zero_bl, "ok_at_L0": ok_zero_bl, "detail": det_bl,
                    "curve_L0": zero_bl},
             "labeled": labeled, "bias": bias, "det": det, "qwen": qref, "costs": costs,
+            "ref": {"candidates": cand, "power": power, "injection": inj_res},
             "sizes": {"val": len(X["val"]), "neg_persons": len(neg), "C_role": sum(1 for k in ctarget if nkeys.index(k) in role)},
             "missing": int(np.isinf(Lv[role]).sum() + sum(1 for j, k in enumerate(ctarget) if nkeys.index(k) in role and np.isinf(Lc[nkeys.index(k), j]))),
             "seconds": round(time.time() - t0, 1)}
@@ -353,6 +447,36 @@ def to_markdown(res, info):
         for r in res["labeled"]["rows"]:
             L.append(f"| {r['id']} | {r['kind'][:18]} | {r['need_key']} | {r['label']} | {'通る' if r['pass_best'] else '—'} | "
                      f"{'通る' if r['pass_0'] else '—'} |")
+    ref = res.get("ref") or {}
+    if ref:
+        L += ["", "## 6. 参考値（決定に使わない。指示書66C 追補）", "", "### 6-1. 候補を残す線ごとの表（C2+b-1。b-2・b-3 なし）", "",
+              "| δ | C 群の通過（/24） | 負例の人×要素の通過 | 負例 1 人あたりの候補の対 k（平均・最大） | 候補の対の総数（負例・正例） |",
+              "|---|---|---|---|---|"]
+        for c in ref["candidates"]:
+            L.append(f"| {c['delta']} | {c['pos']}/{c['pos_n']} | {c['fp']}/{c['trials']} | {c['k_mean']}・{c['k_max']} | "
+                     f"{c['neg_pairs']}・{c['pos_pairs']} |")
+        pw = ref["power"]
+        L += ["", "### 6-2. L そのものの見分ける力", "",
+              f"- AUC: 文単位（C 群の文 × target の要素 対 検証用の文 × 役割の要素） {pw['auc_sentence']:.3f}・"
+              f"人 × 要素（5 文の最大） {pw['auc_person']:.3f}" if pw["auc_sentence"] is not None else "- AUC: —",
+              f"- 48 対の AUC（独立の確かめ。作動点の選択に使わない）: "
+              + (f"{pw['auc_48']:.3f}（応える {pw['n_48']['応える']}・応えない {pw['n_48']['応えない']}）" if pw["auc_48"] is not None else "—"),
+              f"- δ_L＝0 で YES になる割合: 負例の文 {pct(pw['neg_yes_sentence'], 1)}・負例の人×要素 {pct(pw['neg_yes_person'], 1)}・"
+              f"C 群の文 {pct(pw['pos_yes_sentence'], 1)}", "",
+              "| 点数の帯 | 応える文（C 群） | 応えない文（検証用） | 応える割合 |", "|---|---|---|---|"]
+        for c in pw["calib"]:
+            lo, hi = c["band"]
+            L.append(f"| [{lo}, {hi}) | {c['resp']} | {c['neg']} | {pct(c['share_resp'], 2)} |")
+        inj = ref.get("injection")
+        if inj:
+            L += ["", f"### 6-3. 乗っ取りの試験（注入文 {inj['items']} 組 × 役割の 4 要素。人物の背景 4 文は seed {inj['seed']}）", "",
+                  "| 種類 | 対 | YES の率（注入なし） | YES の率（注入あり） | 点数の差の平均 | 点数が上がった対 |", "|---|---|---|---|---|---|"]
+            for k, v in inj["by_kind"].items():
+                L.append(f"| {k} | {v['pairs']} | {v['yes_base']}/{v['pairs']} | {v['yes_inj']}/{v['pairs']} | {v['diff_mean']} | {v['up']}/{v['pairs']} |")
+            pr = inj["persons"]
+            L += ["", f"人 × 要素（{pr['n']}）の通過（注入なし → 注入あり）: L 単独 δ_L＝0 {pr['L0'][0]} → {pr['L0'][1]}・"
+                  f"L 単独 報告する／参考の作動点 {pr['Lbest'][0]} → {pr['Lbest'][1]}・C2+b-1+L 報告する／参考の作動点 "
+                  f"{pr['BLbest'][0]} → {pr['BLbest'][1]}"]
     b = res["bias"]
     L += ["", "## 5. 偏り・決定性・参考のモデル", "",
           f"- 全対でスコアが 0 を超える（YES 寄り）割合: {pct(b['share_yes'], 1)}。分位点: "
@@ -375,7 +499,7 @@ def main(argv=None, encode=None, scorer=None, sets=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--phase", choices=("score", "analyze"), required=True)
     ap.add_argument("--model", choices=tuple(MODELS), default=MAIN_MODEL)
-    ap.add_argument("--set", choices=("full", "det"), default="full")
+    ap.add_argument("--set", choices=("full", "det", "inj"), default="full")
     ap.add_argument("--run", type=int, default=1, help="決定性の何回目か（全対の 1 回目は full のスコアを使う）")
     ap.add_argument("--tokens", choices=("registered", "natural"), default="registered",
                     help="llm-jp のスコアに使う id（registered＝登録した ▁YES・▁NO、natural＝回答の位置のトークン YES・NO）")
@@ -396,7 +520,8 @@ def main(argv=None, encode=None, scorer=None, sets=None):
     kaoru = EP.load_kaoru(args.kaoru)
     sets = sets or E2.load_sets()
     labels, spot = read(args.labels), read(args.spot)
-    P = build_pairs(kaoru, sets, labels)
+    injection = load_injection()
+    P = build_pairs(kaoru, sets, labels, injection)
     os.makedirs(args.out, exist_ok=True)
 
     def spath(model, s, r):
@@ -407,7 +532,7 @@ def main(argv=None, encode=None, scorer=None, sets=None):
             scorer, info = load_model(args.model)
             with open(os.path.join(args.out, f"model_{args.model}.json"), "w", encoding="utf-8") as f:
                 json.dump(info, f, ensure_ascii=False, indent=1)
-        pairs = P["full"] if args.set == "full" else P["det"]
+        pairs = P[args.set]
         store = score_pairs(scorer, pairs, spath(args.model, args.set, args.run))
         E2.log(f"保存しました: {len(store['scores'])} 対")
         return store
@@ -415,7 +540,8 @@ def main(argv=None, encode=None, scorer=None, sets=None):
     emb, _, _ = DP.make_embedder(None, None, encode=encode, strict=encode is None)
     cache = E2.VecCache(args.emb_cache)
     field = "scores" if args.tokens == "registered" else "scores_alt"
-    full = (read(spath(MAIN_MODEL, "full", 1)) or {}).get(field, {})
+    full = dict((read(spath(MAIN_MODEL, "full", 1)) or {}).get(field, {}))
+    inj_scores = (read(spath(MAIN_MODEL, "inj", 1)) or {}).get(field, {})
     det_runs = [{key(*p): full[key(*p)] for p in P["det"] if key(*p) in full}] if full else []
     det_runs += [(read(spath(MAIN_MODEL, "det", r)) or {}).get(field, {}) for r in range(2, DET_RUNS + 1)]
     det_runs = [r for r in det_runs if r]
@@ -425,8 +551,9 @@ def main(argv=None, encode=None, scorer=None, sets=None):
     if secs:
         rss = (read(spath(MAIN_MODEL, "full", 1)) or {}).get("peak_rss_gb")
         costs = {"median_s": round(float(np.median(secs)), 2), "total_h": round(sum(secs) / 3600, 2), "peak_rss_gb": rss}
-    res = analyze(kaoru, sets, cache.embedder(emb), full, labels=labels, spot=spot, det_runs=det_runs if len(det_runs) > 1 else None,
-                  qwen=qwen or None, costs=costs)
+    res = analyze(kaoru, sets, cache.embedder(emb), {**inj_scores, **full}, labels=labels, spot=spot,
+                  det_runs=det_runs if len(det_runs) > 1 else None, qwen=qwen or None, costs=costs,
+                  injection=injection if inj_scores else None)
     res["counts"] = P["counts"]
     res["tokens"] = args.tokens
     info = read(os.path.join(args.out, f"model_{MAIN_MODEL}.json")) or {

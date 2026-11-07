@@ -32,13 +32,19 @@ import element_probe_v2 as E2  # noqa: E402
 PROMPT = ("次の2つの文を読んで答えてください。\n必要としている人の像: {n}\n相手の自己紹介の文: {o}\n"
           "この自己紹介の文は、必要としている人の像の役割を満たしていますか。YES か NO の一語だけで答えてください。")
 PROMPT_SHA256 = "d26a2c76734cb7911d01506e67f026a6c4bbaf846dab224c9a1b8c263afd4cec"
-# llm-jp の登録した id（38891・7937）は「▁YES」「▁NO」（語頭の印つき）。回答の位置（改行の直後）で "YES"・"NO" と
-# 続けたときのトークンは「YES」36452・「NO」4041（印なし）なので、同じ 1 回の計算で両方のスコアを残す（どちらで数えるかは KAORU が決める）
+# llm-jp の登録時の id（38891・7937）は「▁YES」「▁NO」（語頭の印つき）で、回答の位置（チャットの型の直後）には現れない。
+# 現れるのは「YES」36452・「NO」4041 なので、こちらを主とする（registration_v2 §8・§13。2026-11-07 実装上の誤りの訂正）。
+# 同じ 1 回の計算で両方のスコアを残す: "scores" ＝ 登録時の id（MODELS の yes・no）、"scores_alt" ＝ 回答の位置の id（alt）
 MODELS = {"llm-jp": {"repo": "llm-jp/llm-jp-3-1.8b-instruct", "revision": "413b7929df092690b0f9449f3045baaf8deba0a5",
                      "license": "Apache-2.0", "yes": 38891, "no": 7937, "alt": (36452, 4041), "chat_kwargs": {}},
           "qwen3": {"repo": "Qwen/Qwen3-1.7B", "revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
                     "license": "Apache-2.0", "yes": 14004, "no": 8996, "chat_kwargs": {"enable_thinking": False}}}
 MAIN_MODEL = "llm-jp"
+TOKEN_SETS = {"natural": {"field": "scores_alt", "ids": (36452, 4041),
+                          "label": "主: 回答の位置のトークン（YES 36452・NO 4041。2026-11-07 訂正）"},
+              "registered": {"field": "scores", "ids": (38891, 7937),
+                             "label": "参考: 登録時の id（YES 38891・NO 7937。回答の位置には現れない「▁YES」「▁NO」）"}}
+PRIMARY_TOKENS = "natural"
 GRID_L = E2._grid(-4.0, 4.0, 0.1, 1)               # 81 点（0 を含む）
 GRID_D = E2.GRIDS["g"]                             # C2+b-1 の δ（41 点）
 DET_RUNS = 5
@@ -395,14 +401,13 @@ def row_md(name, r, ok, extra=""):
 
 
 def to_markdown(res, info):
-    L = ["# 指示書66（PR-66C）L（含意の判定）の計測 — 結果", "",
+    ts = TOKEN_SETS[res.get("tokens", PRIMARY_TOKENS)]
+    L = [f"# 指示書66（PR-66C）L（含意の判定）の計測 — 結果（{ts['label']}）", "",
          "規則: registration_v2（確定 2026-10-24）§5・§6・§8。決定は役割の 4 要素・人 × 要素（m＝5）。", "",
          "## 条件", "",
          f"- モデル: `{info['model']}` revision `{info['revision']}`（{info['license']}）・{info['dtype']}・量子化なし",
-         f"- スコア: {info['score']}。使った id: "
-         + (f"YES {info['yes_id']}・NO {info['no_id']}（登録した id）" if res.get("tokens") != "natural"
-            else f"YES {(info.get('alt_ids') or ['?', '?'])[0]}・NO {(info.get('alt_ids') or ['?', '?'])[1]}（回答の位置のトークン）")
-         + f"。チャットの型: {info['chat']}",
+         f"- スコア: {info['score']}。使った id: YES {ts['ids'][0]}・NO {ts['ids'][1]}（{ts['label']}）。チャットの型: {info['chat']}",
+         "- token id の訂正（registration_v2 §13）と、印のない id を主とする判断は、L の出力を見ずに行った",
          f"- プロンプトの sha256: `{info['prompt_sha256']}`（registration_v2 の登録値と同じ）。{info['pii']}",
          f"- 対: 全対 {res['counts']['full']}（検証用 {res['counts']['bg']}・C {res['counts']['C']}・hard negative {res['counts']['HN']}・"
          f"48 対のうち {res['counts']['labeled']}）。決定性の部分集合 {res['counts']['det']} 対 × {DET_RUNS} 回",
@@ -501,8 +506,8 @@ def main(argv=None, encode=None, scorer=None, sets=None):
     ap.add_argument("--model", choices=tuple(MODELS), default=MAIN_MODEL)
     ap.add_argument("--set", choices=("full", "det", "inj"), default="full")
     ap.add_argument("--run", type=int, default=1, help="決定性の何回目か（全対の 1 回目は full のスコアを使う）")
-    ap.add_argument("--tokens", choices=("registered", "natural"), default="registered",
-                    help="llm-jp のスコアに使う id（registered＝登録した ▁YES・▁NO、natural＝回答の位置のトークン YES・NO）")
+    ap.add_argument("--tokens", choices=("both", "natural", "registered"), default="both",
+                    help="llm-jp のスコアに使う id（natural＝回答の位置のトークン YES・NO（主）、registered＝登録時の ▁YES・▁NO（参考）、both＝両方）")
     ap.add_argument("--kaoru", default=os.path.join(ROOT, "local", "kaoru_v5_public.json"))
     ap.add_argument("--labels", default=os.path.join(ROOT, "local", "65a", "labels_v1.json"))
     ap.add_argument("--spot", default=os.path.join(ROOT, "local", "66", "spot_check_v1.json"))
@@ -536,37 +541,67 @@ def main(argv=None, encode=None, scorer=None, sets=None):
         store = score_pairs(scorer, pairs, spath(args.model, args.set, args.run))
         E2.log(f"保存しました: {len(store['scores'])} 対")
         return store
-    # analyze
+    # analyze（主＝回答の位置の id、参考＝登録時の id。どちらも同じ 1 回の計算のスコア）
     emb, _, _ = DP.make_embedder(None, None, encode=encode, strict=encode is None)
     cache = E2.VecCache(args.emb_cache)
-    field = "scores" if args.tokens == "registered" else "scores_alt"
-    full = dict((read(spath(MAIN_MODEL, "full", 1)) or {}).get(field, {}))
-    inj_scores = (read(spath(MAIN_MODEL, "inj", 1)) or {}).get(field, {})
-    det_runs = [{key(*p): full[key(*p)] for p in P["det"] if key(*p) in full}] if full else []
-    det_runs += [(read(spath(MAIN_MODEL, "det", r)) or {}).get(field, {}) for r in range(2, DET_RUNS + 1)]
-    det_runs = [r for r in det_runs if r]
+    full_store = read(spath(MAIN_MODEL, "full", 1)) or {}
     qwen = [s for s in ((read(spath("qwen3", "det", r)) or {}).get("scores", {}) for r in (1, 2)) if s]
-    secs = list(((read(spath(MAIN_MODEL, "full", 1)) or {}).get("seconds") or {}).values())
-    costs = None
-    if secs:
-        rss = (read(spath(MAIN_MODEL, "full", 1)) or {}).get("peak_rss_gb")
-        costs = {"median_s": round(float(np.median(secs)), 2), "total_h": round(sum(secs) / 3600, 2), "peak_rss_gb": rss}
-    res = analyze(kaoru, sets, cache.embedder(emb), {**inj_scores, **full}, labels=labels, spot=spot,
-                  det_runs=det_runs if len(det_runs) > 1 else None, qwen=qwen or None, costs=costs,
-                  injection=injection if inj_scores else None)
-    res["counts"] = P["counts"]
-    res["tokens"] = args.tokens
+    secs = list((full_store.get("seconds") or {}).values())
+    costs = {"median_s": round(float(np.median(secs)), 2), "total_h": round(sum(secs) / 3600, 2),
+             "peak_rss_gb": full_store.get("peak_rss_gb")} if secs else None
     info = read(os.path.join(args.out, f"model_{MAIN_MODEL}.json")) or {
         "model": MODELS[MAIN_MODEL]["repo"], "revision": MODELS[MAIN_MODEL]["revision"], "license": MODELS[MAIN_MODEL]["license"],
         "dtype": "float32", "yes_id": MODELS[MAIN_MODEL]["yes"], "no_id": MODELS[MAIN_MODEL]["no"], "chat": "（注入）",
         "prompt_sha256": prompt_sha(), "score": "logit(YES) − logit(NO)", "pii": "文は PII をマスクしてから送る"}
-    with open(os.path.join(args.out, "element_probe_l_result.md"), "w", encoding="utf-8") as f:
-        f.write(to_markdown(res, info))
-    with open(os.path.join(args.out, "element_probe_l_result.json"), "w", encoding="utf-8") as f:
-        json.dump({"info": info, "registration": E2.REG, **res}, f, ensure_ascii=False, indent=1,
-                  default=lambda o: o.item() if hasattr(o, "item") else str(o))
-    E2.log(f"保存しました: {os.path.join(args.out, 'element_probe_l_result.md')}（{res['seconds']} 秒）")
-    return res
+    out = {}
+    for tokens in ((PRIMARY_TOKENS, "registered") if args.tokens == "both" else (args.tokens,)):
+        field = TOKEN_SETS[tokens]["field"]
+        full = dict(full_store.get(field, {}))
+        inj_scores = (read(spath(MAIN_MODEL, "inj", 1)) or {}).get(field, {})
+        det_runs = [{key(*p): full[key(*p)] for p in P["det"] if key(*p) in full}] if full else []
+        det_runs += [(read(spath(MAIN_MODEL, "det", r)) or {}).get(field, {}) for r in range(2, DET_RUNS + 1)]
+        det_runs = [r for r in det_runs if r]
+        res = analyze(kaoru, sets, cache.embedder(emb), {**inj_scores, **full}, labels=labels, spot=spot,
+                      det_runs=det_runs if len(det_runs) > 1 else None, qwen=qwen or None, costs=costs,
+                      injection=injection if inj_scores else None)
+        res["counts"] = P["counts"]
+        res["tokens"] = tokens
+        res["tokens_label"] = TOKEN_SETS[tokens]["label"]
+        suffix = "" if tokens == PRIMARY_TOKENS else "_" + tokens
+        with open(os.path.join(args.out, f"element_probe_l_result{suffix}.md"), "w", encoding="utf-8") as f:
+            f.write(to_markdown(res, info))
+        with open(os.path.join(args.out, f"element_probe_l_result{suffix}.json"), "w", encoding="utf-8") as f:
+            json.dump({"info": info, "registration": E2.REG, **res}, f, ensure_ascii=False, indent=1,
+                      default=lambda o: o.item() if hasattr(o, "item") else str(o))
+        E2.log(f"保存しました: element_probe_l_result{suffix}.md（{TOKEN_SETS[tokens]['label']}・{res['seconds']} 秒）")
+        out[tokens] = res
+    if len(out) == 2:
+        with open(os.path.join(args.out, "element_probe_l_summary.md"), "w", encoding="utf-8") as f:
+            f.write(summary_markdown(out))
+    return out
+
+
+def summary_markdown(out):
+    """主と参考を並べた要約（見出しに、どちらが主かを書く）。"""
+    a, b = out[PRIMARY_TOKENS], out["registered"]
+    cols = [TOKEN_SETS[PRIMARY_TOKENS]["label"], TOKEN_SETS["registered"]["label"]]
+
+    def cell(r, ok, extra):
+        return f"{'満たす' if ok else '満たさない'}・{extra}・偽陽性 {r['fp']}/{r['trials']}・通過 {r['pos']}/{r['pos_n']}"
+
+    rows = [("L 単独（報告する／参考の作動点）", lambda x: cell(x["L"]["best"], x["L"]["ok"], f"δ_L {x['L']['best']['delta_L']}")),
+            ("L 単独（δ_L＝0）", lambda x: cell(x["L"]["zero"], False, "δ_L 0.0")),
+            ("C2+b-1+L（報告する／参考の作動点）", lambda x: cell(x["BL"]["best"], x["BL"]["ok"],
+                                                       f"δ {x['BL']['best']['delta']}・δ_L {x['BL']['best']['delta_L']}")),
+            ("L の AUC（文単位・人×要素・48 対）", lambda x: "・".join("—" if v is None else f"{v:.3f}" for v in
+                                                         (x["ref"]["power"]["auc_sentence"], x["ref"]["power"]["auc_person"],
+                                                          x["ref"]["power"]["auc_48"])))]
+    L = ["# 指示書66（PR-66C）L — 主と参考の比較", "",
+         "主＝回答の位置に現れるトークンの id（registration_v2 §8・§13 の訂正）。参考＝登録時の id。どちらも同じ 1 回の計算のスコア。"
+         "判定は主で行う。id の訂正と主の選び方は、L の出力を見ずに決めた。", "",
+         f"| 項目 | {cols[0]} | {cols[1]} |", "|---|---|---|"]
+    L += [f"| {name} | {f(a)} | {f(b)} |" for name, f in rows]
+    return "\n".join(L) + "\n"
 
 
 if __name__ == "__main__":

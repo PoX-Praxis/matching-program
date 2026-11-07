@@ -30,6 +30,11 @@ def _fake_l(n, o):
     return sum(x * y for x, y in zip(_v(n), _v(o))) * 40
 
 
+def _fake_l2(n, o):                                   # llm-jp: (登録時の id のスコア, 回答の位置の id のスコア)
+    v = _fake_l(n, o)
+    return (v, v + 0.3)
+
+
 def _labels():
     return {"pairs": [{"id": "L01", "need_key": "1-1", "need": "合成の必要像その一をしてきた人。", "other": "合成の相手の文。",
                        "other_kind": "PA の現状（全文）", "provisional": "応えない", "final": None},
@@ -48,7 +53,9 @@ def test_t376_prompt_tokens_and_grids():
     assert hashlib.sha256(block.encode()).hexdigest() != EL.PROMPT_SHA256                  # 登録の値は {n}・{o} の形のハッシュ
     assert "d26a2c76734cb7911d01506e67f026a6c4bbaf846dab224c9a1b8c263afd4cec" in reg
     m, q = EL.MODELS["llm-jp"], EL.MODELS["qwen3"]
-    assert (m["yes"], m["no"], m["revision"]) == (38891, 7937, "413b7929df092690b0f9449f3045baaf8deba0a5")
+    assert (m["yes"], m["no"], m["alt"], m["revision"]) == (38891, 7937, (36452, 4041), "413b7929df092690b0f9449f3045baaf8deba0a5")
+    assert EL.PRIMARY_TOKENS == "natural" and EL.TOKEN_SETS["natural"]["ids"] == (36452, 4041)   # 主＝回答の位置の id（§13 の訂正）
+    assert EL.TOKEN_SETS["natural"]["field"] == "scores_alt" and EL.TOKEN_SETS["registered"]["ids"] == (38891, 7937)
     assert (q["yes"], q["no"], q["chat_kwargs"]) == (14004, 8996, {"enable_thinking": False})
     assert (len(EL.GRID_L), EL.GRID_L[0], EL.GRID_L[-1]) == (81, -4.0, 4.0) and 0.0 in EL.GRID_L
     assert len(EL.GRID_D) == 41 and EL.DET_RUNS == 5
@@ -86,14 +93,21 @@ def test_t378_score_analyze_outputs(tmp_path):
     out = tmp_path / "out"
     base = ["--kaoru", str(kpath), "--labels", str(lpath), "--spot", str(spot), "--emb-cache", str(tmp_path / "emb"), "--out", str(out)]
     sets = _small_sets()
-    st = EL.main(["--phase", "score"] + base, scorer=_fake_l, sets=sets)
+    st = EL.main(["--phase", "score"] + base, scorer=_fake_l2, sets=sets)
     st2 = EL.main(["--phase", "score"] + base, scorer=lambda n, o: 1 / 0, sets=sets)  # 保存済みは計算しない（再開）
     assert st2["scores"] == st["scores"]
     for r in range(2, EL.DET_RUNS + 1):
-        EL.main(["--phase", "score", "--set", "det", "--run", str(r)] + base, scorer=_fake_l, sets=sets)
+        EL.main(["--phase", "score", "--set", "det", "--run", str(r)] + base, scorer=_fake_l2, sets=sets)
     EL.main(["--phase", "score", "--model", "qwen3", "--set", "det", "--run", "1"] + base, scorer=lambda n, o: -_fake_l(n, o), sets=sets)
-    EL.main(["--phase", "score", "--set", "inj"] + base, scorer=_fake_l, sets=sets)
-    res = EL.main(["--phase", "analyze"] + base, encode=es._stub_encode, sets=sets)
+    EL.main(["--phase", "score", "--set", "inj"] + base, scorer=_fake_l2, sets=sets)
+    both = EL.main(["--phase", "analyze"] + base, encode=es._stub_encode, sets=sets)
+    assert set(both) == {"natural", "registered"}                    # 両方の id で出す
+    res = both["natural"]
+    assert both["registered"]["L"]["zero"]["delta_L"] == 0.0
+    assert "主: 回答の位置のトークン" in (out / "element_probe_l_result.md").read_text(encoding="utf-8").splitlines()[0]
+    assert "参考: 登録時の id" in (out / "element_probe_l_result_registered.md").read_text(encoding="utf-8").splitlines()[0]
+    summ = (out / "element_probe_l_summary.md").read_text(encoding="utf-8")
+    assert "主: 回答の位置のトークン" in summ and "参考: 登録時の id" in summ and "L の出力を見ずに" in summ
     ref = res["ref"]                                              # 参考値（指示書66C 追補）
     assert [c["delta"] for c in ref["candidates"]] == EL.GRID_D and all(c["trials"] == 40 * 4 for c in ref["candidates"])
     assert all(0 <= c["k_mean"] <= c["k_max"] <= 5 * 4 for c in ref["candidates"])

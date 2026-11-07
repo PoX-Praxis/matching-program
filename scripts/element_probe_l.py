@@ -207,6 +207,13 @@ def analyze(kaoru, sets, emb, scores, labels=None, spot=None, det_runs=None, qwe
             r["delta_L"] = dl
             curve_bl.append(r)
     best_bl, ok_bl = E2.choose(curve_bl, tie=lambda r: (r["delta"], r["delta_L"]))
+    fp1 = {}                                                       # 参考: δ ごとに、偽陽性 1 件以下で通過が最も多い δ_L
+    for r in curve_bl:
+        if r["fp"] <= 1:
+            b = fp1.get(r["delta"])
+            if b is None or (r["pos"], r["delta_L"]) > (b["pos"], b["delta_L"]):
+                fp1[r["delta"]] = {"delta_L": r["delta_L"], "pos": r["pos"], "fp": r["fp"]}
+    fp1_l = max((r for r in curve_l if r["fp"] <= 1), key=lambda r: (r["pos"], r["delta_L"]), default=None)
     zero_bl = [r for r in curve_bl if r["delta_L"] == 0.0]
     best_zero_bl, ok_zero_bl = E2.choose(zero_bl)
     E2.log("曲線: L 単独・C2+b-1+L")
@@ -382,7 +389,8 @@ def analyze(kaoru, sets, emb, scores, labels=None, spot=None, det_runs=None, qwe
             "grid_D": [GRID_D[0], GRID_D[-1], len(GRID_D)], "combos": len(curve_bl),
             "L": {"curve": curve_l, "best": best_l, "ok": ok_l, "zero": zero_l, "detail": det_l, "detail_zero": det_l0},
             "BL": {"best": best_bl, "ok": ok_bl, "best_at_L0": best_zero_bl, "ok_at_L0": ok_zero_bl, "detail": det_bl,
-                   "curve_L0": zero_bl},
+                   "curve_L0": zero_bl, "fp1_by_delta": fp1},
+            "L_fp1": {"delta_L": fp1_l["delta_L"], "pos": fp1_l["pos"], "fp": fp1_l["fp"]} if fp1_l else None,
             "labeled": labeled, "bias": bias, "det": det, "qwen": qref, "costs": costs,
             "ref": {"candidates": cand, "power": power, "injection": inj_res},
             "sizes": {"val": len(X["val"]), "neg_persons": len(neg), "C_role": sum(1 for k in ctarget if nkeys.index(k) in role)},
@@ -440,9 +448,14 @@ def to_markdown(res, info):
     for r in l["curve"]:
         ok = r["fp_upper"] <= E2.FP_MAX and (r["se"] or 0) >= E2.SE_MIN
         L.append(f"| {r['delta_L']} | {r['fp']}/{r['trials']} | {pct(r['fp_upper'])} | {r['pos']}/{r['pos_n']} | {'✓' if ok else ''} |")
-    L += ["", "## 3. C2+b-1+L（δ_L＝0 で δ ごと）", "", "| δ | 偽陽性 | 上限 | 通過 |", "|---|---|---|---|"]
+    L += ["", "## 3. C2+b-1+L（δ_L＝0 で δ ごと。右の 2 列は参考: その δ で偽陽性 1 件以下になる δ_L のうち通過が最も多いもの）", "",
+          "| δ | 偽陽性 | 上限 | 通過 | 偽陽性 1 件以下での δ_L | そのときの通過 |", "|---|---|---|---|---|---|"]
     for r in bl["curve_L0"]:
-        L.append(f"| {r['delta']} | {r['fp']}/{r['trials']} | {pct(r['fp_upper'])} | {r['pos']}/{r['pos_n']} |")
+        f1 = bl.get("fp1_by_delta", {}).get(r["delta"]) or bl.get("fp1_by_delta", {}).get(str(r["delta"]))
+        L.append(f"| {r['delta']} | {r['fp']}/{r['trials']} | {pct(r['fp_upper'])} | {r['pos']}/{r['pos_n']} | "
+                 f"{f1['delta_L'] if f1 else '—'} | {(str(f1['pos']) + '/' + str(r['pos_n'])) if f1 else '—'} |")
+    if res.get("L_fp1"):
+        L.append(f"\nL 単独で偽陽性 1 件以下になる δ_L のうち通過が最も多いもの: δ_L {res['L_fp1']['delta_L']}・通過 {res['L_fp1']['pos']}/24")
     if res["labeled"]:
         L += ["", "## 4. 65-A のラベルつきの対（役割の要素と PA の必要像の対。文単位・通過の有無だけ）", "",
               "| ラベル | 報告する／参考の作動点で通過 | δ_L＝0 で通過 | 対 |", "|---|---|---|---|"]

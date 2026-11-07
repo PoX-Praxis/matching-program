@@ -617,3 +617,10 @@
 | 項目 | テスト |
 |---|---|
 | 380 | `test_t380_distinct_cover_assignment`（必須ごとに互いに違う文を割り当てる（1 文は 1 つの必須だけ）・割り当てのやり直し・必須の無い目的・本番に触れない） |
+### 66 順7（PR-66C: L の計測）— `tests/test_t66c_element_probe_l.py`
+
+| 項目 | テスト（registration_v2 §5-2・§6・§8） |
+|---|---|
+| 376 | `test_t376_prompt_tokens_and_grids`（プロンプトとハッシュ（登録の値は {n}・{o} の形）・YES／NO の token id・δ_L の格子 81 点・C2+b-1+L の 41 × 81・同点は δ → δ_L の大きいほう） |
+| 377 | `test_t377_pairs_role_only_and_det_subset`（L は役割の 4 要素だけ・関心型には当てない・決定性の部分集合（48 対の該当分・hard negative × 役割の要素・背景 200 対。seed 6603）） |
+| 378 | `test_t378_score_analyze_outputs`（擬似のスコアで最後まで動く・保存済みの対は計算しない・決定性 5 回・参考のモデル・本人と PA の文・生テキスト・根拠を書かない）、`test_t378b_pinned_and_no_production`（モデルと dtype の固定・生成させない・本番に触れない） |

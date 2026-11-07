@@ -21,7 +21,19 @@ sys.path[:0] = [p for p in (os.path.join(ROOT, "scripts"), ROOT, os.path.join(RO
 import element_probe as EP  # noqa: E402
 import element_probe_v2 as E2  # noqa: E402
 
-UPPER = {"R 0.70": ("R", 0.70), "C2 δ=0": ("C2", 0.0)}
+UPPER = {"R 0.70": ("R", 0.70), "C2 δ=0": ("C2", 0.0), "R 0.70 + b-3": ("R+b3", 0.70), "C2 δ=0 + b-3": ("C2+b3", 0.0)}
+
+
+def upper_passes(s, G, d, S):
+    """上層の要素ごとの通過。b-3＝要素への固有性 g(n,s) − max_{n'≠n} g(n',s) > 0（n' は閲覧者の役割の他の要素）を足す形も。"""
+    if s == "R+b3":
+        base = E2.passes("R", G, d, S)
+        for n, Sn in enumerate(S):
+            others = [j for j in Sn if j != n]
+            if others:
+                base[n] &= G.g[n] - G.g[others].max(axis=0) > 0
+        return base
+    return E2.passes(s, G, d, S)
 
 
 def covers_distinct(hit_sets):
@@ -68,7 +80,7 @@ def run(kaoru, sets, emb, audit=None, labels=None):
     pa = EP.pa_from_audit(audit, emb) if audit else None
     out = {"persons": {}, "fits": {}, "single_double": {}, "labeled": {}, "pa": {}}
     for uname, (s, d) in UPPER.items():
-        Pv, Pc = E2.passes(s, X["Gv"], d, S), E2.passes(s, X["Gc"], d, S)
+        Pv, Pc = upper_passes(s, X["Gv"], d, S), upper_passes(s, X["Gc"], d, S)
 
         def hits_of(person):
             h = [set() for _ in nkeys]
@@ -101,6 +113,17 @@ def run(kaoru, sets, emb, audit=None, labels=None):
                             "fit_fp": sum(1 for t, g in zip(truth, got) if not t and g)}
             rows.append(row)
         out["persons"][uname] = rows
+        m1 = actual[0]
+        if len(m1) >= 2:
+            ov = [h for h in neg_h if covers_any([h[m] for m in m1])]
+            with_both = [h for h in ov if set.intersection(*[h[m] for m in m1])]
+            out.setdefault("overlap", {})[uname] = {
+                "pass_now": len(ov), "with_one_sentence_both": len(with_both),
+                "with_both_still_distinct": sum(1 for h in with_both if covers_distinct([h[m] for m in m1])),
+                "no_overlap_ids": [f"N{i:03d}" for i, h in enumerate(neg_h)
+                                   if covers_any([h[m] for m in m1]) and not set.intersection(*[h[m] for m in m1])]}
+            out.setdefault("_remain", {})[uname] = [i for i, h in enumerate(neg_h) if covers_distinct([h[m] for m in m1])]
+            out.setdefault("_negh", {})[uname] = neg_h
         # 1 文で両方の必須を満たす文（目的1）: 検証用の文と、通った負例の人のうちそれで成り立っていた人
         m1 = actual[0]
         if len(m1) >= 2:
@@ -113,16 +136,19 @@ def run(kaoru, sets, emb, audit=None, labels=None):
             others = sorted({p["other"] for p in labels.get("pairs", [])})
             Po = E2.mat(emb, others, "passage")
             Go = E2.Group(E2.gmat(X["Qn"], Po), X["q99n"], X["q99s_of"](Po))
-            Pp = E2.passes(s, Go, d, S)
+            Pp = upper_passes(s, Go, d, S)
             both_o = {others[j] for j in range(len(others)) if Pp[m1, j].all()}
-            ids = [{"id": p["id"], "kind": p["other_kind"], "need_key": p["need_key"]}
+            ids = [{"id": p["id"], "kind": p["other_kind"], "need_key": p["need_key"], "label": p.get("final") or p.get("provisional"),
+                    "own_is_must": p["need_key"] in {nkeys[m] for m in m1},
+                    "single_now": purpose_ok([{0} if n in m1 else set() for n in range(len(nkeys))], purposes[0], m1, False),
+                    "single_distinct": purpose_ok([{0} if n in m1 else set() for n in range(len(nkeys))], purposes[0], m1, True)}
                    for p in labels.get("pairs", []) if p["other"] in both_o]
             out["labeled"][uname] = {"others": len(others), "both": len(both_o), "pairs": ids}
         # KAORU × PA（v4 の人の与え像の側は現状の全文 1 文。表示の根拠は下層・現行の作動点 0.70）
         if pa:
             Ppa = E2.mat(emb, [pa["whole"]], "passage")
             Gpa = E2.Group(E2.gmat(X["Qn"], Ppa), X["q99n"], X["q99s_of"](Ppa))
-            up = E2.passes(s, Gpa, d, S)[:, 0]
+            up = upper_passes(s, Gpa, d, S)[:, 0]
             h = [{("pa", 0)} if up[n] else set() for n in range(len(nkeys))]
             low = (Gpa.g >= E2.LOWER_TH)[:, 0]
             res = []
@@ -131,11 +157,24 @@ def run(kaoru, sets, emb, audit=None, labels=None):
                             "now": purpose_ok(h, keys, musts, False), "distinct": purpose_ok(h, keys, musts, True),
                             "lower_pairs": {nkeys[n]: bool(low[n]) for n in keys}})
             out["pa"][uname] = res
+    # 追加A: 新しい決まり（R 0.70・別の文）で残った負例の人に、C2 δ＝0 を当てる
+    m1 = actual[0]
+    if "_remain" in out and len(m1) >= 2:
+        rem = out["_remain"]["R 0.70"]
+        hc = out["_negh"]["C2 δ=0"]
+        out["addA"] = {"remain_R": len(rem),
+                       "C2_now": sum(1 for i in rem if covers_any([hc[i][m] for m in m1])),
+                       "C2_distinct": sum(1 for i in rem if covers_distinct([hc[i][m] for m in m1]))}
+    out.pop("_remain", None)
+    out.pop("_negh", None)
     return out
 
 
 def to_markdown(res):
-    L = ["# 上層の連言の別の形（参考値）— 必須ごとに別の文で覆う", "",
+    L = ["# 上層の連言の別の形（参考値・事後）— 必須ごとに別の文で覆う", "",
+         "指示書66C 追補2（2026-11-07・KAORU 確認済み）。**数値を見た後の発想であり、事前登録したものではない。** 66C の決定には使わない。", "",
+         "判定はマッチング（必須の集合と文の集合の二部マッチング。増加道）で行う。最大スコアの要素に割り当てる方式は使わない。"
+         "b-3 を足した案（R 0.70 + b-3・C2 δ＝0 + b-3）は、要素への固有性 g(n,s) − max_{n'≠n} g(n',s) > 0（n' は閲覧者の役割の他の要素）を足したもの（追加B）。", "",
          "KAORU の指示（2026-11-07）。registration_v2 §13 に規則の変更として記録。**本番の判定と決定は変えない**（上層は 0.70 のまま）。"
          "66B の保存済みの値だけを使った。", "",
          "- いまの形: 必須のそれぞれを、人の文のどれかが満たす（同じ 1 文が複数の必須を満たしてよい）",
@@ -151,10 +190,24 @@ def to_markdown(res):
     L += ["", "1 文で目的1 の必須を両方満たす検証用の文と、別の形で通らなくなる負例の人:", ""]
     for u, x in res["single_double"].items():
         L.append(f"- {u}: 両方を満たす文 {x['val_sentences_both']}/{x['val']}・別の形で通らなくなる人 {x['persons_lost']}")
+    L += ["", "いまの形で目的1 を通った負例の人の内訳:", ""]
+    for u, x in res.get("overlap", {}).items():
+        L.append(f"- {u}: 通った {x['pass_now']} 人のうち、1 文で両方を満たす文を持つ人 {x['with_one_sentence_both']}"
+                 f"（そのうち別の 2 文でも覆えて残る人 {x['with_both_still_distinct']}）・重なりの無い人 {len(x['no_overlap_ids'])}"
+                 f"（{'・'.join(x['no_overlap_ids'][:8]) or 'なし'}{'…' if len(x['no_overlap_ids']) > 8 else ''}）")
+    a = res.get("addA")
+    if a:
+        L += ["", f"**追加A:** 新しい決まり（R 0.70・別の文）で残った負例の人 {a['remain_R']} 人に C2 δ＝0 を当てると、"
+              f"いまの形で {a['C2_now']} 人・新しい決まりで {a['C2_distinct']} 人が通る"]
     L += ["", "## 3. 65-A の 48 対で、相手の文 1 つが目的1 の必須を両方満たしていた対", ""]
     for u, x in res["labeled"].items():
-        ids = "・".join(f"{p['id']}（{p['kind'][:12]}・{p['need_key']}）" for p in x["pairs"]) or "なし"
+        ids = "・".join(f"{p['id']}（{p['kind'][:12]}・{p['need_key']}・{p['label']}）" for p in x["pairs"]) or "なし"
         L.append(f"- {u}: 相手の文 {x['others']} 文のうち {x['both']} 文。該当する対: {ids}")
+        hit = [p for p in x["pairs"] if p["label"] == "応える" and p["own_is_must"]]
+        for p in hit:
+            L.append(f"  - 「応える」で、自分の要素が目的1 の必須: {p['id']}（{p['need_key']}）。その文 1 つだけの人は、"
+                     f"いまの形で目的1 を{'通り' if p['single_now'] else '通らず'}、新しい決まりで{'通る' if p['single_distinct'] else '落ちる'}"
+                     "（要素の対そのもの（下層）は変わらない。上層は、1-2 を満たす別の文があれば通る）")
     if res["pa"]:
         L += ["", "## 4. KAORU × PA（v4 の人の与え像の側は現状の全文 1 文。通過の有無だけ）", "",
               "| 上層の案 | 目的 | 必須 | 上層: いま | 上層: 別の形 | 根拠（下層・現行の作動点）の要素の対 |", "|---|---|---|---|---|---|"]

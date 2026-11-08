@@ -1,3 +1,5 @@
+> **時点の記録（2026-07）。いまの正ではない。** いまの正は `docs/deploy_local_nomic.md`（自宅 PC と Cloudflare Tunnel。`render.yaml` の注記）。この文書は未使用の別案。
+
 # 手順書② — Nomic Embed v2 常駐サービスを Render に新規作成（束2a / A-2）
 
 `nomic_server/` を Render の独立 Web Service として立て、`pox-web` から HTTP で叩ける

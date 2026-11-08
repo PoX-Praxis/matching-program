@@ -1,3 +1,5 @@
+> **時点の記録（2026-07）。いまの正ではない。** いまの正は `docs/status.md`・`docs/decisions/`・`docs/matching.md`。
+
 # PoX 引き継ぎ・設計書 — 自宅Nomic + v4照合 統合（2026-07）
 
 このセッションで「①v4.2 構造化プロンプト → 各自AI生成の必要像 → PoX受け取り検証 → 自宅Nomicで

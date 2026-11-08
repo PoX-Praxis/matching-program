@@ -1,3 +1,5 @@
+> **時点の記録（2026-07）。いまの正ではない。** いまの正は `docs/status.md`・`docs/matching.md`・`src/embedding_config.py`。
+
 # PoX 本番設計ノート（実験フェーズ知見の還流）
 
 `exp/embedding-model-eval`（1,090件・3モデル比較・KH人手評価）で得た、本番設計に効く知見を集約。

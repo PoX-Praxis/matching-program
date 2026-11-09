@@ -624,3 +624,9 @@
 | 376 | `test_t376_prompt_tokens_and_grids`（プロンプトとハッシュ（登録の値は {n}・{o} の形）・YES／NO の token id・δ_L の格子 81 点・C2+b-1+L の 41 × 81・同点は δ → δ_L の大きいほう） |
 | 377 | `test_t377_pairs_role_only_and_det_subset`（L は役割の 4 要素だけ・関心型には当てない・決定性の部分集合（48 対の該当分・hard negative × 役割の要素・背景 200 対。seed 6603）） |
 | 378 | `test_t378_score_analyze_outputs`（擬似のスコアで最後まで動く・保存済みの対は計算しない・決定性 5 回・参考のモデル・本人と PA の文・生テキスト・根拠を書かない）、`test_t378b_pinned_and_no_production`（モデルと dtype の固定・生成させない・本番に触れない） |
+
+### 66 順8（PR-66D）書き直しの指示の固定 — `tests/test_t66d_rewrite_fixed.py`
+
+| 項目 | テスト（指示書66D §3-1） |
+|---|---|
+| 386 | `test_t386_rewrite_prompts_fixed_before_measurement`（書き直し・C 群・hard negative a の指示の sha256・必須は 1〜2・目的の種類（補完／共鳴）・C 群は要素あたり 6 文・忠実性の組み方と seed 6605・hard negative の確認の seed 6607・L を走らせない・個人の文を入れない） |

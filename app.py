@@ -1907,6 +1907,15 @@ def connection_reason():
 PREVIEW_RATE = (30, 600)          # 閲覧者ごとに 600 秒で 30 回まで（一覧の総なめを防ぐ）
 _PREVIEW_HITS = {}
 _PREVIEW_LOCK = threading.Lock()
+# 関わっている組（申し出中・承認待ち・接続中）。上層の印は、この組にだけ出す（指示書67）。
+ENGAGED_STATES = ("pending_out", "pending_in", "connected")
+
+
+def _engaged(me, other):
+    from ledger import connection_state
+    return connection_state(me, other, db_path=DB) in ENGAGED_STATES
+
+
 PREVIEW_PREPARING = "要素単位の照合は準備中です"
 PREVIEW_NONE = "あなたの必要に応える文は見つかりませんでした"
 PREVIEW_UNAVAILABLE = "いま照合できません"
@@ -1936,6 +1945,9 @@ def connection_preview():
     - 2 人の版だけで決まる（母集団に依存しない）。見送りが効いている相手には出さない（403）
     - 閲覧者に目的（必要像）が無ければ返さない（no_profile）
     - 下層の表示が閉じている間は、上層（欠かせない要素をすべて覆う）で通った対だけ。無ければ「要素単位の照合は準備中です」
+    - 上層の印の保留（指示書67。`POX_UPPER_BADGE_SCOPE=related`・既定）: 下層が閉じている間、関わっていない組
+      （申し出中・承認待ち・接続中でない）には、上層の成否によらず「要素単位の照合は準備中です」を返す
+      （成立しないことも読み取られないよう、上層が通らなかったときと同じ応答にする）
     - 下層の表示が開いているときは要素の対（自分の目的の門が閉じた要素一致はラベルつき）。無ければ
       「あなたの必要に応える文は見つかりませんでした」
     - 相手の文は公開の日時の閾値に従う（与え像の版が閾値より前なら、文を出さない。つながるのカードと同じ）
@@ -1946,7 +1958,8 @@ def connection_preview():
     if not other or other == me:
         return jsonify({"error": "with が必要です"}), 400
     from ledger import connection_state
-    if connection_state(me, other, db_path=DB) in ("declined_out", "declined_in"):
+    state = connection_state(me, other, db_path=DB)
+    if state in ("declined_out", "declined_in"):
         return jsonify({"error": "この相手の根拠は出せません"}), 403
     if not _preview_allowed(me):
         return jsonify({"error": "しばらくしてからもう一度お試しください"}), 429
@@ -1954,7 +1967,7 @@ def connection_preview():
     if not is_postgres() or not _matching_available():
         return jsonify({"status": "unavailable", "message": PREVIEW_UNAVAILABLE, "reasons": []}), 200
     from embedding_config import MODEL_TAG
-    from match_config import OWN_GATE_LABEL, lower_layer_open
+    from match_config import OWN_GATE_LABEL, lower_layer_open, upper_badge_scope
     from matcher_v5 import elements, judge_direction
     store = _v4_store()
     if store.missing_tag_ids(MODEL_TAG) & {me, other}:
@@ -1962,9 +1975,12 @@ def connection_preview():
     mine = _side_of(store, me, MODEL_TAG)
     if not mine["purposes"]:
         return jsonify({"status": "no_profile", "message": None, "reasons": []}), 200
+    lower_open = lower_layer_open()
+    if not lower_open and upper_badge_scope() == "related" and state not in ENGAGED_STATES:
+        # 上層の印の保留（指示書67）: 関わっていない組には上層の成否を出さない。上層が通らなかったときと同じ応答。
+        return jsonify({"status": "none", "message": PREVIEW_PREPARING, "reasons": []}), 200
     theirs = _side_of(store, other, MODEL_TAG)
     items = []
-    lower_open = lower_layer_open()
     for p in mine["purposes"]:
         ok, prs, info = judge_direction(p, theirs)
         if lower_open:
@@ -2209,7 +2225,7 @@ def _v5_match_response(store, me, model_tag):
     """
     from matcher_v5 import match_pair, musts_of
     from ledger import engaged_by_purpose
-    from match_config import OWN_GATE_LABEL, lower_layer_open
+    from match_config import OWN_GATE_LABEL, lower_layer_open, upper_badge_scope
     mine = _side_of(store, me, model_tag)
     if not mine["purposes"]:
         return {"status": "no_necessity", "groups": [], "results": []}
@@ -2257,6 +2273,20 @@ def _v5_match_response(store, me, model_tag):
             prof = prof or _card_profile(cid)
             them_need_me["results"].append(_card(cid, names, hs, prof, r["theirs_need_me"], mine, theirs, None))
     lower_open = lower_layer_open()
+    scope = upper_badge_scope()
+    if scope == "related":
+        # 上層の印の保留（指示書67）: 関わっている組（申し出中・承認待ち・接続中）以外には、上層の成否（カード）を
+        # 返さない。画面で隠すだけにしない。計算（match_pair）は上で行っている。監査のルートでは見える。
+        engaged = {}
+        for g in [*groups.values(), them_need_me]:
+            kept = []
+            for c in g["results"]:
+                cid = c["candidate_id"]
+                if cid not in engaged:
+                    engaged[cid] = _engaged(me, cid)
+                if engaged[cid]:
+                    kept.append(c)
+            g["results"] = kept
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     _record_presentations(me, run_id, mine, groups, them_need_me, lower_open)
     out_groups = []
@@ -2273,7 +2303,7 @@ def _v5_match_response(store, me, model_tag):
         out_groups.append(them_need_me)
     flat = [c for g in out_groups for c in g["results"]]
     return {"status": "ok" if flat else "none", "groups": out_groups, "results": flat,
-            "has_offer": mine["has_offer"], "match_run_id": run_id}
+            "has_offer": mine["has_offer"], "match_run_id": run_id, "upper_scope": scope}
 
 
 def _record_presentations(me, run_id, mine, groups, them_need_me, lower_open):

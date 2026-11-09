@@ -624,3 +624,13 @@
 | 376 | `test_t376_prompt_tokens_and_grids`（プロンプトとハッシュ（登録の値は {n}・{o} の形）・YES／NO の token id・δ_L の格子 81 点・C2+b-1+L の 41 × 81・同点は δ → δ_L の大きいほう） |
 | 377 | `test_t377_pairs_role_only_and_det_subset`（L は役割の 4 要素だけ・関心型には当てない・決定性の部分集合（48 対の該当分・hard negative × 役割の要素・背景 200 対。seed 6603）） |
 | 378 | `test_t378_score_analyze_outputs`（擬似のスコアで最後まで動く・保存済みの対は計算しない・決定性 5 回・参考のモデル・本人と PA の文・生テキスト・根拠を書かない）、`test_t378b_pinned_and_no_production`（モデルと dtype の固定・生成させない・本番に触れない） |
+
+### 67 上層の印の保留 — `tests/test_t67_upper_badge.py`
+
+| 項目 | テスト（指示書67 §1-4） |
+|---|---|
+| 381 | `test_t381_related_hides_upper_for_unrelated`（既定 related: 関わっていない組には、つながるの表・「あなたを必要としている相手」・申し出る前の根拠のどれにも上層の成否を出さない。上層が通る相手と通らない相手で同じ応答。成立しない文言も出さない） |
+| 382 | `test_t382_related_keeps_engaged_pairs`（申し出中・承認待ち・接続中の組では、いまと同じ表示（all と同じ中身）） |
+| 383 | `test_t383_all_restores_current_behavior`（all に戻すといまの振る舞い。知らない値は related） |
+| 384 | `test_t384_upper_still_computed_and_audit_sees_it`（related でも上層の計算をする。監査のルート（トークン必須）では成立が見える） |
+| 385 | `test_t385_lower_layer_flag_stays_closed`（下層の表示のフラグは閉じたまま） |

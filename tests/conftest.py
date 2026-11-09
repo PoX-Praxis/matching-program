@@ -21,6 +21,11 @@ os.environ.setdefault("POX_TEST_ALLOW_STUB", "1")
 # 壁時計に左右されないよう、いま作られた版を「閾値より後」として扱う。閾値より前を確かめるテストは個別に上書きする。
 os.environ.setdefault("POX_OFFER_PUBLIC_SINCE", "2000-01-01T00:00:00+00:00")
 
+# 上層の印を出す範囲（指示書67）。本番の既定は related（関わっている組だけ）。これまでのテストは、関わっていない
+# 相手にも上層の結果を出す振る舞い（all）を確かめているので、テストの既定は all にする。related（既定）は
+# tests/test_t67_upper_badge.py が環境変数を外して確かめる。
+os.environ.setdefault("POX_UPPER_BADGE_SCOPE", "all")
+
 
 # 遅いテスト（指示書65-A のテスト 330 など）。通常の実行では飛ばし、`pytest --run-slow` か POX_RUN_SLOW=1 で実行する。
 def pytest_addoption(parser):

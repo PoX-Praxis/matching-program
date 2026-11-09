@@ -61,3 +61,16 @@ def lower_layer_open():
     """下層（この要素に応える相手）の**表示**を開けるか。既定は閉じる（指示書65-B §0 前提1）。
     閉じていても計算と保持はする（前提4。関わっている組の根拠＝§1-3 が使う）。"""
     return _flag("POX_LOWER_LAYER_OPEN")
+
+
+# ── 上層の印を出す範囲（指示書67・2026-11-10 の決定「上層の印は保留」）─────────────────────────
+# all＝これまでの振る舞い（関わっていない相手にも上層の印・成否を出す）
+# related＝関わっている組（申し出中・承認待ち・接続中）にだけ出す。**既定は related**
+# 上層の計算は related でも行う（表示と API の応答だけを絞る）。監査のルートでは見える。
+# 知らない値は related として扱う（印を出す側に倒さない）。
+UPPER_BADGE_SCOPES = ("all", "related")
+
+
+def upper_badge_scope():
+    v = os.environ.get("POX_UPPER_BADGE_SCOPE", "").strip().lower()
+    return v if v in UPPER_BADGE_SCOPES else "related"

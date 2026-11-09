@@ -1,0 +1,755 @@
+{
+ "_note": "指示書68 §5-1 の合成データ。すべて架空の人と文（実在の人の文を使わない）。生成仕様 expl-v0.4 の形。case 1 と case 5 は同じ相手（haru）を、別の見る人（aoi・minato）から見たもの。",
+ "people": {
+  "aoi": {
+   "name": "アオイ"
+  },
+  "haru": {
+   "name": "ハル"
+  },
+  "minato": {
+   "name": "ミナト"
+  },
+  "sora": {
+   "name": "ソラ"
+  }
+ },
+ "cases": [
+  {
+   "case": "1_complement",
+   "viewer": "aoi",
+   "target": "haru",
+   "card": {
+    "schema_version": "expl-v0.4",
+    "relation_rule_version": "rel-v0.3",
+    "status": "explained",
+    "show_reason": null,
+    "as_of": {
+     "viewer": {
+      "profile": "profile-aoi-v1",
+      "necessity": "necessity-aoi-v1"
+     },
+     "target": {
+      "profile": "profile-haru-v1",
+      "necessity": "necessity-haru-v1"
+     }
+    },
+    "generation": {
+     "prompt1_sha": null,
+     "prompt2_sha": null,
+     "model": "fixed",
+     "revision": null,
+     "decoding": {
+      "temperature": 0
+     }
+    },
+    "target_has_purposes": true,
+    "purposes": [
+     {
+      "ref": "viewer.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "地域の小さな店が続けられる仕組みをつくりたい",
+      "kind": "補完",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、在庫と売上を記録するアプリを作ってきた人で、{N}の店の仕組みづくりに関われる可能性があります。",
+       "cites": [
+        0,
+        1
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "viewer.need.p1.1-1",
+        "must": true,
+        "need_quote": "売上と在庫を毎日記録できる仕組み",
+        "offer_ref": "target.offer.1",
+        "offer_quote": "在庫と売上を記録するアプリを作ってきた",
+        "relation": "R1"
+       },
+       {
+        "need_ref": "viewer.need.p1.1-2",
+        "must": true,
+        "need_quote": "経営者と、継続して話し合える立場",
+        "offer_ref": "target.offer.2",
+        "offer_quote": "店主と月に一度、数字を見ながら話し合う立場で関われる",
+        "relation": "R2"
+       }
+      ],
+      "unknown": [
+       {
+        "need_ref": "viewer.need.p1.1-3",
+        "need_quote": "地域の行事を企画し、人を集めてきた"
+       }
+      ],
+      "missing_must": []
+     },
+     {
+      "ref": "viewer.purpose.p2",
+      "order": 1,
+      "number": 2,
+      "title": "手仕事の道具について語り合える場がほしい",
+      "kind": "共鳴",
+      "status": "not_covered",
+      "meaning": null,
+      "elements": [],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "reverse_purposes": [
+     {
+      "ref": "target.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "作ったものを使い続けてもらいたい",
+      "kind": "補完",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、商店街の聞き取りを手伝える人で、{N}の現場の声を集めることに関われる可能性があります。",
+       "cites": [
+        0
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "target.need.p1.1-1",
+        "must": true,
+        "need_quote": "現場の声を集めて",
+        "offer_ref": "viewer.offer.2",
+        "offer_quote": "商店街の聞き取りを手伝える",
+        "relation": "R2"
+       }
+      ],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "citations": [
+     {
+      "ref": "viewer.need.p1.1-1",
+      "text": "店の売上と在庫を毎日記録できる仕組みを、実際に作ってきた人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-2",
+      "text": "小さな店の経営者と、継続して話し合える立場で関われる人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-3",
+      "text": "地域の行事を企画し、人を集めてきた人。"
+     },
+     {
+      "ref": "viewer.need.p2.2-1",
+      "text": "古い大工道具の手入れに関心がある人。"
+     },
+     {
+      "ref": "viewer.offer.1",
+      "text": "表計算で在庫の表を作り、毎月の集計を引き受けてきた。"
+     },
+     {
+      "ref": "viewer.offer.2",
+      "text": "商店街の聞き取りを手伝える。"
+     },
+     {
+      "ref": "viewer.offer.3",
+      "text": "古い大工道具を、必要な人に貸し出せる。"
+     },
+     {
+      "ref": "viewer.interest.1",
+      "text": "古道具の修理"
+     },
+     {
+      "ref": "target.need.p1.1-1",
+      "text": "現場の声を集めて、改善の順番を一緒に決められる人。"
+     },
+     {
+      "ref": "target.offer.1",
+      "text": "飲食店の在庫と売上を記録するアプリを作ってきた。"
+     },
+     {
+      "ref": "target.offer.2",
+      "text": "店主と月に一度、数字を見ながら話し合う立場で関われる。"
+     },
+     {
+      "ref": "target.interest.1",
+      "text": "パン作り"
+     }
+    ],
+    "output_digest": "91d263724efb272ff4137f9038506626f19a7510f0f7701394ea3801cdce07f7"
+   }
+  },
+  {
+   "case": "2_resonance",
+   "viewer": "aoi",
+   "target": "minato",
+   "card": {
+    "schema_version": "expl-v0.4",
+    "relation_rule_version": "rel-v0.3",
+    "status": "explained",
+    "show_reason": null,
+    "as_of": {
+     "viewer": {
+      "profile": "profile-aoi-v1",
+      "necessity": "necessity-aoi-v1"
+     },
+     "target": {
+      "profile": "profile-minato-v1",
+      "necessity": "necessity-minato-v1"
+     }
+    },
+    "generation": {
+     "prompt1_sha": null,
+     "prompt2_sha": null,
+     "model": "fixed",
+     "revision": null,
+     "decoding": {
+      "temperature": 0
+     }
+    },
+    "target_has_purposes": true,
+    "purposes": [
+     {
+      "ref": "viewer.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "地域の小さな店が続けられる仕組みをつくりたい",
+      "kind": "補完",
+      "status": "not_covered",
+      "meaning": null,
+      "elements": [],
+      "unknown": [],
+      "missing_must": [
+       "viewer.need.p1.1-1",
+       "viewer.need.p1.1-2"
+      ]
+     },
+     {
+      "ref": "viewer.purpose.p2",
+      "order": 1,
+      "number": 2,
+      "title": "手仕事の道具について語り合える場がほしい",
+      "kind": "共鳴",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、古い大工道具の手入れと研ぎに親しむ人で、{N}の道具について語り合える場に関われる可能性があります。",
+       "cites": [
+        0
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "viewer.need.p2.2-1",
+        "must": false,
+        "need_quote": "古い大工道具の手入れ",
+        "offer_ref": "target.interest.1",
+        "offer_quote": "古い大工道具の手入れと研ぎ",
+        "relation": "R4"
+       }
+      ],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "reverse_purposes": [
+     {
+      "ref": "target.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "木工の教室を続けたい",
+      "kind": "補完",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、毎月の集計を引き受けてきた人で、{N}の教室の会計をまとめる仕組みに関われる可能性があります。",
+       "cites": [
+        0
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "target.need.p1.1-1",
+        "must": true,
+        "need_quote": "会計をまとめる仕組みを作ってきた",
+        "offer_ref": "viewer.offer.1",
+        "offer_quote": "毎月の集計を引き受けてきた",
+        "relation": "R1"
+       }
+      ],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "citations": [
+     {
+      "ref": "viewer.need.p1.1-1",
+      "text": "店の売上と在庫を毎日記録できる仕組みを、実際に作ってきた人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-2",
+      "text": "小さな店の経営者と、継続して話し合える立場で関われる人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-3",
+      "text": "地域の行事を企画し、人を集めてきた人。"
+     },
+     {
+      "ref": "viewer.need.p2.2-1",
+      "text": "古い大工道具の手入れに関心がある人。"
+     },
+     {
+      "ref": "viewer.offer.1",
+      "text": "表計算で在庫の表を作り、毎月の集計を引き受けてきた。"
+     },
+     {
+      "ref": "viewer.offer.2",
+      "text": "商店街の聞き取りを手伝える。"
+     },
+     {
+      "ref": "viewer.offer.3",
+      "text": "古い大工道具を、必要な人に貸し出せる。"
+     },
+     {
+      "ref": "viewer.interest.1",
+      "text": "古道具の修理"
+     },
+     {
+      "ref": "target.need.p1.1-1",
+      "text": "教室の申し込みと会計をまとめる仕組みを作ってきた人。"
+     },
+     {
+      "ref": "target.offer.1",
+      "text": "木工の教室で、道具の扱いを教えてきた。"
+     },
+     {
+      "ref": "target.interest.1",
+      "text": "古い大工道具の手入れと研ぎ"
+     }
+    ],
+    "output_digest": "a1d8a8fb78dd56c32c35c853d168ab128164410e1cac8c26b9789c4cc28ad763"
+   }
+  },
+  {
+   "case": "3_sparse",
+   "viewer": "aoi",
+   "target": "sora",
+   "card": {
+    "schema_version": "expl-v0.4",
+    "relation_rule_version": "rel-v0.3",
+    "status": "explained",
+    "show_reason": null,
+    "as_of": {
+     "viewer": {
+      "profile": "profile-aoi-v1",
+      "necessity": "necessity-aoi-v1"
+     },
+     "target": {
+      "profile": "profile-sora-v1",
+      "necessity": "necessity-sora-v1"
+     }
+    },
+    "generation": {
+     "prompt1_sha": null,
+     "prompt2_sha": null,
+     "model": "fixed",
+     "revision": null,
+     "decoding": {
+      "temperature": 0
+     }
+    },
+    "target_has_purposes": true,
+    "purposes": [
+     {
+      "ref": "viewer.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "地域の小さな店が続けられる仕組みをつくりたい",
+      "kind": "補完",
+      "status": "not_covered",
+      "meaning": null,
+      "elements": [],
+      "unknown": [],
+      "missing_must": [
+       "viewer.need.p1.1-1",
+       "viewer.need.p1.1-2"
+      ]
+     },
+     {
+      "ref": "viewer.purpose.p2",
+      "order": 1,
+      "number": 2,
+      "title": "手仕事の道具について語り合える場がほしい",
+      "kind": "共鳴",
+      "status": "not_covered",
+      "meaning": null,
+      "elements": [],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "reverse_purposes": [
+     {
+      "ref": "target.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "公園の花壇を増やしたい",
+      "kind": "補完",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、古い大工道具を貸し出せる人で、{N}の公園の花壇を増やすことに関われる可能性があります。",
+       "cites": [
+        0
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "target.need.p1.1-2",
+        "must": false,
+        "need_quote": "草花の手入れの道具を貸せる",
+        "offer_ref": "viewer.offer.3",
+        "offer_quote": "古い大工道具を、必要な人に貸し出せる",
+        "relation": "R3"
+       }
+      ],
+      "unknown": [
+       {
+        "need_ref": "target.need.p1.1-1",
+        "need_quote": "花壇の土づくりを教えられる"
+       }
+      ],
+      "missing_must": []
+     }
+    ],
+    "citations": [
+     {
+      "ref": "viewer.need.p1.1-1",
+      "text": "店の売上と在庫を毎日記録できる仕組みを、実際に作ってきた人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-2",
+      "text": "小さな店の経営者と、継続して話し合える立場で関われる人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-3",
+      "text": "地域の行事を企画し、人を集めてきた人。"
+     },
+     {
+      "ref": "viewer.need.p2.2-1",
+      "text": "古い大工道具の手入れに関心がある人。"
+     },
+     {
+      "ref": "viewer.offer.1",
+      "text": "表計算で在庫の表を作り、毎月の集計を引き受けてきた。"
+     },
+     {
+      "ref": "viewer.offer.2",
+      "text": "商店街の聞き取りを手伝える。"
+     },
+     {
+      "ref": "viewer.offer.3",
+      "text": "古い大工道具を、必要な人に貸し出せる。"
+     },
+     {
+      "ref": "viewer.interest.1",
+      "text": "古道具の修理"
+     },
+     {
+      "ref": "target.need.p1.1-1",
+      "text": "花壇の土づくりを教えられる人。"
+     },
+     {
+      "ref": "target.need.p1.1-2",
+      "text": "草花の手入れの道具を貸せる人。"
+     },
+     {
+      "ref": "target.offer.1",
+      "text": "毎朝、近所の公園を掃除してきた。"
+     }
+    ],
+    "output_digest": "3ec8f6ca4ffc1391daaf01d385ddfe426635826134a02b9b81c816c6c18a291c"
+   }
+  },
+  {
+   "case": "4_stale_supplemented",
+   "viewer": "aoi",
+   "target": "haru",
+   "card": {
+    "schema_version": "expl-v0.4",
+    "relation_rule_version": "rel-v0.3",
+    "status": "stale",
+    "show_reason": null,
+    "as_of": {
+     "viewer": {
+      "profile": "profile-aoi-v1",
+      "necessity": "necessity-aoi-v1"
+     },
+     "target": {
+      "profile": "profile-haru-v1",
+      "necessity": "necessity-haru-v1"
+     }
+    },
+    "generation": {
+     "prompt1_sha": null,
+     "prompt2_sha": null,
+     "model": "fixed",
+     "revision": null,
+     "decoding": {
+      "temperature": 0
+     }
+    },
+    "target_has_purposes": true,
+    "purposes": [
+     {
+      "ref": "viewer.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "地域の小さな店が続けられる仕組みをつくりたい",
+      "kind": "補完",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、在庫と売上を記録するアプリを作ってきた人で、{N}の店の仕組みづくりに関われる可能性があります。",
+       "cites": [
+        0,
+        1
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "viewer.need.p1.1-1",
+        "must": true,
+        "need_quote": "売上と在庫を毎日記録できる仕組み",
+        "offer_ref": "target.offer.1",
+        "offer_quote": "在庫と売上を記録するアプリを作ってきた",
+        "relation": "R1"
+       },
+       {
+        "need_ref": "viewer.need.p1.1-2",
+        "must": true,
+        "need_quote": "経営者と、継続して話し合える立場",
+        "offer_ref": "target.offer.2",
+        "offer_quote": "店主と月に一度、数字を見ながら話し合う立場で関われる",
+        "relation": "R2"
+       }
+      ],
+      "unknown": [
+       {
+        "need_ref": "viewer.need.p1.1-3",
+        "need_quote": "地域の行事を企画し、人を集めてきた"
+       }
+      ],
+      "missing_must": []
+     },
+     {
+      "ref": "viewer.purpose.p2",
+      "order": 1,
+      "number": 2,
+      "title": "手仕事の道具について語り合える場がほしい",
+      "kind": "共鳴",
+      "status": "not_covered",
+      "meaning": null,
+      "elements": [],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "reverse_purposes": [
+     {
+      "ref": "target.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "作ったものを使い続けてもらいたい",
+      "kind": "補完",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、商店街の聞き取りを手伝える人で、{N}の現場の声を集めることに関われる可能性があります。",
+       "cites": [
+        0
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "target.need.p1.1-1",
+        "must": true,
+        "need_quote": "現場の声を集めて",
+        "offer_ref": "viewer.offer.2",
+        "offer_quote": "商店街の聞き取りを手伝える",
+        "relation": "R2"
+       }
+      ],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "citations": [
+     {
+      "ref": "viewer.need.p1.1-1",
+      "text": "店の売上と在庫を毎日記録できる仕組みを、実際に作ってきた人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-2",
+      "text": "小さな店の経営者と、継続して話し合える立場で関われる人。"
+     },
+     {
+      "ref": "viewer.need.p1.1-3",
+      "text": "地域の行事を企画し、人を集めてきた人。"
+     },
+     {
+      "ref": "viewer.need.p2.2-1",
+      "text": "古い大工道具の手入れに関心がある人。"
+     },
+     {
+      "ref": "viewer.offer.1",
+      "text": "表計算で在庫の表を作り、毎月の集計を引き受けてきた。"
+     },
+     {
+      "ref": "viewer.offer.2",
+      "text": "商店街の聞き取りを手伝える。"
+     },
+     {
+      "ref": "viewer.offer.3",
+      "text": "古い大工道具を、必要な人に貸し出せる。"
+     },
+     {
+      "ref": "viewer.interest.1",
+      "text": "古道具の修理"
+     },
+     {
+      "ref": "target.need.p1.1-1",
+      "text": "現場の声を集めて、改善の順番を一緒に決められる人。"
+     },
+     {
+      "ref": "target.offer.1",
+      "text": "飲食店の在庫と売上を記録するアプリを作ってきた。"
+     },
+     {
+      "ref": "target.offer.2",
+      "text": "店主と月に一度、数字を見ながら話し合う立場で関われる。"
+     },
+     {
+      "ref": "target.interest.1",
+      "text": "パン作り"
+     }
+    ],
+    "stale": {
+     "approved_at": "2026-11-01",
+     "changed_refs": [
+      "target.offer.2"
+     ]
+    },
+    "supplements": [
+     {
+      "by": "target",
+      "text": "いまは月に一度ではなく、隔週で話し合っています。",
+      "at": "2026-11-05"
+     }
+    ],
+    "output_digest": "9bd39396f3331ea3b0ffa0bb1e20655ba1d18abd71a9363abb42429d77921df4"
+   }
+  },
+  {
+   "case": "5_same_target_other_viewer",
+   "viewer": "minato",
+   "target": "haru",
+   "card": {
+    "schema_version": "expl-v0.4",
+    "relation_rule_version": "rel-v0.3",
+    "status": "explained",
+    "show_reason": null,
+    "as_of": {
+     "viewer": {
+      "profile": "profile-minato-v1",
+      "necessity": "necessity-minato-v1"
+     },
+     "target": {
+      "profile": "profile-haru-v1",
+      "necessity": "necessity-haru-v1"
+     }
+    },
+    "generation": {
+     "prompt1_sha": null,
+     "prompt2_sha": null,
+     "model": "fixed",
+     "revision": null,
+     "decoding": {
+      "temperature": 0
+     }
+    },
+    "target_has_purposes": true,
+    "purposes": [
+     {
+      "ref": "viewer.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "木工の教室を続けたい",
+      "kind": "補完",
+      "status": "explained",
+      "meaning": {
+       "text": "{O}は、在庫と売上を記録するアプリを作ってきた人で、{N}の教室の申し込みと会計をまとめる仕組みに関われる可能性があります。",
+       "cites": [
+        0
+       ]
+      },
+      "elements": [
+       {
+        "need_ref": "viewer.need.p1.1-1",
+        "must": true,
+        "need_quote": "申し込みと会計をまとめる仕組みを作ってきた",
+        "offer_ref": "target.offer.1",
+        "offer_quote": "在庫と売上を記録するアプリを作ってきた",
+        "relation": "R1"
+       }
+      ],
+      "unknown": [],
+      "missing_must": []
+     }
+    ],
+    "reverse_purposes": [
+     {
+      "ref": "target.purpose.p1",
+      "order": 0,
+      "number": 1,
+      "title": "作ったものを使い続けてもらいたい",
+      "kind": "補完",
+      "status": "not_covered",
+      "meaning": null,
+      "elements": [],
+      "unknown": [],
+      "missing_must": [
+       "target.need.p1.1-1"
+      ]
+     }
+    ],
+    "citations": [
+     {
+      "ref": "viewer.need.p1.1-1",
+      "text": "教室の申し込みと会計をまとめる仕組みを作ってきた人。"
+     },
+     {
+      "ref": "viewer.offer.1",
+      "text": "木工の教室で、道具の扱いを教えてきた。"
+     },
+     {
+      "ref": "viewer.interest.1",
+      "text": "古い大工道具の手入れと研ぎ"
+     },
+     {
+      "ref": "target.need.p1.1-1",
+      "text": "現場の声を集めて、改善の順番を一緒に決められる人。"
+     },
+     {
+      "ref": "target.offer.1",
+      "text": "飲食店の在庫と売上を記録するアプリを作ってきた。"
+     },
+     {
+      "ref": "target.offer.2",
+      "text": "店主と月に一度、数字を見ながら話し合う立場で関われる。"
+     },
+     {
+      "ref": "target.interest.1",
+      "text": "パン作り"
+     }
+    ],
+    "output_digest": "1348e17f5d250b841ef06a0a353ed0e75ff78be8cf3461f0787b4e20a7236c38"
+   }
+  }
+ ]
+}

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pox:explanation-card:expl-v0.4",
+  "title": "接続の説明のカード（1 組＝見る人 × 相手）",
+  "description": "指示書68 §1-1・生成仕様 expl-v0.4（docs/explanation_spec_v0.4.md）§2〜§4・§12-2・§12-3。purposes は見る人の目的 × 相手の文（{N}＝見る人・{O}＝相手）、reverse_purposes は相手の目的 × 見る人の文（{N}＝相手・{O}＝見る人）。本文に名前や「あなた」を持たない（呼び方は記号 {N}・{O}）。数値（g・gate・スコア）を持たない。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "relation_rule_version", "status", "show_reason", "as_of", "generation",
+               "target_has_purposes", "purposes", "reverse_purposes", "citations", "output_digest"],
+  "properties": {
+    "schema_version": {"const": "expl-v0.4"},
+    "relation_rule_version": {"const": "rel-v0.3"},
+    "status": {"enum": ["pending", "explained", "not_covered", "stale", "supplemented", "deleted", "superseded"],
+               "description": "カード全体の状態（仕様 §12-2）。pending は出さない（「準備中」と出さない）"},
+    "show_reason": {"enum": [null, "no_pair", "quote_failed", "model_declined"],
+                    "description": "表示しない理由（監査用。画面に出さない）"},
+    "as_of": {
+      "type": "object", "additionalProperties": false, "required": ["viewer", "target"],
+      "properties": {"viewer": {"$ref": "#/$defs/asof"}, "target": {"$ref": "#/$defs/asof"}}
+    },
+    "generation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["prompt1_sha", "prompt2_sha", "model", "revision", "decoding"],
+      "properties": {
+        "prompt1_sha": {"type": ["string", "null"]},
+        "prompt2_sha": {"type": ["string", "null"]},
+        "model": {"type": "string", "description": "段階1は固定のデータ（\"fixed\"）"},
+        "revision": {"type": ["string", "null"]},
+        "decoding": {"type": "object"}
+      }
+    },
+    "target_has_purposes": {"type": "boolean", "description": "相手に目的の欄があるか（v4 は false。⑥の見出しを「〇〇さんが求めている相手」にする）"},
+    "purposes": {"type": "array", "items": {"$ref": "#/$defs/purpose"}},
+    "reverse_purposes": {"type": "array", "items": {"$ref": "#/$defs/purpose"}},
+    "citations": {
+      "type": "array", "description": "引用の元の欄（参照の名前と原文）。②③の句はこの原文の連続した部分",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["ref", "text"],
+        "properties": {"ref": {"$ref": "#/$defs/ref"}, "text": {"type": "string", "minLength": 1}}
+      }
+    },
+    "supplements": {
+      "type": "array", "description": "補足（本人の言葉。仕様 §12-1）",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["by", "text", "at"],
+        "properties": {"by": {"enum": ["viewer", "target"]}, "text": {"type": "string", "minLength": 1, "maxLength": 400},
+                       "at": {"type": "string", "format": "date"}}
+      }
+    },
+    "stale": {
+      "type": "object", "additionalProperties": false, "required": ["approved_at", "changed_refs"],
+      "description": "承認時の説明（日付）と、現在のプロフィールと違う欄",
+      "properties": {"approved_at": {"type": "string", "format": "date"},
+                     "changed_refs": {"type": "array", "items": {"$ref": "#/$defs/ref"}}}
+    },
+    "output_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$",
+                      "description": "output_digest を除いたカードを正準化した JSON の sha256（explanation.output_digest）"}
+  },
+  "$defs": {
+    "ref": {"type": "string", "pattern": "^(viewer|target)\\.(purpose|need|offer|state|interest)\\.[^\\s]+$"},
+    "quote": {"type": "string", "minLength": 1, "maxLength": 40},
+    "asof": {
+      "type": "object", "additionalProperties": false, "required": ["profile", "necessity"],
+      "properties": {"profile": {"type": "string"}, "necessity": {"type": ["string", "null"]}}
+    },
+    "purpose": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "order", "number", "title", "kind", "status", "meaning", "elements", "unknown", "missing_must"],
+      "properties": {
+        "ref": {"type": "string", "pattern": "^(viewer|target)\\.purpose\\.p[0-9]+$"},
+        "order": {"type": "integer", "minimum": 0, "description": "プロフィールの並び順（成否で並べ替えない）"},
+        "number": {"type": "integer", "minimum": 1, "description": "画面の「目的 N」"},
+        "title": {"type": "string", "description": "見出し（目的の向かう先）"},
+        "kind": {"enum": ["補完", "共鳴"]},
+        "status": {"enum": ["pending", "explained", "not_covered"]},
+        "meaning": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "additionalProperties": false, "required": ["text", "cites"],
+             "properties": {"text": {"type": "string", "minLength": 1},
+                            "cites": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 0}}}}
+          ]
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["need_ref", "must", "need_quote", "offer_ref", "offer_quote", "relation"],
+            "properties": {
+              "need_ref": {"$ref": "#/$defs/ref"}, "must": {"type": "boolean"},
+              "need_quote": {"$ref": "#/$defs/quote"},
+              "offer_ref": {"$ref": "#/$defs/ref"}, "offer_quote": {"$ref": "#/$defs/quote"},
+              "relation": {"enum": ["R1", "R2", "R3", "R4"]}
+            }
+          }
+        },
+        "unknown": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": false, "required": ["need_ref", "need_quote"],
+                    "properties": {"need_ref": {"$ref": "#/$defs/ref"}, "need_quote": {"$ref": "#/$defs/quote"}}}
+        },
+        "missing_must": {"type": "array", "items": {"$ref": "#/$defs/ref"}}
+      }
+    }
+  }
+}

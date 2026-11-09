@@ -634,3 +634,18 @@
 | 383 | `test_t383_all_restores_current_behavior`（all に戻すといまの振る舞い。知らない値は related） |
 | 384 | `test_t384_upper_still_computed_and_audit_sees_it`（related でも上層の計算をする。監査のルート（トークン必須）では成立が見える） |
 | 385 | `test_t385_lower_layer_flag_stays_closed`（下層の表示のフラグは閉じたまま） |
+
+### 68 接続の説明・段階1（契約・確かめ・レンダラ）— `tests/test_t68_explanation.py`
+
+| 項目 | テスト（指示書68 §7。合成データは架空の人だけ） |
+|---|---|
+| 387 | `test_t387_schema_accepts_fixtures_and_rejects_bad`（§7-1: スキーマに通る・形の違うもの（版なし・ラベルの外・40 字超・状態の外・数値の欄・種類の外）を弾く・output_digest） |
+| 388 | `test_t388_reader_wording`（§7-2: 画面1・2 は「あなた」「〇〇さん」、画面3 は両方ともユーザー名。記号が残らない。本文に名前・「あなた」を持たない） |
+| 389 | `test_t389_purpose_order_is_profile_order`（§7-3: 目的はプロフィールの順。成否・JSON の並びで変わらない） |
+| 390 | `test_t390_failed_checks_are_not_shown`（§7-4: 引用の実在・句の長さ・R1/R2 の述語・補充しない・禁止の語・呼び方・閉じた語彙・数値。落ちた部分を出さない。補完で R4 だけは explained にしない） |
+| 391 | `test_t391_screen3_is_saved_screen2_with_names_only`（§7-5: 画面2 で保存した表示を、画面3 は呼び方の置き換えだけで描く。再生成しない） |
+| 392 | `test_t392_states_render_without_breaking`（§7-12: 状態（stale・補足あり・deleted・pending・疎・v4 の相手）で崩れない。pending と explained の無いカードは出さない） |
+| 393 | `test_t393_no_upper_badge_no_numbers_and_footer`（§7-13: 上層の印を出さない・数値を出さない・AI の説明の注記と「補足する」・LLM を使わない） |
+| 394 | `test_t394_resonance_labelled_not_complement`（補完と共鳴の区別。R4 は「補完ではない」） |
+| 395 | `test_t395_same_target_two_viewers_differ`（§5-1 の 5: 同じ相手を 2 人の見る人から見て説明が違う） |
+| 396 | `test_t396_quotes_open_original_in_one_step`（根拠の印から原文を 1 回の操作で開ける。句は原文の連続した部分） |

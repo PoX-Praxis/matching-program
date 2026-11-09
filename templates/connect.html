@@ -163,10 +163,16 @@ async function loadRecommendations() {
   runId = data.match_run_id || null;
   upperScope = data.upper_scope || "all";
   if (!results.length) {
-    renderGroups(groups, cards);                     // 結果が無くても目的ごとの表（目的全体の文言）は出す
-    // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
-    status.innerHTML = `<div class="notice">まだ照合できる相手がいません。
-      <a href="#directory">登録者一覧を見る →</a></div>`;
+    if (upperScope === "related") {
+      // 上層の印の保留中（指示書67・KAORU の決定 2026-11-10 案 A）: 目的ごとの見出しは出さず、0 件の文言だけを差し替える
+      status.innerHTML = `<div class="notice">${RELATED_ZERO_TEXT}
+        <a href="#directory">登録者一覧を見る →</a></div>`;
+    } else {
+      renderGroups(groups, cards);                   // 結果が無くても目的ごとの表（目的全体の文言）は出す
+      // 0 件のときは本人の側の理由だけを 1 行（相手ごとの除外理由は出さない。指示書56 §1）
+      status.innerHTML = `<div class="notice">まだ照合できる相手がいません。
+        <a href="#directory">登録者一覧を見る →</a></div>`;
+    }
     if (data.partial_pool) status.insertAdjacentHTML("beforeend", PARTIAL_POOL_HTML);
     // 自分宛ての未承認の申し出があれば受信箱へ（本人の未処理の通知。相手ごとの除外理由ではない。指示書58 1-4）
     const offers = await PoXReason.fetchOffers();
@@ -190,6 +196,8 @@ async function loadRecommendations() {
    - 要素の行（この要素に応える人／見つかりませんでした）は、下層の表示が開いているとき（サーバーが elements を返す）だけ */
 const NO_MUST_TEXT = "この目的には欠かせない要素がありません";
 const NO_UPPER_TEXT = "いまは、この目的をすべて満たす相手はいません";
+/* 上層の印の保留中（upper_scope が related）の 0 件の文言（指示書67・KAORU の決定 2026-11-10 案 A） */
+const RELATED_ZERO_TEXT = "照合の結果の出し方を見直しています。いまは、登録者一覧から相手を探せます。";
 const NO_ELEMENT_TEXT = "この要素に応える人が見つかりませんでした";
 function elementRows(g) {
   if (!Array.isArray(g.elements)) return "";

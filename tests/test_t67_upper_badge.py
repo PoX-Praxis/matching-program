@@ -53,6 +53,12 @@ def test_t381_related_hides_upper_for_unrelated(world2, related):
     html = _html()
     assert '(!res.length && upperScope !== "related")' in html
     assert 'upperScope = data.upper_scope || "all";' in html
+    # 0 件のとき（KAORU の決定・案 A）: related では目的ごとの見出しを出さず、文言だけを差し替える
+    assert 'const RELATED_ZERO_TEXT = "照合の結果の出し方を見直しています。いまは、登録者一覧から相手を探せます。";' in html
+    zero = html[html.index("if (!results.length) {"):html.index("status.innerHTML = \"\";")]
+    rel, other = zero.split("} else {")[0], zero.split("} else {")[1]
+    assert "RELATED_ZERO_TEXT" in rel and "renderGroups" not in rel                 # 見出し（目的ごとの表）を出さない
+    assert "renderGroups(groups, cards)" in other and "まだ照合できる相手がいません" in other   # all はいまのまま
 
 
 # ── 382 related: 申し出中・承認待ち・接続中の組では、いまと同じ表示 ─────────────────────────────────────

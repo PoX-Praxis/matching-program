@@ -543,9 +543,13 @@ def generate_direction(n_person, o_person, backend, bound_allowed=False, trace=N
     final, probs = X.check(X.assemble(direction, None, True))
     problems += probs
     direction["purposes"] = [_purpose_to_dir(p) for p in final["purposes"]]
-    if show_reason is None and not any(p["status"] == "explained" for p in direction["purposes"]):
-        show_reason = "no_pair" if produced == 0 else ("quote_failed" if not any(p["elements"] for p in direction["purposes"])
-                                                       else None)
+    if not any(p["status"] == "explained" for p in direction["purposes"]):
+        meaning_failed = any("① を出さない" in x or "① が無い" in x or "この目的の説明を出さない" in x for x in problems)
+        if meaning_failed and show_reason in (None, "quote_failed"):
+            show_reason = "meaning_failed"             # 組は確かめを通ったが、① が確かめに落ちた（記録だけ。スキーマの 3 つに足した）
+        elif show_reason is None:
+            show_reason = "no_pair" if produced == 0 else (
+                "quote_failed" if not any(p["elements"] for p in direction["purposes"]) else None)
     return {"direction": direction, "show_reason": show_reason, "problems": problems, "n_hash": ns["hash"],
             "o_hash": os_["hash"], "bound_used": ns["bound_used"], "output_digest": _canon_hash(direction)}
 

@@ -171,6 +171,7 @@ def test_t412_injection_is_dropped():
         assert bad not in blob, bad
     assert any("組 0 を出さない" in x and ("禁止の語" in x or "命令形" in x or "連絡先" in x) for x in res["problems"])
     assert any("① を出さない" in x for x in res["problems"])                       # ① も落ちる（その目的は出さない）
+    assert res["show_reason"] == "meaning_failed"                               # 組は通ったが ① が落ちた（記録だけ）
     assert res["direction"]["purposes"] == [] and not X.showable(X.check(X.assemble(res["direction"], None, True))[0])
     # 決まりの形・句に無い語の ① も落ちる
     d = {"purposes": [{"ref": "N.purpose.p1", "order": 0, "number": 1, "title": "店を続けたい", "kind": "補完",

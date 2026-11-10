@@ -46,6 +46,7 @@ NOT_COVERED_TEXT = "欠かせない要素（{keys}）に当たる文は、{who}�
 UNKNOWN_TEXT = "「{quote}」に当たる経験は、{who}の公開の文の中には見つかりません"
 FOOTER_TEXT = "AI による説明です。根拠は二人の公開の文です。機械の確かめは正しさを保証しません。"
 DELETED_TEXT = "本文は削除されました"
+SUPPLEMENT_BUTTON = '<button type="button" class="ex-supp-btn">補足する ›</button>'
 HIDDEN_STATUSES = ("pending",)
 
 
@@ -225,14 +226,16 @@ def _ref_label(ref):
     return f"{V if side == 'viewer' else T}の{_REF_KIND.get(kind, kind)}（{_e(rest.split('.')[-1])}）"
 
 
-def _purpose_html(p, n, o, src, reverse):
+def _purpose_html(p, n, o, src, reverse, has_purposes=True):
     if p["status"] == "pending":
         return ""
     has_must = any(e["must"] for e in p["elements"]) or bool(p["missing_must"])
     if not p["elements"] and not has_must:
         return ""                                       # 欠かせない要素が無く、組も無い目的は出さない（仕様 §4-2）
-    owner = n
-    head = f'<h4 class="ex-ph">■ {owner}の目的{p["number"]}「{_e(p["title"])}」について</h4>'
+    if reverse and not has_purposes:                    # 相手が v4（目的が無い）: 求めている相手の文を見出しにする（仕様 §4-6）
+        head = f'<h4 class="ex-ph">■ {n}が求めている相手『{_e(p["title"])}』について</h4>'
+    else:
+        head = f'<h4 class="ex-ph">■ {n}の目的{p["number"]}「{_e(p["title"])}」について</h4>'
     body = []
     if p["status"] == "not_covered" or (p["status"] != "explained" and p["missing_must"]):
         keys = "・".join(_elem_key(m) for m in p["missing_must"]) or "—"
@@ -278,7 +281,7 @@ def render_symbolic(card, names=()):
     # 目的はプロフィールの順で固定（成否で並べ替えない。仕様 §4-2）
     for p in sorted(checked["purposes"], key=lambda x: x["order"]):
         parts.append(_purpose_html(p, V, T, src, reverse=False))
-    rev = [h for h in (_purpose_html(p, T, V, src, reverse=True)
+    rev = [h for h in (_purpose_html(p, T, V, src, reverse=True, has_purposes=checked["target_has_purposes"])
                        for p in sorted(checked["reverse_purposes"], key=lambda x: x["order"])) if h]
     if rev:
         head = f"{T}から見た{V}" if checked["target_has_purposes"] else f"{T}が求めている相手"
@@ -286,8 +289,7 @@ def render_symbolic(card, names=()):
     for s in checked.get("supplements") or []:
         who = V if s["by"] == "viewer" else T
         parts.append(f'<p class="ex-supp">{who}の補足（{_e(s["at"])}）：「{_e(s["text"])}」</p>')
-    parts.append(f'<p class="ex-foot">{FOOTER_TEXT}</p>'
-                 '<button type="button" class="ex-supp-btn">補足する ›</button>')
+    parts.append(f'<p class="ex-foot">{FOOTER_TEXT}</p>' + SUPPLEMENT_BUTTON)
     return (f'<section class="ex-card" data-schema="{SCHEMA_VERSION}" data-status="{_e(checked["status"])}">'
             + "".join(x for x in parts if x) + "</section>")
 
@@ -310,3 +312,102 @@ def personalize(symbolic_html, reader, names):
 def render(card, reader, names):
     """確かめ → 記号のままの HTML → 置き換え。"""
     return personalize(render_symbolic(card, names=tuple(names.values())), reader, names)
+
+
+# ── 向きのレコード（指示書68 §1-2: 説明は向きごとに 1 つ。画面で組み立てる）──────────────────────────
+# 向き＝誰の目的 × 誰の文。記号は N（必要を出した側）・O（文を出した側）。カードの viewer／target には、
+# 組み立てるときに置き換える。A の目的 × B の文 の向きは、A の画面の本体と、B の画面の「A さんから見た B さん」の両方に使う。
+DIRECTION_FIELDS = ("purposes", "citations", "as_of", "generation")
+
+
+def _swap_ref(ref, mapping):
+    side, rest = ref.split(".", 1)
+    return f"{mapping[side]}.{rest}"
+
+
+def _map_purposes(purposes, mapping):
+    out = []
+    for p in purposes:
+        q = json.loads(json.dumps(p))
+        q["ref"] = _swap_ref(q["ref"], mapping)
+        for e in q["elements"]:
+            e["need_ref"], e["offer_ref"] = _swap_ref(e["need_ref"], mapping), _swap_ref(e["offer_ref"], mapping)
+        for u in q["unknown"]:
+            u["need_ref"] = _swap_ref(u["need_ref"], mapping)
+        q["missing_must"] = [_swap_ref(m, mapping) for m in q["missing_must"]]
+        out.append(q)
+    return out
+
+
+def split_card(card):
+    """カード（見る人 × 相手）を、向きのレコード 2 つ（見る人の目的 × 相手の文・相手の目的 × 見る人の文）に分ける。
+    引用は、必要・目的の欄は N の側の向きに、文の欄（offer・state・interest）は O の側の向きに入れる。"""
+    fwd = {"purposes": _map_purposes(card["purposes"], {"viewer": "N", "target": "O"}), "citations": [],
+           "as_of": {"need": card["as_of"]["viewer"], "offer": card["as_of"]["target"]}, "generation": card["generation"]}
+    rev = {"purposes": _map_purposes(card["reverse_purposes"], {"target": "N", "viewer": "O"}), "citations": [],
+           "as_of": {"need": card["as_of"]["target"], "offer": card["as_of"]["viewer"]}, "generation": card["generation"]}
+    for c in card["citations"]:
+        side, kind, _ = _side_parts(c["ref"])
+        need_side = kind in ("need", "purpose")
+        to_fwd = (side == "viewer") == need_side
+        d, m = (fwd, {"viewer": "N", "target": "O"}) if to_fwd else (rev, {"target": "N", "viewer": "O"})
+        d["citations"].append({"ref": _swap_ref(c["ref"], m), "text": c["text"]})
+    return fwd, rev
+
+
+def assemble(fwd, rev, target_has_purposes=True):
+    """向きのレコード 2 つ（fwd＝見る人の目的 × 相手の文・rev＝相手の目的 × 見る人の文。無ければ None）から、
+    見る人 × 相手のカードを組み立てる。output_digest を付けて返す。どちらも無ければ None。"""
+    if not fwd and not rev:
+        return None
+    fm, rm = {"N": "viewer", "O": "target"}, {"N": "target", "O": "viewer"}
+    cites, seen = [], set()
+    for d, m in ((fwd, fm), (rev, rm)):
+        for c in (d or {}).get("citations") or []:
+            ref = _swap_ref(c["ref"], m)
+            if ref not in seen:
+                seen.add(ref)
+                cites.append({"ref": ref, "text": c["text"]})
+    base = fwd or rev
+    as_of = {"viewer": (fwd or {}).get("as_of", {}).get("need") or (rev or {}).get("as_of", {}).get("offer") or {},
+             "target": (fwd or {}).get("as_of", {}).get("offer") or (rev or {}).get("as_of", {}).get("need") or {}}
+    purposes = _map_purposes((fwd or {}).get("purposes") or [], fm)
+    reverse = _map_purposes((rev or {}).get("purposes") or [], rm)
+    status = "explained" if any(p["status"] == "explained" for p in purposes + reverse) else "not_covered"
+    card = {"schema_version": SCHEMA_VERSION, "relation_rule_version": RELATION_RULE_VERSION, "status": status,
+            "show_reason": None, "as_of": as_of, "generation": base["generation"],
+            "target_has_purposes": bool(target_has_purposes), "purposes": purposes, "reverse_purposes": reverse,
+            "citations": cites}
+    card["output_digest"] = output_digest(card)
+    return card
+
+
+def short_form(card, names=()):
+    """一覧の短い形（指示書68 §2-2）: 説明のある目的の見出しと ① の 1 文（記号のまま・HTML エスケープ済み）。
+    見る人の目的を先に、無ければ逆の向き。確かめを通った部分だけ。出すものが無ければ None。"""
+    checked, _ = check(card, names=names)
+    if not showable(checked) or checked["status"] == "deleted":
+        return None
+    def items_of(purposes, n, o, reverse):
+        out = []
+        for p in sorted(purposes, key=lambda x: x["order"]):
+            if p["status"] != "explained":
+                continue
+            first = next((x for x in re.split(r"(?<=。)", p["meaning"]["text"]) if x.strip()), "")
+            if reverse and not checked["target_has_purposes"]:
+                head = f"{n}が求めている相手『{_e(p['title'])}』"
+            else:
+                head = f"{n}の目的{p['number']}「{_e(p['title'])}」"
+            out.append({"head": head, "meaning": _sym(first, n, o), "reverse": reverse})
+        return out
+    # 見る人の目的の説明を先に。無ければ、相手の目的 × 見る人の文（逆の向き）の説明を出す
+    return items_of(checked["purposes"], V, T, False) or items_of(checked["reverse_purposes"], T, V, True) or None
+
+
+def supplements_html(supplements):
+    """承認のときの補足（本人の言葉）を、記号のままの HTML にする（⟦V⟧＝申請した人・⟦T⟧＝承認した人）。"""
+    out = []
+    for s in supplements:
+        who = V if s["by"] == "viewer" else T
+        out.append(f'<p class="ex-supp">{who}の補足（{_e(s["at"])}）：「{_e(s["text"])}」</p>')
+    return "".join(out)

@@ -51,6 +51,7 @@
   .muted { color: #888; font-size: 13px; }
 </style>
 {% include "_match_reason.html" %}
+{% include "_explanation.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-wide">
@@ -64,6 +65,14 @@
 <!-- 照合の結果の下に常に出す（指示書63 段階1 §4-5。申し出が届いている相手は照合の結果から外している）。 -->
 <p class="inbox-note" id="inboxNote" style="display:none">申し出が届いている相手は、ここではなく
   <a href="/inbox">受信箱</a>に出ます。</p>
+
+<!-- 接続の説明の一覧（指示書68 §2-2）。相手ごとに短い形（名前・目的の見出し・① の 1 文）。開くと相手のプロフィール。
+     10 件ずつ。並びは中立。説明が無い相手は出さない（「準備中」と出さない）。フラグが off なら出さない。 -->
+<section id="explainList" style="display:none">
+  <h2>説明のある相手</h2>
+  <div id="explainItems"></div>
+  <div class="ex-pager" id="explainPager"></div>
+</section>
 
 <h2>登録者一覧</h2>
 <p class="sub">気になる人のプロフィールから直接つながれます。</p>
@@ -333,7 +342,24 @@ function renderDirectory() {
     </div>`).join("");
 }
 
-PoX.me().then(function(s){ sid = s; return loadDirectory(); }).then(loadRecommendations);
+/* 接続の説明の一覧（指示書68 §2-2）。0 件なら欄ごと出さない。 */
+async function loadExplainList(page) {
+  const sec = document.getElementById("explainList");
+  if (!sid) { sec.style.display = "none"; return; }
+  try {
+    const r = await fetch(`/api/explanations/list?page=${page || 0}`);
+    if (!r.ok) { sec.style.display = "none"; return; }
+    const d = await r.json();
+    if (d.status !== "ok" || (!d.items.length && !d.has_prev)) { sec.style.display = "none"; return; }
+    document.getElementById("explainItems").innerHTML = d.items.map(PoXExplain.listItemHtml).join("");
+    document.getElementById("explainPager").innerHTML =
+      (d.has_prev ? `<button type="button" onclick="loadExplainList(${d.page - 1})">‹ 前の 10 件</button>` : "") +
+      (d.has_next ? `<button type="button" onclick="loadExplainList(${d.page + 1})">次の 10 件 ›</button>` : "");
+    sec.style.display = "";
+  } catch (e) { sec.style.display = "none"; }
+}
+
+PoX.me().then(function(s){ sid = s; loadExplainList(0); return loadDirectory(); }).then(loadRecommendations);
 </script>
 </main>
 {% endblock %}

@@ -30,6 +30,7 @@
 {% include "_profile_view.html" %}
 {% include "_trajectory.html" %}
 {% include "_match_reason.html" %}
+{% include "_explanation.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-prose pv">
@@ -48,6 +49,12 @@
       <div class="pv-blkcap" style="margin-bottom:4px">あなたの必要から見た、この人</div>
       <div id="previewBody"></div>
     </div>
+    <!-- 接続の説明（指示書68 画面1）。フラグと許可リストを通った組だけ、上の欄の代わりに出す。
+         つながった後は、承認の時に二人が見た表示（と補足）を出す。本文はサーバーのレンダラが作る。 -->
+    <div id="explainBox" style="display:none;margin-bottom:12px">
+      <p class="ex-who" id="explainWho"></p>
+      <div id="explainBody"></div>
+    </div>
     <!-- 申し出の文（任意・400 字まで）。受け取った本人だけが読める。接続前は申し出だけを送れる（DM は成立後）。 -->
     <div id="offerBox" style="display:none;margin-bottom:10px">
       <!-- どの目的の申し出か（指示書57。自分の目的が 2 つ以上あるときだけ選ぶ） -->
@@ -64,6 +71,7 @@
       <a href="/inbox">受信箱で応える</a></p>
     <div style="display:flex;gap:10px;flex-wrap:wrap" id="connectActions">
       <button class="btn btn-connect" id="btnOffer" onclick="doConnect(this)">つながりたいと伝える</button>
+      <button class="btn btn-connect" id="btnExplainOffer" style="display:none" onclick="doConnect(this)">内容を確認して申請する</button>
       <button class="btn btn-msg" id="btnWithdraw" style="display:none" onclick="doWithdraw(this)">取り下げる</button>
       <button class="btn btn-msg" id="btnDm" style="display:none" onclick="sendMsg()">メッセージを送る</button>
     </div>
@@ -127,9 +135,15 @@ async function refreshConnectState() {
   const $ = id => document.getElementById(id);
   const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
   $("btnOffer").disabled = false;
+  $("btnExplainOffer").disabled = false;
   // 申し出る前の根拠（指示書65B-4）。見送りが効いている相手には出さない（サーバーも 403）。
-  if (state !== "declined_out" && state !== "declined_in") loadPreview(); else show("previewBox", false);
-  show("btnOffer", state === "none");
+  // 接続の説明（指示書68）が出る組では、その欄の代わりに説明を出す（フラグが off なら今と同じ）。
+  if (state !== "declined_out" && state !== "declined_in") {
+    if (await loadExplanation()) show("previewBox", false); else { show("explainBox", false); loadPreview(); }
+  } else { show("previewBox", false); show("explainBox", false); explainDigest = null; }
+  const withExplain = !!explainDigest && state === "none";
+  show("btnOffer", state === "none" && !withExplain);
+  show("btnExplainOffer", withExplain);
   show("offerBox", state === "none");
   if (state === "none") loadMyPurposes();
   show("btnWithdraw", state === "pending_out");
@@ -142,6 +156,39 @@ async function refreshConnectState() {
                      : state === "declined_out" ? "今回は見送られました。どちらかがプロフィールを作り直すと、もう一度申し出られます。"
                      : state === "declined_in" ? "この人からの申し出を見送りました。どちらかがプロフィールを作り直すと、申し出られるようになります。"
                      : "";
+}
+
+/* 接続の説明（指示書68 画面1）。off なら false（今と同じ欄を出す）。ok・approved なら描いて true。none なら出さずに true。 */
+let explainDigest = null;
+async function loadExplanation() {
+  const $ = id => document.getElementById(id);
+  explainDigest = null;
+  try {
+    const r = await fetch(`/api/explanations/card?with=${encodeURIComponent(profileId)}`);
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (d.status === "off") return false;
+    if (d.status !== "ok" && d.status !== "approved") { $("explainBox").style.display = "none"; return true; }
+    $("explainWho").textContent = d.status === "approved"
+      ? `承認の時に二人が見た説明です（${d.approved_at}）` : `${d.target_name} さん`;
+    $("explainBody").innerHTML = d.html;                  // サーバーのレンダラの出力（エスケープ済み）
+    if (d.status === "ok") {
+      explainDigest = d.card_digest;
+      PoXExplain.wireSupplement($("explainBody"), {
+        note: "あなたの文の言い換えについての補足です（400 字まで）。運営だけが読み、相手には届きません。",
+        onSend: sendSelfSupplement });
+    }
+    $("explainBox").style.display = "";
+    return true;
+  } catch (e) { return false; }
+}
+
+async function sendSelfSupplement(text) {
+  try {
+    const r = await fetch("/api/explanations/supplement", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_id: profileId, text }) });
+    return r.ok;
+  } catch (e) { return false; }
 }
 
 /* 申し出る前の根拠（指示書65B-4）。自分 × この人だけ。取れなければ欄を出さない。 */
@@ -172,12 +219,18 @@ async function doConnect(btn) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to_id: profileId, channel: "profile",
                              purpose_id: document.getElementById("offerPurpose").value || null,
-                             message: (document.getElementById("offerMsg").value || "").trim() }),
+                             message: (document.getElementById("offerMsg").value || "").trim(),
+                             // 画面2: 読んだ説明（カードの版）を添える。説明が新しくなっていれば申請しない（409）
+                             explanation_digest: explainDigest }),
     });
     if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
     const aData = await aRes.json();
     if (!aRes.ok) {
       if (aData.error === "declined") { refreshConnectState(); return; }   // 見送られている（画面の状態を合わせる）
+      if (aData.error === "explanation_changed") {          // 説明が新しくなった。読み直してから申請する
+        notice.className = "err"; notice.textContent = aData.message;
+        if (btn) btn.disabled = false; refreshConnectState(); return;
+      }
       notice.className = "err";
       notice.textContent = "送信できませんでした: " + (aData.error || aRes.status);
       if (btn) btn.disabled = false; return;

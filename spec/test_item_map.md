@@ -649,3 +649,18 @@
 | 394 | `test_t394_resonance_labelled_not_complement`（補完と共鳴の区別。R4 は「補完ではない」） |
 | 395 | `test_t395_same_target_two_viewers_differ`（§5-1 の 5: 同じ相手を 2 人の見る人から見て説明が違う） |
 | 396 | `test_t396_quotes_open_original_in_one_step`（根拠の印から原文を 1 回の操作で開ける。句は原文の連続した部分） |
+
+### 68 §9-3（接続の説明の画面1〜3・保存・フラグ）— `tests/test_t68_screens.py`
+
+| 項目 | テスト（指示書68 §7 の 5〜12・§1-2・§4-6。合成データは架空の人だけ） |
+|---|---|
+| 399 | `test_t399_screen2_saves_and_screen3_needs_confirmation`（§7-5・6: 読んだ版と違えば申請しない（409）・画面2 の表示をそのまま保存（鍵付きのハッシュ）・画面3 は名前だけで再生成しない・確認のチェックが無いと承認できない） |
+| 400 | `test_t400_decline_without_confirmation`（§7-6: 見送りは確認なしでできる） |
+| 401 | `test_t401_approve_supplement_shown_after_connected`（§7-7: 補足つきの承認（400 字まで）が保存され、接続の画面に出る。読む人ごとの呼び方・承認の後は「補足する」を置かない） |
+| 402 | `test_t402_decline_supplement_delivered_once_and_render_deleted`（§7-7・8: 補足つきの見送りは申請した人に一度だけ届き、本文と補足が残らない） |
+| 403 | `test_t403_withdraw_deletes_render_and_self_supplement_stays_private`（§7-8: 取り下げで表示が消える・画面1 の補足は運営だけ（相手に届かない）） |
+| 404 | `test_t404_digest_key_required_and_rotation`（§7-9: allowlist・on で鍵が無い・短いと起動しない・鍵の識別子・ひとつ前の鍵で古い記録を確かめる・鍵をログに出さない） |
+| 405 | `test_t405_off_is_unchanged`（§7-10: off（既定）・知らない値では今と同じ。版もチェックも要らない・何も保存しない） |
+| 406 | `test_t406_allowlist_only`（§7-11: 許可リストの組だけ・どちら向きでも・@ハンドルでも書ける・形の違う組とファイルは閉じる・on でもデータの無い組は出さない） |
+| 407 | `test_t407_list_zero_one_many`（§7-12・§2-2: 一覧は 0 件・1 件・多件・10 件ずつ・並びはデータの順・pending は出さない・逆の向きだけの説明・数値と件数を出さない） |
+| 408 | `test_t408_states_directions_and_v4_heading`（§7-12・§1-2・§4-6: 向きのレコードに分けて組み立て直しても同じ・向きの形のファイル・v4 の相手の見出し・stale・補足・deleted・画面の部品） |

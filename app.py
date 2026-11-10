@@ -1647,6 +1647,13 @@ def confirm_draft(draft_id):
         except Exception as e:  # noqa: BLE001
             app.logger.warning(f"[policy-consent] 記録skip（確定は成功）: {e}")
 
+    # 接続の説明の同意（指示書69 §4-5。任意。terms.accepted に文書の種類と版を記録）
+    if cbody.get("explanation_consent_agreed") is True:
+        try:
+            _record_explanation_consent(pid)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[explanation-consent] 記録skip（確定は成功）: {e}")
+
     if new_handle:
         try:
             handles.set_handle(d["subject_id"], new_handle, db_path=DB)
@@ -2484,13 +2491,37 @@ def post_approve():
     if xs_offer and after in ("pending_out", "connected"):
         # 見る人が読んだ表示（レンダラの出力）をそのまま、申請の記録に添えて保存する（鍵付きの render_digest）
         _xs.save_offer_render(from_id, to_id, xs_offer["symbolic"], xs_offer["html"], xs_offer["card"]["output_digest"],
-                              db_path=DB, card_as_of=xs_offer["card"]["as_of"])
+                              db_path=DB, card_as_of=xs_offer["card"]["as_of"], card=_checked_card(xs_offer),
+                              private=body.get("explanation_private") is True)
     if xs_approve and after == "connected":
         pend, supp = xs_approve
         names = _explanation_names(pend["from_subject"], pend["to_subject"])
         _xs.approve_render(pend["id"], X_explanation.personalize(pend["symbolic_html"], "recipient", names),
-                           supplement=supp, db_path=DB)
+                           supplement=supp, db_path=DB, private=body.get("explanation_private") is True)
+        _record_explanation_agreement(pend["id"])
     return jsonify(result), 200
+
+
+def _checked_card(view):
+    """申請者が読んだカード（確かめを通った部分だけ）。合意の記録（a1）は、この組から作る。"""
+    checked, _ = X_explanation.check(view["card"], names=tuple(view["names"].values()))
+    return checked
+
+
+def _record_explanation_agreement(render_id):
+    """二人の確認がそろって接続が成立したとき、explanation.agreed を書く（指示書69 §4-1。失敗しても承認は成立済み）。"""
+    import explanation_agreement as XA
+    import v5
+    try:
+        row = _xs.render_by_id(render_id, db_path=DB)
+        if not row:
+            return None
+        c4 = {n["purpose_id"]: n.get("content_hash") for n in v5.live_necessities_v5(row["from_subject"], db_path=DB)}
+        conn = XA.connection_event_hash(row["from_subject"], row["to_subject"], db_path=DB)
+        return XA.record_agreement(row, conn, necessity_c4=c4, db_path=DB)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"[explanation-agreed] 合意の記録に失敗（承認は成立済み）: {type(e).__name__}")
+        return None
 
 
 OFFER_MESSAGE_MAX = 400
@@ -2587,6 +2618,10 @@ def _explanation_view(viewer, target):
 def _approved_view(me, other, row):
     """承認の時に二人が見た表示（保存したもの）と、承認のときの補足。読む人に合わせて置き換えるだけ（再生成しない）。"""
     applicant, recipient = row["from_subject"], row["to_subject"]
+    if row.get("deleted_at"):                          # 本文を削除した（退会・削除の求め）。印だけ出す
+        return {"status": "approved", "html": f'<section class="ex-card" data-status="deleted"><p class="ex-deleted">'
+                                              f'{X_explanation.DELETED_TEXT}</p></section>',
+                "approved_at": (row["approved_at"] or "")[:10], "stale": False}
     names = _explanation_names(applicant, recipient)
     sup = X_explanation.supplements_html([{"by": "viewer" if s["from"] == applicant else "target", "text": s["text"],
                                            "at": (s["at"] or "")[:10]} for s in row["supplements"]])
@@ -2647,7 +2682,8 @@ def ops_explanations_import():
 # ── 接続の説明の生成（指示書69 段階2）──────────────────────────────────────────────────
 # POX_EXPLANATION_BACKEND が off（既定・本番）なら生成しない（取り込み分だけ）。fixed（テスト）・local（開発・計測）のとき、
 # 候補の線（C2+b-1）に入る向きだけを、同意した人どうしで、1 日の上限の中で作る。上層の結果は使わない。
-EXPLANATION_TERMS_VERSION = None      # 説明の新しい同意の版（§4-5。文言の確認の後に入れる）。None の間は誰の説明も作らない
+EXPLANATION_TERMS_VERSION = "2026-11-expl-v1"   # 説明の同意の版（§4-5。KAORU 2026-11-10。プライバシーポリシーとは別の版）
+EXPLANATION_TERMS_DOCUMENT = "explanation"       # terms.accepted に記録する文書の種類
 _STATE_INDEX = {k: i for i, (k, _) in enumerate(STATE_SLOTS)}
 
 
@@ -2657,15 +2693,36 @@ def _explanation_consented(sid):
         return False
     try:
         import ledger_events as le
-        return any((e.get("payload") or {}).get("terms_version") == EXPLANATION_TERMS_VERSION
+        return any((e.get("payload") or {}).get("document") == EXPLANATION_TERMS_DOCUMENT
+                   and (e.get("payload") or {}).get("terms_version") == EXPLANATION_TERMS_VERSION
                    for e in le.get_events(type_="terms.accepted", actor=sid, db_path=DB))
     except Exception:  # noqa: BLE001
         return False
 
 
+def _explanation_terms_hash():
+    """説明の同意の文（templates/_explanation_consent.html）の SHA-256。版だけでは文の差し替えを検出できない。"""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "templates", "_explanation_consent.html"), encoding="utf-8") as f:
+            return sha256_hex(f.read())
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _record_explanation_consent(sid):
+    """説明の同意を terms.accepted として台帳に記録する（文書の種類と版つき。一度だけ）。"""
+    if _explanation_consented(sid):
+        return False
+    append_event(sid, "terms.accepted", {"subject_id": sid, "document": EXPLANATION_TERMS_DOCUMENT,
+                                         "terms_version": EXPLANATION_TERMS_VERSION,
+                                         "terms_hash": _explanation_terms_hash()}, db_path=DB)
+    _explanation_trigger(sid)          # 同意した人の説明を作れるようになる（off なら何もしない）
+    return True
+
+
 def _explanation_bound_allowed(sid):
-    """「縛られているもの」を説明に使ってよいか（§4-3。マイページの切り替えは確認の後に作る）。既定は使わない。"""
-    return False
+    """「縛られているもの」を説明に使ってよいか（§4-3。マイページの切り替え）。既定は使わない。"""
+    return _xs.bound_setting(sid, db_path=DB)[0]
 
 
 def _explanation_person(sid):
@@ -2675,6 +2732,7 @@ def _explanation_person(sid):
     if not doc:
         return None
     live = {n["purpose_id"]: n for n in v5.live_necessities_v5(sid, db_path=DB)}
+    chosen = _xs.purpose_kinds(sid, db_path=DB)      # 本人が選んだ目的の種類（選んでいなければ仮の規則。§4-4）
     purposes = []
     for p in doc.get("purposes") or []:
         n = live.get(p.get("purpose_id"))
@@ -2684,7 +2742,8 @@ def _explanation_person(sid):
                  for x in (n.get("sentences") or []) if str(x.get("文") or "").strip()]
         if needs:
             purposes.append({"purpose_id": p["purpose_id"], "title": str(p.get("向かう先") or ""),
-                             "means": str(p.get("手段") or ""), "needs": needs, "necessity_id": n["necessity_id"]})
+                             "means": str(p.get("手段") or ""), "needs": needs, "necessity_id": n["necessity_id"],
+                             "kind": chosen.get(p["purpose_id"])})
     off = v5.latest_offer(sid, db_path=DB) or {}
     offers = [{"text": str(x.get("文") or "").strip(), "type": str(x.get("型") or "")}
               for x in (off.get("sentences") or []) if str(x.get("文") or "").strip()] if _offer_public(off.get("created_at")) else []
@@ -2820,6 +2879,63 @@ def _explanation_trigger(sid):
         job()
     else:
         threading.Thread(target=job, daemon=True).start()
+
+
+@app.get("/api/my/explanation_settings")
+@login_required
+def my_explanation_settings():
+    """本人の説明の設定（指示書69 §4-3・§4-4・§4-5）: 同意・「縛られているもの」の許可・目的ごとの種類（仮かどうか）。"""
+    me = require_self(request.args.get("id"))
+    import explanation_gen as XG
+    allowed, ver = _xs.bound_setting(me, db_path=DB)
+    chosen = _xs.purpose_kinds(me, db_path=DB)
+    purposes = []
+    for i, (pid, label, n) in enumerate(_purpose_order(me)):
+        needs = [{"type": str(x.get("型") or ""), "must": bool(x.get("必須"))} for x in (n.get("sentences") or [])]
+        purposes.append({"purpose_id": pid, "label": label, "number": i + 1,
+                         "kind": chosen.get(pid) or XG.purpose_kind_rule(needs), "provisional": pid not in chosen})
+    _mark_noindex()
+    return jsonify({"consented": _explanation_consented(me), "consent_version": EXPLANATION_TERMS_VERSION,
+                    "bound_allowed": allowed, "bound_version": ver, "purposes": purposes}), 200
+
+
+@app.post("/api/my/explanation_consent")
+@login_required
+def my_explanation_consent():
+    """説明の同意（§4-5）。terms.accepted に文書の種類と版を記録する（一度だけ）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("id"))
+    if body.get("agree") is not True:
+        return jsonify({"error": "同意の操作が必要です"}), 400
+    recorded = _record_explanation_consent(me)
+    return jsonify({"consented": True, "recorded": recorded, "consent_version": EXPLANATION_TERMS_VERSION}), 200
+
+
+@app.post("/api/my/explanation_settings")
+@login_required
+def save_my_explanation_settings():
+    """「縛られているもの」の許可（§4-3。既定は使わない）と、目的の種類（§4-4）を変える。変わったら説明を作り直す。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("id"))
+    changed = False
+    if "bound_allowed" in body:
+        if not isinstance(body["bound_allowed"], bool):
+            return jsonify({"error": "bound_allowed は true か false"}), 400
+        before = _xs.bound_setting(me, db_path=DB)[1]
+        changed |= _xs.set_bound(me, body["bound_allowed"], db_path=DB) != before
+    kinds = body.get("purpose_kinds")
+    if kinds is not None:
+        live = {pid for pid, _, _ in _purpose_order(me)}
+        if not isinstance(kinds, dict) or any(k not in live for k in kinds) or any(v not in _xs.PURPOSE_KINDS for v in kinds.values()):
+            return jsonify({"error": "目的の種類は、あなたの目的ごとに「補完」か「共鳴」"}), 400
+        cur = _xs.purpose_kinds(me, db_path=DB)
+        for pid, kind in kinds.items():
+            if cur.get(pid) != kind:
+                _xs.set_purpose_kind(me, pid, kind, db_path=DB)
+                changed = True
+    if changed:
+        _explanation_trigger(me)       # 許可・種類が変わると鍵が変わる。未承認の説明は作り直す（off なら何もしない）
+    return jsonify({"changed": changed}), 200
 
 
 @app.get("/api/explanations/card")

@@ -129,6 +129,8 @@ function renderApprovals(offers) {
       <div class="ib-reason" data-other="${oid}"><p class="ap-none">根拠を読み込んでいます</p></div>
       <label class="ex-check" style="display:none"><input type="checkbox" class="ex-confirm" onchange="syncApprove(this)">
         <span>内容を確認しました（違う点があれば補足してください）</span></label>
+      <label class="ex-private" style="display:none;font-size:12.5px;color:#555"><input type="checkbox" class="ex-private-cb">
+        この接続の内容を非公開にする（承認された接続の、引用した文の組・関係・日付は、公開することがあります。公開の機能は準備中）</label>
       <div class="ib-actions">
         <button class="ib-approve" onclick="doApprove('${oid}', this)">承認する</button>
         <button class="ib-decline" onclick="askDecline(this)">見送る</button>
@@ -164,6 +166,7 @@ async function loadIncomingExplanation(card, other) {
     box.style.display = "";
     card.querySelector(".ib-reason").style.display = "none";
     card.querySelector(".ex-check").style.display = "";
+    card.querySelector(".ex-private").style.display = "block";
     card.dataset.explained = "1";
     card.querySelector(".ib-approve").disabled = true;    // 確認のチェックが入るまで承認できない
     return true;
@@ -238,6 +241,7 @@ async function doApprove(otherId, btn) {
     const body = { to_id: otherId };   // 承認は状態の遷移だけ（申し出の文は申し出る側だけが書く）
     if (explained) {                   // 画面3: 確認のチェック（必須）と、承認に添える補足
       body.explanation_confirmed = !!card.querySelector(".ex-confirm").checked;
+      body.explanation_private = !!card.querySelector(".ex-private-cb").checked;
       body.supplement = supplementOf(card) || null;
     }
     const res = await fetch("/approve", {

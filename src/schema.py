@@ -341,7 +341,26 @@ _SQLITE_DDL = [
         status           TEXT NOT NULL,
         created_at       TEXT NOT NULL,
         approved_at      TEXT,
-        card_as_of       TEXT
+        card_as_of       TEXT,
+        card_json        TEXT,
+        agreed_event_hash TEXT,
+        applicant_private INTEGER NOT NULL DEFAULT 0,
+        recipient_private INTEGER NOT NULL DEFAULT 0,
+        deleted_at       TEXT
+    )""",
+    # 「縛られているもの」の許可（指示書69 §4-3）と、本人が選んだ目的の種類（§4-4）
+    """CREATE TABLE IF NOT EXISTS explanation_settings (
+        subject_id    TEXT PRIMARY KEY,
+        bound_allowed INTEGER NOT NULL DEFAULT 0,
+        bound_version INTEGER NOT NULL DEFAULT 0,
+        updated_at    TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS purpose_kinds (
+        subject_id TEXT NOT NULL,
+        purpose_id TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (subject_id, purpose_id)
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_supplements (
         id           TEXT PRIMARY KEY,
@@ -692,7 +711,26 @@ _PG_DDL = [
         status           TEXT NOT NULL,
         created_at       TEXT NOT NULL,
         approved_at      TEXT,
-        card_as_of       TEXT
+        card_as_of       TEXT,
+        card_json        TEXT,
+        agreed_event_hash TEXT,
+        applicant_private INTEGER NOT NULL DEFAULT 0,
+        recipient_private INTEGER NOT NULL DEFAULT 0,
+        deleted_at       TEXT
+    )""",
+    # 「縛られているもの」の許可（指示書69 §4-3）と、本人が選んだ目的の種類（§4-4）
+    """CREATE TABLE IF NOT EXISTS explanation_settings (
+        subject_id    TEXT PRIMARY KEY,
+        bound_allowed INTEGER NOT NULL DEFAULT 0,
+        bound_version INTEGER NOT NULL DEFAULT 0,
+        updated_at    TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS purpose_kinds (
+        subject_id TEXT NOT NULL,
+        purpose_id TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (subject_id, purpose_id)
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_supplements (
         id           TEXT PRIMARY KEY,
@@ -798,7 +836,11 @@ def _migrate_columns(con) -> None:
     for col, typ in (("gen_key", "TEXT"), ("version_key", "TEXT"), ("superseded", "INTEGER NOT NULL DEFAULT 0"),
                      ("meta_json", "TEXT")):
         _add_column_if_missing(con, "explanation_directions", col, typ)
-    _add_column_if_missing(con, "explanation_renders", "card_as_of", "TEXT")   # 承認時の説明が古いかを見る（指示書69 §3）
+    # 承認時の説明が古いかを見る・合意の記録・非公開の切り替え・削除の印（指示書69 §3・§4）
+    for col, typ in (("card_as_of", "TEXT"), ("card_json", "TEXT"), ("agreed_event_hash", "TEXT"),
+                     ("applicant_private", "INTEGER NOT NULL DEFAULT 0"),
+                     ("recipient_private", "INTEGER NOT NULL DEFAULT 0"), ("deleted_at", "TEXT")):
+        _add_column_if_missing(con, "explanation_renders", col, typ)
     # talk_posts の挿入順（指示書45B §2: discussion_hash v1 は挿入順で連結）。既存行は created_at 順で補完。
     _add_column_if_missing(con, "talk_posts", "ins_seq", "INTEGER")
     from talks import ensure_post_order

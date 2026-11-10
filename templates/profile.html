@@ -72,6 +72,13 @@
     <div style="display:flex;gap:10px;flex-wrap:wrap" id="connectActions">
       <button class="btn btn-connect" id="btnOffer" onclick="doConnect(this)">つながりたいと伝える</button>
       <button class="btn btn-connect" id="btnExplainOffer" style="display:none" onclick="doConnect(this)">内容を確認して申請する</button>
+    </div>
+    <!-- 公開の切り替え（指示書69 §4-6。公開の機能は準備中。どちらか一人でも非公開にできる。値を記録しておく） -->
+    <label id="explainPrivateRow" style="display:none;font-size:12.5px;color:#555;margin-top:8px">
+      <input type="checkbox" id="explainPrivate"> この接続の内容を非公開にする
+      <span style="display:block;margin-left:20px">承認された接続の、引用した文の組・関係・日付は、公開することがあります（公開の機能は準備中）。</span>
+    </label>
+    <div style="display:none">
       <button class="btn btn-msg" id="btnWithdraw" style="display:none" onclick="doWithdraw(this)">取り下げる</button>
       <button class="btn btn-msg" id="btnDm" style="display:none" onclick="sendMsg()">メッセージを送る</button>
     </div>
@@ -144,6 +151,7 @@ async function refreshConnectState() {
   const withExplain = !!explainDigest && state === "none";
   show("btnOffer", state === "none" && !withExplain);
   show("btnExplainOffer", withExplain);
+  show("explainPrivateRow", withExplain);
   show("offerBox", state === "none");
   if (state === "none") loadMyPurposes();
   show("btnWithdraw", state === "pending_out");
@@ -222,7 +230,8 @@ async function doConnect(btn) {
                              purpose_id: document.getElementById("offerPurpose").value || null,
                              message: (document.getElementById("offerMsg").value || "").trim(),
                              // 画面2: 読んだ説明（カードの版）を添える。説明が新しくなっていれば申請しない（409）
-                             explanation_digest: explainDigest }),
+                             explanation_digest: explainDigest,
+                             explanation_private: !!(explainDigest && document.getElementById("explainPrivate").checked) }),
     });
     if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
     const aData = await aRes.json();

@@ -343,8 +343,8 @@ def test_t418_r4_only_complement_vs_resonance():
 def test_t419_no_generation_without_consent(world2, monkeypatch):
     _gen_world(monkeypatch, consent=lambda sid: sid != "c_full")
     assert _card("me", "c_full")["status"] == "none" and _log_count() == 0
-    assert appmod.EXPLANATION_TERMS_VERSION is None                              # 同意の版は §4-5 の確認の後に決める
-    assert _REAL_CONSENT("me") is False and _REAL_CONSENT("c_full") is False      # 版が決まるまで、誰も同意していない扱い
+    assert appmod.EXPLANATION_TERMS_VERSION == "2026-11-expl-v1"                 # 説明の同意だけの版（§4-5）
+    assert _REAL_CONSENT("me") is False and _REAL_CONSENT("c_full") is False      # 同意を記録するまでは、同意していない
 
 
 # ── 420 §7-11: POX_EXPLANATION_BACKEND=off で、今と同じ（取り込み分だけ）──────────────────────────────

@@ -115,6 +115,12 @@
   <label><input type="checkbox" id="policyAgree">
     <a href="/privacy" target="_blank">プライバシーポリシー</a>を読み、特に「重要な点」（必要像の公開・接続の公開・消せない記録があること）に同意します</label>
 </div>
+<!-- 接続の説明の同意（指示書69 §4-5。プライバシーポリシーとは別の版。同意しなくても登録できる。同意するまで説明は作らない） -->
+<details id="explainConsentRow" style="margin:6px 0 14px;font-size:13px;line-height:1.6">
+  <summary>接続の説明（AI による説明）について</summary>
+  {% include "_explanation_consent.html" %}
+</details>
+<label style="font-size:13px"><input type="checkbox" id="explainAgree"> 接続の説明について、上の内容に同意します（任意。マイページからも同意できます）</label>
 <button class="submit-btn" onclick="register(this)">登録する</button>
 <div id="msg"></div>
 
@@ -367,6 +373,7 @@ async function confirmDraft(draftId, btn) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ privacy_policy_agreed: true,
                              privacy_policy_version: PRIVACY_POLICY_VERSION,
+                             explanation_consent_agreed: !!(document.getElementById("explainAgree") || {}).checked,
                              handle: (document.getElementById("handleInput") || {}).value || "",
                              purpose_map: purposeMap(),
                              offer_keep: v5PreviewShown ? offerKeep() : null }),

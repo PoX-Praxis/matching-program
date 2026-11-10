@@ -630,3 +630,10 @@
 | 項目 | テスト（指示書66D §3-1） |
 |---|---|
 | 386 | `test_t386_rewrite_prompts_fixed_before_measurement`（書き直し・C 群・hard negative a の指示の sha256・必須は 1〜2・目的の種類（補完／共鳴）・C 群は要素あたり 6 文・忠実性の組み方と seed 6605・hard negative の確認の seed 6607・L を走らせない・個人の文を入れない） |
+
+### 66 順8（PR-66D）忠実性の組と計測 — `tests/test_t66d_rewrite_probe.py`
+
+| 項目 | テスト（指示書66D §1-2・§2・§3） |
+|---|---|
+| 397 | `test_t397_faithfulness_pairs_rule`（同じ目的の中だけで組む・R→O をすべて先に入れ O→R で足す・同点は並びの前・枠より多ければ seed で選ぶ・消えた必要の候補・対応する元の要素） |
+| 398 | `test_t398_rewrite_substitutes_elements_only`（必要像・C 群・hard negative a だけを差し替え、向かう先・門・背景・b はそのまま・元を書き換えない・AUC・C6m と L を測らない） |

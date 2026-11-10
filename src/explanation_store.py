@@ -394,7 +394,25 @@ _DDL = [
         status           TEXT NOT NULL,
         created_at       TEXT NOT NULL,
         approved_at      TEXT,
-        card_as_of       TEXT
+        card_as_of       TEXT,
+        card_json        TEXT,
+        agreed_event_hash TEXT,
+        applicant_private INTEGER NOT NULL DEFAULT 0,
+        recipient_private INTEGER NOT NULL DEFAULT 0,
+        deleted_at       TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS explanation_settings (
+        subject_id    TEXT PRIMARY KEY,
+        bound_allowed INTEGER NOT NULL DEFAULT 0,
+        bound_version INTEGER NOT NULL DEFAULT 0,
+        updated_at    TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS purpose_kinds (
+        subject_id TEXT NOT NULL,
+        purpose_id TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (subject_id, purpose_id)
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_supplements (
         id           TEXT PRIMARY KEY,
@@ -408,6 +426,9 @@ _DDL = [
 ]
 
 
+RENDER_ADDED_COLUMNS = (("card_as_of", "TEXT"), ("card_json", "TEXT"), ("agreed_event_hash", "TEXT"),
+                        ("applicant_private", "INTEGER NOT NULL DEFAULT 0"),
+                        ("recipient_private", "INTEGER NOT NULL DEFAULT 0"), ("deleted_at", "TEXT"))
 GENERATED_COLUMNS = (("gen_key", "TEXT"), ("version_key", "TEXT"), ("superseded", "INTEGER NOT NULL DEFAULT 0"),
                      ("meta_json", "TEXT"))
 
@@ -421,15 +442,17 @@ def _connect(db_path="pox.db"):
         for col, typ in GENERATED_COLUMNS:                 # 指示書69 で足した列（古い sqlite のファイルにも足す）
             if col not in have:
                 con.execute(f"ALTER TABLE explanation_directions ADD COLUMN {col} {typ}")
-        if "card_as_of" not in {r[1] for r in con.execute("PRAGMA table_info(explanation_renders)").fetchall()}:
-            con.execute("ALTER TABLE explanation_renders ADD COLUMN card_as_of TEXT")
+        have_r = {r[1] for r in con.execute("PRAGMA table_info(explanation_renders)").fetchall()}
+        for col, typ in RENDER_ADDED_COLUMNS:              # 指示書69 で足した列（古い sqlite のファイルにも足す）
+            if col not in have_r:
+                con.execute(f"ALTER TABLE explanation_renders ADD COLUMN {col} {typ}")
         con.commit()
     return con
 
 
 _RENDER_COLS = ("id", "from_subject", "to_subject", "symbolic_html", "viewer_html", "card_digest", "viewer_digest",
                 "viewer_key_id", "recipient_digest", "recipient_key_id", "pair_digest", "status", "created_at", "approved_at",
-                "card_as_of")
+                "card_as_of", "card_json", "agreed_event_hash", "applicant_private", "recipient_private", "deleted_at")
 
 
 def _row(r):
@@ -444,7 +467,8 @@ def clean_supplement(text):
     return t or None
 
 
-def save_offer_render(applicant, recipient, symbolic_html, viewer_html, card_digest, db_path="pox.db", card_as_of=None):
+def save_offer_render(applicant, recipient, symbolic_html, viewer_html, card_digest, db_path="pox.db", card_as_of=None,
+                      card=None, private=False):
     """申請に添えて、申請した人が読んだ表示をそのまま保存する（§2-3）。前の未承認の表示は置き換える。"""
     dg, kid = render_digest(viewer_html)
     rid = f"er_{uuid.uuid4().hex[:16]}"
@@ -453,9 +477,11 @@ def save_offer_render(applicant, recipient, symbolic_html, viewer_html, card_dig
                     (applicant, recipient))
         con.execute("INSERT INTO explanation_renders (id, from_subject, to_subject, symbolic_html, viewer_html, card_digest, "
                     "viewer_digest, viewer_key_id, recipient_digest, recipient_key_id, pair_digest, status, created_at, approved_at, "
-                    "card_as_of) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL, 'pending', %s, NULL, %s)",
+                    "card_as_of, card_json, applicant_private) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL, 'pending', %s, NULL, %s, %s, %s)",
                     (rid, applicant, recipient, symbolic_html, viewer_html, card_digest, dg, kid, _now(),
-                     json.dumps(card_as_of, ensure_ascii=False, sort_keys=True) if card_as_of else None))
+                     json.dumps(card_as_of, ensure_ascii=False, sort_keys=True) if card_as_of else None,
+                     json.dumps(card, ensure_ascii=False, sort_keys=True) if card else None, 1 if private else 0))
     return rid
 
 
@@ -467,7 +493,7 @@ def pending_render(applicant, recipient, db_path="pox.db"):
     return _row(r)
 
 
-def approve_render(render_id, recipient_html, supplement=None, db_path="pox.db"):
+def approve_render(render_id, recipient_html, supplement=None, db_path="pox.db", private=False):
     """承認の時に、受けた人が見た表示のハッシュを添えて承認済みにする。補足があれば本人の言葉として保存する（§3）。"""
     dg, kid = render_digest(recipient_html)
     with _connect(db_path) as con:
@@ -475,7 +501,7 @@ def approve_render(render_id, recipient_html, supplement=None, db_path="pox.db")
         if not r:
             return False
         con.execute("UPDATE explanation_renders SET status='approved', recipient_digest=%s, recipient_key_id=%s, "
-                    "approved_at=%s WHERE id=%s", (dg, kid, _now(), render_id))
+                    "approved_at=%s, recipient_private=%s WHERE id=%s", (dg, kid, _now(), 1 if private else 0, render_id))
         if supplement:
             con.execute("INSERT INTO explanation_supplements (id, render_id, from_subject, to_subject, kind, text, created_at) "
                         "VALUES (%s, %s, %s, %s, 'approve', %s, %s)",
@@ -534,6 +560,94 @@ def count_rows(db_path="pox.db"):
     with _connect(db_path) as con:
         return {t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                 for t in ("explanation_renders", "explanation_supplements")}
+
+
+# ── 合意の記録と削除（指示書69 §4-1・§4-2）──────────────────────────────────────────────
+def render_by_id(render_id, db_path="pox.db"):
+    with _connect(db_path) as con:
+        return _row(con.execute(f"SELECT {', '.join(_RENDER_COLS)} FROM explanation_renders WHERE id=%s",
+                                (render_id,)).fetchone())
+
+
+def approve_supplements(render_id, db_path="pox.db"):
+    with _connect(db_path) as con:
+        return [r[0] for r in con.execute("SELECT text FROM explanation_supplements WHERE render_id=%s AND kind='approve'",
+                                          (render_id,)).fetchall()]
+
+
+def mark_agreed(render_id, pair_digest_value, event_hash, db_path="pox.db"):
+    with _connect(db_path) as con:
+        con.execute("UPDATE explanation_renders SET pair_digest=%s, agreed_event_hash=%s WHERE id=%s",
+                    (pair_digest_value, event_hash, render_id))
+
+
+def subject_rows(subject_id, db_path="pox.db"):
+    """削除の対象（その人が関わる説明の表示・補足・向きのレコード）を数える。"""
+    with _connect(db_path) as con:
+        renders = [r[0] for r in con.execute("SELECT id FROM explanation_renders WHERE (from_subject=%s OR to_subject=%s) "
+                                             "AND deleted_at IS NULL", (subject_id, subject_id)).fetchall()]
+        sup = con.execute("SELECT COUNT(*) FROM explanation_supplements WHERE from_subject=%s OR to_subject=%s",
+                          (subject_id, subject_id)).fetchone()[0]
+        dirs = con.execute("SELECT COUNT(*) FROM explanation_directions WHERE need_subject=%s OR offer_subject=%s",
+                           (subject_id, subject_id)).fetchone()[0]
+    return {"renders": renders, "supplements": sup, "directions": dirs}
+
+
+def delete_subject_texts(subject_id, db_path="pox.db"):
+    """本文・①・表示・補足・向きのレコードを消す。表示の行は「削除済み」の印として残す（ハッシュ・時刻・向き）。
+    合意のイベントのハッシュの一覧を返す（台帳のイベントは消さない）。"""
+    now = _now()
+    with _connect(db_path) as con:
+        rows = con.execute("SELECT id, agreed_event_hash FROM explanation_renders WHERE (from_subject=%s OR to_subject=%s) "
+                           "AND deleted_at IS NULL", (subject_id, subject_id)).fetchall()
+        for rid, _ in rows:
+            con.execute("DELETE FROM explanation_supplements WHERE render_id=%s", (rid,))
+            con.execute("UPDATE explanation_renders SET symbolic_html='', viewer_html='', card_json=NULL, card_as_of=NULL, "
+                        "deleted_at=%s WHERE id=%s", (now, rid))
+        con.execute("DELETE FROM explanation_supplements WHERE from_subject=%s OR to_subject=%s", (subject_id, subject_id))
+        con.execute("DELETE FROM explanation_directions WHERE need_subject=%s OR offer_subject=%s", (subject_id, subject_id))
+    return [h for _, h in rows if h]
+
+
+# ── 「縛られているもの」の許可（指示書69 §4-3）と、目的の種類（§4-4）──────────────────────────────
+def bound_setting(subject_id, db_path="pox.db"):
+    """(許可しているか, 許可の版)。既定は使わない（版 0）。"""
+    with _connect(db_path) as con:
+        r = con.execute("SELECT bound_allowed, bound_version FROM explanation_settings WHERE subject_id=%s",
+                        (subject_id,)).fetchone()
+    return (bool(r[0]), int(r[1])) if r else (False, 0)
+
+
+def set_bound(subject_id, allowed, db_path="pox.db"):
+    """許可を切り替える（版を 1 上げる）。変わらなければ何もしない。新しい版を返す。"""
+    cur, ver = bound_setting(subject_id, db_path)
+    if cur == bool(allowed):
+        return ver
+    with _connect(db_path) as con:
+        con.execute("INSERT INTO explanation_settings (subject_id, bound_allowed, bound_version, updated_at) "
+                    "VALUES (%s, %s, %s, %s) ON CONFLICT (subject_id) DO UPDATE SET bound_allowed=EXCLUDED.bound_allowed, "
+                    "bound_version=EXCLUDED.bound_version, updated_at=EXCLUDED.updated_at",
+                    (subject_id, 1 if allowed else 0, ver + 1, _now()))
+    return ver + 1
+
+
+PURPOSE_KINDS = ("補完", "共鳴")
+
+
+def purpose_kinds(subject_id, db_path="pox.db"):
+    """本人が選んだ目的の種類 {purpose_id: kind}（選んでいない目的は入らない＝仮の規則）。"""
+    with _connect(db_path) as con:
+        return {r[0]: r[1] for r in con.execute("SELECT purpose_id, kind FROM purpose_kinds WHERE subject_id=%s",
+                                                (subject_id,)).fetchall()}
+
+
+def set_purpose_kind(subject_id, purpose_id, kind, db_path="pox.db"):
+    if kind not in PURPOSE_KINDS:
+        raise ValueError("kind は 補完 か 共鳴")
+    with _connect(db_path) as con:
+        con.execute("INSERT INTO purpose_kinds (subject_id, purpose_id, kind, updated_at) VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (subject_id, purpose_id) DO UPDATE SET kind=EXCLUDED.kind, updated_at=EXCLUDED.updated_at",
+                    (subject_id, purpose_id, kind, _now()))
 
 
 # ── 取り込みのトークン（§5-2 案 B）────────────────────────────────────────────────────

@@ -43,9 +43,19 @@ POLICY_EDITS = [
 ]
 
 
-# ── 310 ポリシーの 3 か所が改定後の文言（他は変わらない） ─────────────────────────────────
+# 指示書69 §4-5（2026-11）で足した節: 「6-2. 接続の説明」の 1 節と、最終更新の日付だけ。
+SECTION_69_START, SECTION_69_END = "<h2>6-2. 接続の説明（AI による説明）について</h2>", "<h2>7. データの保存と削除</h2>"
+
+
+def _revert_69(now):
+    assert now.count("最終更新：2026年11月") == 1 and now.count(SECTION_69_START) == 1
+    i, j = now.index(SECTION_69_START), now.index(SECTION_69_END)
+    return (now[:i] + now[j:]).replace("最終更新：2026年11月", "最終更新：2026年10月")
+
+
+# ── 310 ポリシーの 3 か所が改定後の文言（他は変わらない。69 の節を除いて） ─────────────────────────
 def test_t310_policy_three_places_only():
-    now = TPL("privacy.html")
+    now = _revert_69(TPL("privacy.html"))
     for _, after in POLICY_EDITS:
         assert now.count(after) == 1, after
     before = now

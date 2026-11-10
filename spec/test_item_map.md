@@ -692,7 +692,21 @@
 | 416 | `test_t416_candidates_do_not_use_upper`（§7-7: 上層の関数を呼ぶと失敗する状態でも候補を出せる・候補の線（C2+b-1・δ −0.020）と judgment_version の記録） |
 | 417 | `test_t417_bound_only_with_permission`（§7-8: 「縛られているもの」は許可が無ければ使わない・O の側では使わない・許可を外すと鍵が変わり作り直す） |
 | 418 | `test_t418_r4_only_complement_vs_resonance`（§7-9: 補完の目的で R4 だけなら出さない・共鳴なら出す・目的の種類の仮の規則（§4-4 の案）） |
-| 419 | `test_t419_no_generation_without_consent`（§7-10: 新しい同意をしていない人の説明は作らない。同意の版は §4-5 の確認の後） |
+| 419 | `test_t419_no_generation_without_consent`（§7-10: 新しい同意をしていない人の説明は作らない。説明の同意だけの版 2026-11-expl-v1） |
 | 420 | `test_t420_backend_off_imports_only`（§7-11: off（既定）では取り込み分だけ・知らない値は off・本番で fixed・local は起動しない・server は段階3 まで使えない） |
 | 421 | `test_t421_no_external_api_calls`（§7-12: 説明の部品と計測のスクリプトに、外部の API を呼ぶコードが無い） |
 | 422 | `test_t422_measure_runs_end_to_end`（§5: 計測の仕組みが fixed で最後まで通る・決定性・段2 に原文が漏れない・文を書かない） |
+
+### 69 段階2 順3（合意の記録・削除・許可・目的の種類・同意・公開の切り替え）— `tests/test_t69_agreement.py`
+
+| 項目 | テスト（指示書69 §4・§7-13。KAORU の確認 2026-11-10） |
+|---|---|
+| 423 | `test_t423_agreed_only_when_both_confirmed`（§7-13: 両方の確認がそろって接続が成立したときだけ explanation.agreed を書く・申請だけ・見送りでは書かない・① と句と補足の本文は入れない・接続のイベントは変えず、合意の側から connection_ref で指す（案 B）・generation_digest） |
+| 424 | `test_t424_pair_digest_is_keyed`（§4-2 (1)(2): pair_digest は a1 の HMAC・句も HMAC（素のハッシュではない）・鍵が違えば違う・generation_digest はモデル・revision・プロンプトの sha のハッシュ） |
+| 425 | `test_t425_delete_keeps_hash_and_records_redaction`（§4-2 (5): 既定は数えるだけ・本文・表示・補足・向きのレコードが消え、ハッシュと台帳のイベントは残る・redaction.recorded（hash_kind explanation）・画面は「本文は削除されました」・台帳の鎖が壊れない） |
+| 426 | `test_t426_anchor_includes_agreed`（§4-2 (7): 日次のアンカーの root に、合意のイベントも含まれる） |
+| 427 | `test_t427_bound_permission`（§4-3: 「縛られているもの」の許可は既定で使わない・切り替えるたびに版を上げる・変えたら作り直しのきっかけ・マイページの文言） |
+| 428 | `test_t428_purpose_kinds`（§4-4: 仮の規則・本人が選び直すと「仮」が外れる・形の違う値と他人の目的は 400・生成の入力に使う・「仮」はマイページだけ） |
+| 429 | `test_t429_explanation_consent`（§4-5: 説明の同意だけ別の版・terms.accepted に文書の種類と版と文のハッシュ・一度だけ・取り込み分は同意の前でも出る・同意の文言・ポリシーの節・登録とマイページ） |
+| 430 | `test_t430_private_switch_recorded`（§4-6: 「非公開にする」の値を申請者・承認者ごとに記録する・台帳には入れない・画面2・3 の切り替え） |
+

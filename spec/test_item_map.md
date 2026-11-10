@@ -617,7 +617,7 @@
 | 項目 | テスト |
 |---|---|
 | 380 | `test_t380_distinct_cover_assignment`（必須ごとに互いに違う文を割り当てる（1 文は 1 つの必須だけ）・割り当てのやり直し・必須の無い目的・本番に触れない） |
-### 66 順7（PR-66C: L の計測）— `tests/test_t66c_element_probe_l.py`
+### 66 順7（PR-66C: L の計測）— `archive/66c/tests/test_t66c_element_probe_l.py`（**アーカイブ。2026-11-10 から CI で走らせない**）
 
 | 項目 | テスト（registration_v2 §5-2・§6・§8） |
 |---|---|
@@ -710,3 +710,11 @@
 | 429 | `test_t429_explanation_consent`（§4-5: 説明の同意だけ別の版・terms.accepted に文書の種類と版と文のハッシュ・一度だけ・取り込み分は同意の前でも出る・同意の文言・ポリシーの節・登録とマイページ） |
 | 430 | `test_t430_private_switch_recorded`（§4-6: 「非公開にする」の値を申請者・承認者ごとに記録する・台帳には入れない・画面2・3 の切り替え） |
 
+
+### 69 順3 の確認（2026-11-10）— `tests/test_t69_binding.py`
+
+| 項目 | テスト |
+|---|---|
+| 431 | `test_t431_imported_binds_to_live_necessity`（取り込み分を、引用元の必要像の文で本人の目的の id と c4 に結びつける・取り込みの応答に結びつきの数・a1 の必要の側が null にならない・残した a1 で pair_digest を確かめ直せる・手作り（fixed）は残る・実在しない subject は保存しない）、`test_t431b_v4_person_binds_by_necessity_text`（v4 の人は必要像の本文で結びつける） |
+| 432 | `test_t432_local_requires_explicit_model`（local は既定のモデルを持たず、モデルと revision を明示しないと起動しない） |
+| 433 | `test_t433_66c_archived`（66C の道具を archive/66c/ に移し、CI のテストから外す） |

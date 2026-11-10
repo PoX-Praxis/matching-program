@@ -40,9 +40,23 @@ def generation_digest(generation):
                                     "prompt1_sha": g.get("prompt1_sha"), "prompt2_sha": g.get("prompt2_sha")}))
 
 
-def a1_object(card, applicant, recipient, necessity_c4=None):
+def cited_needs(card):
+    """説明のある目的ごとの、引用元の必要像の文（{カードの purpose_id: [文, ...]}）。版との結びつけに使う。"""
+    src = {c["ref"]: c["text"] for c in card.get("citations") or []}
+    out = {}
+    for p in card.get("purposes") or []:
+        if p.get("status") != "explained":
+            continue
+        pid = p["ref"].split(".", 2)[2]
+        refs = {e["need_ref"] for e in p["elements"]}
+        out[pid] = [src[r] for r in sorted(refs) if r in src]
+    return out
+
+
+def a1_object(card, applicant, recipient, necessity_c4=None, bindings=None):
     """正準形 a1 の中身: 申請者の向きの explained の目的の組（②③④・関係）。句と、引用元の欄の文は HMAC。① は入れない。
-    necessity_c4: {purpose_id: その目的の必要像の版の c4 ハッシュ}（分からなければ null）。"""
+    bindings: {カードの purpose_id: {"purpose_id": 本人の目的の id, "necessity_c4": その必要像の版の c4}}（引用元の文で結びつけたもの）。
+    necessity_c4: {purpose_id: c4}（結びつけが無い目的の予備）。どちらにも無ければ null。"""
     src = {c["ref"]: c["text"] for c in card.get("citations") or []}
     purposes = []
     for p in sorted(card.get("purposes") or [], key=lambda x: x["order"]):
@@ -59,7 +73,9 @@ def a1_object(card, applicant, recipient, necessity_c4=None):
                           "offer_quote_h": _hmac(e["offer_quote"]),
                           "relation": e["relation"]})
         pairs.sort(key=lambda x: (x["need_element"], x["offer_ref"], x["offer_quote_h"]))
-        purposes.append({"purpose_id": pid, "necessity_c4": (necessity_c4 or {}).get(pid), "pairs": pairs})
+        b = (bindings or {}).get(pid) or {}
+        purposes.append({"purpose_id": b.get("purpose_id") or pid,
+                         "necessity_c4": b.get("necessity_c4") or (necessity_c4 or {}).get(pid), "pairs": pairs})
     return {"canon_version": CANON_VERSION, "relation_rule_version": card.get("relation_rule_version", X.RELATION_RULE_VERSION),
             "need_subject": applicant, "offer_subject": recipient, "purposes": purposes}
 
@@ -70,7 +86,7 @@ def pair_digest(a1):
     return hmac.new(k, canonicalize(a1), hashlib.sha256).hexdigest(), S.key_id(k)
 
 
-def record_agreement(render, connection_ref, necessity_c4=None, db_path="pox.db"):
+def record_agreement(render, connection_ref, necessity_c4=None, db_path="pox.db", bindings=None):
     """二人の確認がそろったとき（申請の表示＋承認の確認＋接続の成立）だけ、explanation.agreed を 1 件書く。
     書いたら render に pair_digest とイベントのハッシュを残す。書かなければ None（説明の組が無い・確認が欠けている）。"""
     import ledger_events as le
@@ -79,7 +95,7 @@ def record_agreement(render, connection_ref, necessity_c4=None, db_path="pox.db"
     card = json.loads(render.get("card_json") or "null")
     if not card or not connection_ref:
         return None
-    a1 = a1_object(card, render["from_subject"], render["to_subject"], necessity_c4)
+    a1 = a1_object(card, render["from_subject"], render["to_subject"], necessity_c4, bindings=bindings)
     if not any(p["pairs"] for p in a1["purposes"]):
         return None                                   # 説明の組が無ければ記録しない
     digest, kid = pair_digest(a1)
@@ -97,7 +113,7 @@ def record_agreement(render, connection_ref, necessity_c4=None, db_path="pox.db"
         "generation_digest": generation_digest(card.get("generation")),
     }
     res = le.append_event(render["to_subject"], EVENT_TYPE, payload, db_path=db_path)
-    S.mark_agreed(render["id"], digest, res["event_hash"], db_path=db_path)
+    S.mark_agreed(render["id"], digest, res["event_hash"], a1=a1, db_path=db_path)
     return {**res, "payload": payload, "a1": a1}
 
 

@@ -170,7 +170,8 @@ async function loadExplanation() {
     if (d.status === "off") return false;
     if (d.status !== "ok" && d.status !== "approved") { $("explainBox").style.display = "none"; return true; }
     $("explainWho").textContent = d.status === "approved"
-      ? `承認の時に二人が見た説明です（${d.approved_at}）` : `${d.target_name} さん`;
+      ? `承認の時に二人が見た説明です（${d.approved_at}）${d.stale ? "。いまのプロフィールとは違うところがあります" : ""}`
+      : `${d.target_name} さん`;
     $("explainBody").innerHTML = d.html;                  // サーバーのレンダラの出力（エスケープ済み）
     if (d.status === "ok") {
       explainDigest = d.card_digest;

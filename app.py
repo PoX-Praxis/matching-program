@@ -137,8 +137,13 @@ if _PROD and not mailer.is_configured():
 # 接続の説明（指示書68 §4・§6）。POX_EXPLANATION が allowlist・on のとき、render_digest の鍵
 # （POX_EXPLANATION_DIGEST_KEY）が無ければ本番は起動しない（POX_DEBUG=1 だけ開発用の鍵）。ログには設定の有無だけを出す。
 import explanation as X_explanation
+import explanation_gen as _xg
 import explanation_store as _xs
 _xs_boot = _xs.startup_check()
+_xg_boot = _xg.startup_check()        # 本番で fixed・local なら起動しない（指示書69 §1-2）
+if _xg_boot["generates"]:             # 版を上げたとき: 古い版の説明に印をつけるだけ（全体を作り直さない。§3）
+    _xs.mark_superseded(_xg.version_key(_xg.get_backend()), db_path=os.environ.get("POX_DB", "pox.db"))
+print(f"[explanation] backend={_xg_boot['backend']} daily_limit={_xs.daily_limit()}")
 print(f"[explanation] mode={_xs_boot['mode']} digest_key={_xs_boot['key']} digest_key_prev={_xs_boot['key_prev']} "
       f"import_route={'開いている' if _xs.ops_token_ok(os.environ.get(_xs.OPS_TOKEN_ENV)) else '閉じている'}")
 
@@ -1345,6 +1350,8 @@ def _v5_sentence_job(pid, offer):
         _state_slot_job(pid)
     except Exception as e:  # noqa: BLE001
         app.logger.warning(f"[v5-sentences] 文単位ベクトルの作成に失敗（確定は成立済み）: {e}")
+        return
+    _explanation_trigger(pid)          # 接続の説明（指示書69 §3。off なら何もしない）
 
 
 def _state_slot_job(sid):
@@ -2477,7 +2484,7 @@ def post_approve():
     if xs_offer and after in ("pending_out", "connected"):
         # 見る人が読んだ表示（レンダラの出力）をそのまま、申請の記録に添えて保存する（鍵付きの render_digest）
         _xs.save_offer_render(from_id, to_id, xs_offer["symbolic"], xs_offer["html"], xs_offer["card"]["output_digest"],
-                              db_path=DB)
+                              db_path=DB, card_as_of=xs_offer["card"]["as_of"])
     if xs_approve and after == "connected":
         pend, supp = xs_approve
         names = _explanation_names(pend["from_subject"], pend["to_subject"])
@@ -2567,7 +2574,7 @@ def _explanation_names(viewer, target):
 
 def _explanation_view(viewer, target):
     """見る人 × 相手のカードと、確かめを通った記号のままの HTML・見る人に合わせた HTML。出すものが無ければ None。"""
-    card = _xs.card_for(viewer, target, db_path=DB)
+    card = _xs.card_for(viewer, target, db_path=DB, direction_of=_explanation_direction_of())
     if not card:
         return None
     names = _explanation_names(viewer, target)
@@ -2589,7 +2596,26 @@ def _approved_view(me, other, row):
     body = body.replace(X_explanation.SUPPLEMENT_BUTTON, "")       # 承認の後の表示に「補足する」は置かない（補足は承認・見送りのとき）
     reader = "viewer" if me == applicant else "recipient"
     return {"status": "approved", "html": X_explanation.personalize(body, reader, names),
-            "approved_at": (row["approved_at"] or "")[:10]}
+            "approved_at": (row["approved_at"] or "")[:10], "stale": _approved_is_stale(row)}
+
+
+def _approved_is_stale(row):
+    """承認時の説明が、いまの二人の読む欄と違うか（指示書69 §3。承認済みは作り直さず「承認時の説明」として出す）。
+    生成した説明（as-of が内容ハッシュ）のときだけ見る。作り直しはしない（生成を呼ばない）。"""
+    try:
+        saved = json.loads(row.get("card_as_of") or "null")
+        if not saved or not str((saved.get("viewer") or {}).get("profile") or "").startswith("h:"):
+            return False
+        n_person, o_person = _explanation_person(row["from_subject"]), _explanation_person(row["to_subject"])
+        if not n_person or not o_person:
+            return True
+        ns = _xg.need_side(n_person, _explanation_bound_allowed(row["from_subject"]))
+        os_ = _xg.offer_side(o_person)
+        if not ns:
+            return True
+        return saved["viewer"]["profile"] != f"h:{ns['hash']}" or saved["target"]["profile"] != f"h:{os_['hash']}"
+    except Exception:  # noqa: BLE001
+        return False
 
 
 @app.post("/ops/explanations/import")
@@ -2616,6 +2642,184 @@ def ops_explanations_import():
         return jsonify({"error": "形が違います"}), 400
     app.logger.warning(f"[explanation-import] received={res['received']} saved={res['saved']} dropped={res['dropped']}")
     return jsonify(res), 200
+
+
+# ── 接続の説明の生成（指示書69 段階2）──────────────────────────────────────────────────
+# POX_EXPLANATION_BACKEND が off（既定・本番）なら生成しない（取り込み分だけ）。fixed（テスト）・local（開発・計測）のとき、
+# 候補の線（C2+b-1）に入る向きだけを、同意した人どうしで、1 日の上限の中で作る。上層の結果は使わない。
+EXPLANATION_TERMS_VERSION = None      # 説明の新しい同意の版（§4-5。文言の確認の後に入れる）。None の間は誰の説明も作らない
+_STATE_INDEX = {k: i for i, (k, _) in enumerate(STATE_SLOTS)}
+
+
+def _explanation_consented(sid):
+    """説明の新しい同意（terms.accepted の版）をしているか（§4-5）。同意の版が決まるまでは、誰も同意していない扱い。"""
+    if not EXPLANATION_TERMS_VERSION:
+        return False
+    try:
+        import ledger_events as le
+        return any((e.get("payload") or {}).get("terms_version") == EXPLANATION_TERMS_VERSION
+                   for e in le.get_events(type_="terms.accepted", actor=sid, db_path=DB))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _explanation_bound_allowed(sid):
+    """「縛られているもの」を説明に使ってよいか（§4-3。マイページの切り替えは確認の後に作る）。既定は使わない。"""
+    return False
+
+
+def _explanation_person(sid):
+    """説明の入力（仕様 §1）: 公開の構造化の文だけ。v5 の人だけ（v4 は作り込まない）。公開の閾値より前の版は使わない。"""
+    import v5
+    doc = v5.get_doc(sid, db_path=DB)
+    if not doc:
+        return None
+    live = {n["purpose_id"]: n for n in v5.live_necessities_v5(sid, db_path=DB)}
+    purposes = []
+    for p in doc.get("purposes") or []:
+        n = live.get(p.get("purpose_id"))
+        if not n or not _public_since_passed(n.get("created_at")):
+            continue
+        needs = [{"text": str(x.get("文") or "").strip(), "type": str(x.get("型") or ""), "must": bool(x.get("必須"))}
+                 for x in (n.get("sentences") or []) if str(x.get("文") or "").strip()]
+        if needs:
+            purposes.append({"purpose_id": p["purpose_id"], "title": str(p.get("向かう先") or ""),
+                             "means": str(p.get("手段") or ""), "needs": needs, "necessity_id": n["necessity_id"]})
+    off = v5.latest_offer(sid, db_path=DB) or {}
+    offers = [{"text": str(x.get("文") or "").strip(), "type": str(x.get("型") or "")}
+              for x in (off.get("sentences") or []) if str(x.get("文") or "").strip()] if _offer_public(off.get("created_at")) else []
+    pv = get_profile_view(sid, db_path=DB) or {}
+    state = {"持っているもの": _text_of(pv.get("state_have")), "できること_型": _text_of(pv.get("state_can_type")),
+             "未分類": _text_of(pv.get("state_unsorted"))}
+    return {"subject": sid, "purposes": purposes, "offers": offers, "offer_id": off.get("offer_id") if offers else None,
+            "state": state, "interests": _texts(doc.get("関心")), "bound": _text_of(pv.get("state_bound"))}
+
+
+def _explanation_background():
+    """候補の線の背景（bg-v2 の推定用。与え像の形・必要像の形）のベクトル。無ければ一度だけ作って保存する。"""
+    import v5
+    import necessities as _nec
+    from embedding_config import MODEL_TAG
+    import explanation_candidates as XC
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "probe_data", "background_v2.json")
+    with open(path, encoding="utf-8") as f:
+        bg = json.load(f)
+    out = {}
+    for kind, sec, role in (("bg_offer", "offer", "passage"), ("bg_need", "need", "query")):
+        have = v5.get_sentence_vectors(kind, XC.BACKGROUND, MODEL_TAG, db_path=DB)
+        texts = [x["text"] for x in bg["sections"][sec] if x["split"] == "est"]
+        if len(have) != len(texts):
+            v5.save_sentence_vectors(kind, XC.BACKGROUND, texts, MODEL_TAG, _nec._default_embed, db_path=DB, role=role)
+            have = v5.get_sentence_vectors(kind, XC.BACKGROUND, MODEL_TAG, db_path=DB)
+        out[kind] = [v for _, v in have]
+    return XC.Background(out["bg_offer"], out["bg_need"])
+
+
+def _explanation_candidate(n_person, o_person):
+    """向き（N の必要像の要素 × O の文）が候補の線に入るか（§2）。上層の結果は使わない。"""
+    import v5
+    import explanation_candidates as XC
+    from embedding_config import MODEL_TAG
+    need_vecs = [v for p in n_person["purposes"]
+                 for _, v in v5.get_sentence_vectors("necessity", p["necessity_id"], MODEL_TAG, db_path=DB)]
+    sid = o_person["subject"]
+    sent = [v for _, v in v5.get_sentence_vectors("offer", o_person["offer_id"], MODEL_TAG, db_path=DB)] \
+        if o_person.get("offer_id") else []
+    sent += [v for i, (_, v) in v5.get_sentence_vectors_indexed("state", sid, MODEL_TAG, db_path=DB)
+             if i != _STATE_INDEX["state_bound"]]                    # 「縛られているもの」は O の側では使わない
+    sent += [v for _, v in v5.get_sentence_vectors("interest_doc", sid, MODEL_TAG, db_path=DB)]
+    if not need_vecs or not sent:
+        return False
+    return XC.is_candidate(need_vecs, sent, _explanation_background())
+
+
+def _explanation_generate(need, offer, backend, n_person=None, o_person=None):
+    """向き 1 つを作って保存する（同意・候補・同じ鍵・1 日の上限を確かめてから）。作れなければ None。"""
+    import explanation_candidates as XC
+    from embedding_config import MODEL_TAG
+    if not (_explanation_consented(need) and _explanation_consented(offer)):
+        return None
+    n_person = n_person or _explanation_person(need)
+    o_person = o_person or _explanation_person(offer)
+    if not n_person or not n_person["purposes"] or not o_person:
+        return None
+    bound_ok = _explanation_bound_allowed(need)
+    ns, os_ = _xg.need_side(n_person, bound_ok), _xg.offer_side(o_person)
+    key = _xg.gen_key(need, offer, ns["hash"], os_["hash"], backend)
+    if _xs.has_gen_key(key, db_path=DB):
+        row = _xs.generated_direction(need, offer, _xs.as_of_digest({"as_of": _xg.as_of(ns["hash"], os_["hash"])}), db_path=DB)
+        return (row["direction"], True) if row else None
+    if not _explanation_candidate(n_person, o_person):
+        return None
+    if _xs.budget_left(db_path=DB) <= 0:
+        return None                                    # 上限を超えたら作らない（順位で選ばない。作れなかった相手は出さない）
+    res = _xg.generate_direction(n_person, o_person, backend, bound_allowed=bound_ok)
+    _xs.log_generation(need, offer, key, res["show_reason"] or "explained", db_path=DB)
+    meta = {"show_reason": res["show_reason"], "judgment_version": XC.judgment_version(MODEL_TAG),
+            "versions": _xg.versions(backend), "output_digest": res["output_digest"], "bound_used": res["bound_used"],
+            "problems": len(res["problems"])}
+    _xs.save_generated(need, offer, res["direction"], key, _xg.version_key(backend), meta, db_path=DB)
+    return res["direction"], True
+
+
+def _explanation_direction(need, offer):
+    """card_for の向きの引き方（生成のバックエンドが動いているとき）。いまの読む欄の as-of の生成分があればそれ。
+    無いか古い版（superseded）なら、その場で作る（足りない分だけ）。作れなければ古い版、それも無ければ取り込み分。"""
+    backend = _xg.get_backend()
+    n_person, o_person = _explanation_person(need), _explanation_person(offer)
+    if not n_person or not n_person["purposes"] or not o_person:
+        return _xs.imported_direction(need, offer, db_path=DB)
+    bound_ok = _explanation_bound_allowed(need)
+    ns, os_ = _xg.need_side(n_person, bound_ok), _xg.offer_side(o_person)
+    row = _xs.generated_direction(need, offer, _xs.as_of_digest({"as_of": _xg.as_of(ns["hash"], os_["hash"])}), db_path=DB)
+    if row and row["version_key"] == _xg.version_key(backend) and not row["superseded"]:
+        return row["direction"], True
+    made = _explanation_generate(need, offer, backend, n_person, o_person)
+    if made:
+        return made
+    if row:
+        return row["direction"], True
+    return _xs.imported_direction(need, offer, db_path=DB)
+
+
+def _explanation_direction_of():
+    return _explanation_direction if _xg.backend_name() in ("fixed", "local") else None
+
+
+def _explanation_on_profile_changed(sid):
+    """きっかけ（§3）: プロフィールの登録・更新・欠かせない要素の切り替えのとき、その人が関わる候補の向きを作る。
+    off なら何もしない。並びは subject の順（中立。点の高い順に選ばない）。上限を超えたらやめる。"""
+    if _xg.backend_name() not in ("fixed", "local"):
+        return 0
+    import v5
+    backend = _xg.get_backend()
+    with v5._connect(DB) as con:
+        others = sorted(r[0] for r in con.execute("SELECT subject_id FROM profile_v5").fetchall() if r[0] != sid)
+    made = 0
+    for other in others:
+        for need, offer in ((sid, other), (other, sid)):
+            if _xs.budget_left(db_path=DB) <= 0:
+                return made
+            before = _xs.used_today(db_path=DB)
+            _explanation_generate(need, offer, backend)
+            made += _xs.used_today(db_path=DB) - before
+    return made
+
+
+def _explanation_trigger(sid):
+    """きっかけを裏で動かす（テストでは同じスレッドで）。失敗しても登録・保存は成立済み。"""
+    if _xg.backend_name() not in ("fixed", "local"):
+        return
+
+    def job():
+        try:
+            _explanation_on_profile_changed(sid)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[explanation-gen] 説明の生成に失敗（登録は成立済み）: {type(e).__name__}")
+    if app.config.get("TESTING"):
+        job()
+    else:
+        threading.Thread(target=job, daemon=True).start()
 
 
 @app.get("/api/explanations/card")
@@ -2660,10 +2864,11 @@ def explanation_list_route():
         return jsonify({"status": "off", "items": [], "page": 0, "has_prev": False, "has_next": False}), 200
     from ledger import connection_state
     items = []
-    for other in _xs.partners_of(me, db_path=DB):
+    gen = _explanation_direction_of()
+    for other in _xs.partners_of(me, db_path=DB, include_generated=gen is not None):
         if connection_state(me, other, db_path=DB) in ("declined_out", "declined_in"):
             continue
-        card = _xs.card_for(me, other, db_path=DB)
+        card = _xs.card_for(me, other, db_path=DB, direction_of=gen)
         names = _explanation_names(me, other)
         short = X_explanation.short_form(card, names=tuple(names.values())) if card else None
         if not short:
@@ -2799,6 +3004,8 @@ def save_my_musts():
             v5.copy_sentence_vectors("necessity", old, r["necessity_id"], db_path=DB)   # 文が同じなので作り直さない
             changed.append(pid)
     no_must = [it["purpose_id"] for it in items if not any(bool(m) for m in it["musts"])]
+    if changed:
+        _explanation_trigger(me)       # 欠かせない要素の切り替え（指示書69 §3。off なら何もしない）
     return jsonify({"changed": changed, "no_must": no_must}), 200
 
 

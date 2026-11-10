@@ -637,3 +637,43 @@
 |---|---|
 | 397 | `test_t397_faithfulness_pairs_rule`（同じ目的の中だけで組む・R→O をすべて先に入れ O→R で足す・同点は並びの前・枠より多ければ seed で選ぶ・消えた必要の候補・対応する元の要素） |
 | 398 | `test_t398_rewrite_substitutes_elements_only`（必要像・C 群・hard negative a だけを差し替え、向かう先・門・背景・b はそのまま・元を書き換えない・AUC・C6m と L を測らない） |
+
+### 67 上層の印の保留 — `tests/test_t67_upper_badge.py`
+
+| 項目 | テスト（指示書67 §1-4） |
+|---|---|
+| 381 | `test_t381_related_hides_upper_for_unrelated`（既定 related: 関わっていない組には、つながるの表・「あなたを必要としている相手」・申し出る前の根拠のどれにも上層の成否を出さない。上層が通る相手と通らない相手で同じ応答。成立しない文言も出さない） |
+| 382 | `test_t382_related_keeps_engaged_pairs`（申し出中・承認待ち・接続中の組では、いまと同じ表示（all と同じ中身）） |
+| 383 | `test_t383_all_restores_current_behavior`（all に戻すといまの振る舞い。知らない値は related） |
+| 384 | `test_t384_upper_still_computed_and_audit_sees_it`（related でも上層の計算をする。監査のルート（トークン必須）では成立が見える） |
+| 385 | `test_t385_lower_layer_flag_stays_closed`（下層の表示のフラグは閉じたまま） |
+
+### 68 接続の説明・段階1（契約・確かめ・レンダラ）— `tests/test_t68_explanation.py`
+
+| 項目 | テスト（指示書68 §7。合成データは架空の人だけ） |
+|---|---|
+| 387 | `test_t387_schema_accepts_fixtures_and_rejects_bad`（§7-1: スキーマに通る・形の違うもの（版なし・ラベルの外・40 字超・状態の外・数値の欄・種類の外）を弾く・output_digest） |
+| 388 | `test_t388_reader_wording`（§7-2: 画面1・2 は「あなた」「〇〇さん」、画面3 は両方ともユーザー名。記号が残らない。本文に名前・「あなた」を持たない） |
+| 389 | `test_t389_purpose_order_is_profile_order`（§7-3: 目的はプロフィールの順。成否・JSON の並びで変わらない） |
+| 390 | `test_t390_failed_checks_are_not_shown`（§7-4: 引用の実在・句の長さ・R1/R2 の述語・補充しない・禁止の語・呼び方・閉じた語彙・数値。落ちた部分を出さない。補完で R4 だけは explained にしない） |
+| 391 | `test_t391_screen3_is_saved_screen2_with_names_only`（§7-5: 画面2 で保存した表示を、画面3 は呼び方の置き換えだけで描く。再生成しない） |
+| 392 | `test_t392_states_render_without_breaking`（§7-12: 状態（stale・補足あり・deleted・pending・疎・v4 の相手）で崩れない。pending と explained の無いカードは出さない） |
+| 393 | `test_t393_no_upper_badge_no_numbers_and_footer`（§7-13: 上層の印を出さない・数値を出さない・AI の説明の注記と「補足する」・LLM を使わない） |
+| 394 | `test_t394_resonance_labelled_not_complement`（補完と共鳴の区別。R4 は「補完ではない」） |
+| 395 | `test_t395_same_target_two_viewers_differ`（§5-1 の 5: 同じ相手を 2 人の見る人から見て説明が違う） |
+| 396 | `test_t396_quotes_open_original_in_one_step`（根拠の印から原文を 1 回の操作で開ける。句は原文の連続した部分） |
+
+### 68 §9-3（接続の説明の画面1〜3・保存・フラグ）— `tests/test_t68_screens.py`
+
+| 項目 | テスト（指示書68 §7 の 5〜12・§1-2・§4-6。合成データは架空の人だけ） |
+|---|---|
+| 399 | `test_t399_screen2_saves_and_screen3_needs_confirmation`（§7-5・6: 読んだ版と違えば申請しない（409）・画面2 の表示をそのまま保存（鍵付きのハッシュ）・画面3 は名前だけで再生成しない・確認のチェックが無いと承認できない） |
+| 400 | `test_t400_decline_without_confirmation`（§7-6: 見送りは確認なしでできる） |
+| 401 | `test_t401_approve_supplement_shown_after_connected`（§7-7: 補足つきの承認（400 字まで）が保存され、接続の画面に出る。読む人ごとの呼び方・承認の後は「補足する」を置かない） |
+| 402 | `test_t402_decline_supplement_delivered_once_and_render_deleted`（§7-7・8: 補足つきの見送りは申請した人に一度だけ届き、本文と補足が残らない） |
+| 403 | `test_t403_withdraw_deletes_render_and_self_supplement_stays_private`（§7-8: 取り下げで表示が消える・画面1 の補足は運営だけ（相手に届かない）） |
+| 404 | `test_t404_digest_key_required_and_rotation`（§7-9: allowlist・on で鍵が無い・短いと起動しない・鍵の識別子・ひとつ前の鍵で古い記録を確かめる・鍵をログに出さない） |
+| 405 | `test_t405_off_is_unchanged`（§7-10: off（既定）・知らない値では今と同じ。版もチェックも要らない・何も保存しない） |
+| 406 | `test_t406_allowlist_only`（§7-11: 許可リストの組だけ・どちら向きでも・@ハンドルでも書ける・形の違う組とファイルは閉じる・on でもデータの無い組は出さない） |
+| 407 | `test_t407_list_zero_one_many`（§7-12・§2-2: 一覧は 0 件・1 件・多件・10 件ずつ・並びはデータの順・pending は出さない・逆の向きだけの説明・数値と件数を出さない） |
+| 408 | `test_t408_states_directions_and_v4_heading`（§7-12・§1-2・§4-6: 向きのレコードに分けて組み立て直しても同じ・向きの形のファイル・v4 の相手の見出し・stale・補足・deleted・画面の部品） |

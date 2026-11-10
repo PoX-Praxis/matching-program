@@ -134,6 +134,13 @@ if _PROD and not mailer.is_configured():
         "resend_api なら POX_RESEND_API_KEY / POX_MAIL_FROM、smtp なら POX_SMTP_HOST/USER/PASS を設定してください。"
     )
 
+# 接続の説明（指示書68 §4・§6）。POX_EXPLANATION が allowlist・on のとき、render_digest の鍵
+# （POX_EXPLANATION_DIGEST_KEY）が無ければ本番は起動しない（POX_DEBUG=1 だけ開発用の鍵）。ログには設定の有無だけを出す。
+import explanation as X_explanation
+import explanation_store as _xs
+_xs_boot = _xs.startup_check()
+print(f"[explanation] mode={_xs_boot['mode']} digest_key={_xs_boot['key']} digest_key_prev={_xs_boot['key_prev']}")
+
 # ── セッションCookie設定 ─────────────────────────────────────────────
 # 有効期限は 30 日（auth_verify で session.permanent=True を張る）。既定では毎リクエストで
 # 期限が延びる（スライディング）。POX_SECRET_KEY を差し替えると全 Cookie の署名が無効になり
@@ -1907,6 +1914,15 @@ def connection_reason():
 PREVIEW_RATE = (30, 600)          # 閲覧者ごとに 600 秒で 30 回まで（一覧の総なめを防ぐ）
 _PREVIEW_HITS = {}
 _PREVIEW_LOCK = threading.Lock()
+# 関わっている組（申し出中・承認待ち・接続中）。上層の印は、この組にだけ出す（指示書67）。
+ENGAGED_STATES = ("pending_out", "pending_in", "connected")
+
+
+def _engaged(me, other):
+    from ledger import connection_state
+    return connection_state(me, other, db_path=DB) in ENGAGED_STATES
+
+
 PREVIEW_PREPARING = "要素単位の照合は準備中です"
 PREVIEW_NONE = "あなたの必要に応える文は見つかりませんでした"
 PREVIEW_UNAVAILABLE = "いま照合できません"
@@ -1936,6 +1952,9 @@ def connection_preview():
     - 2 人の版だけで決まる（母集団に依存しない）。見送りが効いている相手には出さない（403）
     - 閲覧者に目的（必要像）が無ければ返さない（no_profile）
     - 下層の表示が閉じている間は、上層（欠かせない要素をすべて覆う）で通った対だけ。無ければ「要素単位の照合は準備中です」
+    - 上層の印の保留（指示書67。`POX_UPPER_BADGE_SCOPE=related`・既定）: 下層が閉じている間、関わっていない組
+      （申し出中・承認待ち・接続中でない）には、上層の成否によらず「要素単位の照合は準備中です」を返す
+      （成立しないことも読み取られないよう、上層が通らなかったときと同じ応答にする）
     - 下層の表示が開いているときは要素の対（自分の目的の門が閉じた要素一致はラベルつき）。無ければ
       「あなたの必要に応える文は見つかりませんでした」
     - 相手の文は公開の日時の閾値に従う（与え像の版が閾値より前なら、文を出さない。つながるのカードと同じ）
@@ -1946,7 +1965,8 @@ def connection_preview():
     if not other or other == me:
         return jsonify({"error": "with が必要です"}), 400
     from ledger import connection_state
-    if connection_state(me, other, db_path=DB) in ("declined_out", "declined_in"):
+    state = connection_state(me, other, db_path=DB)
+    if state in ("declined_out", "declined_in"):
         return jsonify({"error": "この相手の根拠は出せません"}), 403
     if not _preview_allowed(me):
         return jsonify({"error": "しばらくしてからもう一度お試しください"}), 429
@@ -1954,7 +1974,7 @@ def connection_preview():
     if not is_postgres() or not _matching_available():
         return jsonify({"status": "unavailable", "message": PREVIEW_UNAVAILABLE, "reasons": []}), 200
     from embedding_config import MODEL_TAG
-    from match_config import OWN_GATE_LABEL, lower_layer_open
+    from match_config import OWN_GATE_LABEL, lower_layer_open, upper_badge_scope
     from matcher_v5 import elements, judge_direction
     store = _v4_store()
     if store.missing_tag_ids(MODEL_TAG) & {me, other}:
@@ -1962,9 +1982,12 @@ def connection_preview():
     mine = _side_of(store, me, MODEL_TAG)
     if not mine["purposes"]:
         return jsonify({"status": "no_profile", "message": None, "reasons": []}), 200
+    lower_open = lower_layer_open()
+    if not lower_open and upper_badge_scope() == "related" and state not in ENGAGED_STATES:
+        # 上層の印の保留（指示書67）: 関わっていない組には上層の成否を出さない。上層が通らなかったときと同じ応答。
+        return jsonify({"status": "none", "message": PREVIEW_PREPARING, "reasons": []}), 200
     theirs = _side_of(store, other, MODEL_TAG)
     items = []
-    lower_open = lower_layer_open()
     for p in mine["purposes"]:
         ok, prs, info = judge_direction(p, theirs)
         if lower_open:
@@ -2209,7 +2232,7 @@ def _v5_match_response(store, me, model_tag):
     """
     from matcher_v5 import match_pair, musts_of
     from ledger import engaged_by_purpose
-    from match_config import OWN_GATE_LABEL, lower_layer_open
+    from match_config import OWN_GATE_LABEL, lower_layer_open, upper_badge_scope
     mine = _side_of(store, me, model_tag)
     if not mine["purposes"]:
         return {"status": "no_necessity", "groups": [], "results": []}
@@ -2257,6 +2280,20 @@ def _v5_match_response(store, me, model_tag):
             prof = prof or _card_profile(cid)
             them_need_me["results"].append(_card(cid, names, hs, prof, r["theirs_need_me"], mine, theirs, None))
     lower_open = lower_layer_open()
+    scope = upper_badge_scope()
+    if scope == "related":
+        # 上層の印の保留（指示書67）: 関わっている組（申し出中・承認待ち・接続中）以外には、上層の成否（カード）を
+        # 返さない。画面で隠すだけにしない。計算（match_pair）は上で行っている。監査のルートでは見える。
+        engaged = {}
+        for g in [*groups.values(), them_need_me]:
+            kept = []
+            for c in g["results"]:
+                cid = c["candidate_id"]
+                if cid not in engaged:
+                    engaged[cid] = _engaged(me, cid)
+                if engaged[cid]:
+                    kept.append(c)
+            g["results"] = kept
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     _record_presentations(me, run_id, mine, groups, them_need_me, lower_open)
     out_groups = []
@@ -2273,7 +2310,7 @@ def _v5_match_response(store, me, model_tag):
         out_groups.append(them_need_me)
     flat = [c for g in out_groups for c in g["results"]]
     return {"status": "ok" if flat else "none", "groups": out_groups, "results": flat,
-            "has_offer": mine["has_offer"], "match_run_id": run_id}
+            "has_offer": mine["has_offer"], "match_run_id": run_id, "upper_scope": scope}
 
 
 def _record_presentations(me, run_id, mine, groups, them_need_me, lower_open):
@@ -2397,6 +2434,28 @@ def post_approve():
 
     # 申し出の経路（指示書63 段階1 §4-4）: つながる＝"match"・プロフィール＝"profile"。通常DBに記録するだけで画面に出さない。
     channel = body.get("channel") if body.get("channel") in OFFER_CHANNELS else None
+    # 接続の説明（指示書68 §2-3・§2-4）。フラグと許可リストを通った組だけ。off のときは今と同じ。
+    xs_offer = xs_approve = None
+    if _xs.enabled_for(from_id, to_id, db_path=DB):
+        state_before = connection_state(from_id, to_id, db_path=DB)
+        if state_before == "none":
+            # 画面2: 「内容を確認して申請する」。読んだ説明（カードの output_digest）がいまのものと違えば申請しない
+            view = _explanation_view(from_id, to_id)
+            if view:
+                if body.get("explanation_digest") != view["card"]["output_digest"]:
+                    return jsonify({"error": "explanation_changed", "message": EXPLANATION_CHANGED_MESSAGE}), 409
+                xs_offer = view
+        elif state_before == "pending_in":
+            # 画面3: 申請に説明が添えられていれば、確認のチェックが承認に必須。補足は 400 字まで
+            pend = _xs.pending_render(to_id, from_id, db_path=DB)
+            if pend:
+                if body.get("explanation_confirmed") is not True:
+                    return jsonify({"error": "explanation_unconfirmed", "message": EXPLANATION_UNCONFIRMED_MESSAGE}), 400
+                try:
+                    supp = _xs.clean_supplement(body.get("supplement"))
+                except ValueError as e:
+                    return jsonify({"error": str(e)}), 400
+                xs_approve = (pend, supp)
     result = approve(
         from_id=from_id,
         to_id=to_id,
@@ -2413,10 +2472,22 @@ def post_approve():
     )
     if result.get("reason") == "declined":
         return jsonify({"error": "declined", "message": DECLINED_MESSAGE}), 409
+    after = connection_state(from_id, to_id, db_path=DB) if (xs_offer or xs_approve) else None
+    if xs_offer and after in ("pending_out", "connected"):
+        # 見る人が読んだ表示（レンダラの出力）をそのまま、申請の記録に添えて保存する（鍵付きの render_digest）
+        _xs.save_offer_render(from_id, to_id, xs_offer["symbolic"], xs_offer["html"], xs_offer["card"]["output_digest"],
+                              db_path=DB)
+    if xs_approve and after == "connected":
+        pend, supp = xs_approve
+        names = _explanation_names(pend["from_subject"], pend["to_subject"])
+        _xs.approve_render(pend["id"], X_explanation.personalize(pend["symbolic_html"], "recipient", names),
+                           supplement=supp, db_path=DB)
     return jsonify(result), 200
 
 
 OFFER_MESSAGE_MAX = 400
+EXPLANATION_CHANGED_MESSAGE = "説明が新しくなりました。読み直してから申請してください。"
+EXPLANATION_UNCONFIRMED_MESSAGE = "「内容を確認しました」にチェックを入れてから承認してください。"
 OFFER_CHANNELS = ("match", "profile")
 DECLINED_MESSAGE = "今回は見送られました。どちらかがプロフィールを作り直すと、もう一度申し出られます。"
 
@@ -2436,7 +2507,10 @@ def withdraw_connection_request():
     body = request.get_json(force=True, silent=True) or {}
     me = require_self(body.get("from_id"))
     from ledger import withdraw_request
-    return jsonify({"withdrawn": withdraw_request(me, _other_id(body), db_path=DB)}), 200
+    other = _other_id(body)
+    withdrawn = withdraw_request(me, other, db_path=DB)
+    _xs.delete_pending(me, other, db_path=DB)          # 申請に添えた説明の表示を消す（指示書68 §4）
+    return jsonify({"withdrawn": withdrawn}), 200
 
 
 @app.post("/api/connections/decline")
@@ -2448,8 +2522,16 @@ def decline_connection_request():
     body = request.get_json(force=True, silent=True) or {}
     me = require_self(body.get("me"))
     from ledger import decline_request
-    if not decline_request(me, _other_id(body), db_path=DB):
+    other = _other_id(body)
+    try:                                               # 見送りに添える補足（指示書68 §3。400 字まで）
+        supp = _xs.clean_supplement(body.get("supplement"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not decline_request(me, other, db_path=DB):
         return jsonify({"error": "見送る申し出がありません"}), 404
+    _xs.delete_pending(other, me, db_path=DB)          # 申請に添えた説明の表示を消す（§4。見送りは残さない）
+    if supp and _xs.enabled_for(me, other, db_path=DB):
+        _xs.add_supplement("decline", me, other, supp, db_path=DB)   # 申請した人に届けた後に消す
     return jsonify({"declined": True}), 200
 
 
@@ -2463,6 +2545,157 @@ def my_declined_offers():
     names = _resolve_names([r["to"] for r in rows], fallback=UNNAMED_LABEL)
     _mark_noindex()
     return jsonify([{"to": r["to"], "to_name": names.get(r["to"], UNNAMED_LABEL), "at": r["at"]} for r in rows]), 200
+
+
+# ── 接続の説明（指示書68 段階1。固定のデータ・LLM なし）──────────────────────────────────────
+# 画面1（相手のプロフィール）・画面2（申請）・画面3（受信箱）・一覧（つながる）。フラグ POX_EXPLANATION と許可リストを
+# 通った組だけに出す。off のときは今と同じ（「あなたの必要から見た、この人」はいまのまま）。数値・上層の印は出さない。
+EXPLANATION_PAGE_SIZE = 10
+
+
+def _plain_name(sid):
+    """説明の中の呼び方: 表示名、無ければ @ハンドル、どちらも無ければ「表示名未設定のアカウント」。"""
+    import display_names, handles
+    return display_names.get_display_name(sid, db_path=DB) or (
+        f"@{h}" if (h := handles.get_many([sid], db_path=DB).get(sid)) else UNNAMED_LABEL)
+
+
+def _explanation_names(viewer, target):
+    return {"viewer": _plain_name(viewer), "target": _plain_name(target)}
+
+
+def _explanation_view(viewer, target):
+    """見る人 × 相手のカードと、確かめを通った記号のままの HTML・見る人に合わせた HTML。出すものが無ければ None。"""
+    card = _xs.card_for(viewer, target, db_path=DB)
+    if not card:
+        return None
+    names = _explanation_names(viewer, target)
+    sym = X_explanation.render_symbolic(card, names=tuple(names.values()))
+    if sym is None:
+        return None
+    return {"card": card, "symbolic": sym, "names": names, "html": X_explanation.personalize(sym, "viewer", names)}
+
+
+def _approved_view(me, other, row):
+    """承認の時に二人が見た表示（保存したもの）と、承認のときの補足。読む人に合わせて置き換えるだけ（再生成しない）。"""
+    applicant, recipient = row["from_subject"], row["to_subject"]
+    names = _explanation_names(applicant, recipient)
+    sup = X_explanation.supplements_html([{"by": "viewer" if s["from"] == applicant else "target", "text": s["text"],
+                                           "at": (s["at"] or "")[:10]} for s in row["supplements"]])
+    body = row["symbolic_html"]
+    if sup:
+        body = body.replace('<p class="ex-foot">', sup + '<p class="ex-foot">', 1)
+    body = body.replace(X_explanation.SUPPLEMENT_BUTTON, "")       # 承認の後の表示に「補足する」は置かない（補足は承認・見送りのとき）
+    reader = "viewer" if me == applicant else "recipient"
+    return {"status": "approved", "html": X_explanation.personalize(body, reader, names),
+            "approved_at": (row["approved_at"] or "")[:10]}
+
+
+@app.get("/api/explanations/card")
+@login_required
+def explanation_card_route():
+    """画面1: 見る人 × 相手の説明。つながっていれば、承認の時に二人が見た表示（と補足）。
+    status: off（今と同じ表示に戻す）／none（出さない。「準備中」と出さない）／ok／approved。"""
+    me = require_self(request.args.get("me"))
+    other = (request.args.get("with") or "").strip()
+    if not other or other == me:
+        return jsonify({"error": "with が必要です"}), 400
+    _mark_noindex()
+    if not _xs.enabled_for(me, other, db_path=DB):
+        return jsonify({"status": "off"}), 200
+    from ledger import connection_state
+    state = connection_state(me, other, db_path=DB)
+    if state == "connected":
+        row = _xs.approved_render(me, other, db_path=DB)
+        if row:
+            return jsonify(_approved_view(me, other, row)), 200
+    if state in ("declined_out", "declined_in"):
+        return jsonify({"status": "none"}), 200
+    view = _explanation_view(me, other)
+    if not view:
+        return jsonify({"status": "none"}), 200
+    return jsonify({"status": "ok", "html": view["html"], "card_digest": view["card"]["output_digest"],
+                    "target_name": view["names"]["target"]}), 200
+
+
+@app.get("/api/explanations/list")
+@login_required
+def explanation_list_route():
+    """一覧（つながる）: 説明のある相手の短い形（名前・目的の見出し・① の 1 文）。10 件ずつ。並びは中立（データの順）。
+    説明が無い相手・見送りが効いている相手は出さない。件数は返さない（前後の頁があるかだけ）。"""
+    me = require_self(request.args.get("me"))
+    try:
+        page = max(0, int(request.args.get("page") or 0))
+    except ValueError:
+        page = 0
+    _mark_noindex()
+    if _xs.mode() == "off":
+        return jsonify({"status": "off", "items": [], "page": 0, "has_prev": False, "has_next": False}), 200
+    from ledger import connection_state
+    items = []
+    for other in _xs.partners_of(me, db_path=DB):
+        if connection_state(me, other, db_path=DB) in ("declined_out", "declined_in"):
+            continue
+        card = _xs.card_for(me, other, db_path=DB)
+        names = _explanation_names(me, other)
+        short = X_explanation.short_form(card, names=tuple(names.values())) if card else None
+        if not short:
+            continue
+        items.append({"other": other, "name": names["target"], "href": f"/profile/{other}",
+                      "items": [{"head": X_explanation.personalize(x["head"], "viewer", names),
+                                 "meaning": X_explanation.personalize(x["meaning"], "viewer", names)} for x in short]})
+    lo = page * EXPLANATION_PAGE_SIZE
+    return jsonify({"status": "ok", "items": items[lo:lo + EXPLANATION_PAGE_SIZE], "page": page,
+                    "has_prev": page > 0, "has_next": len(items) > lo + EXPLANATION_PAGE_SIZE}), 200
+
+
+@app.get("/api/explanations/incoming")
+@login_required
+def explanation_incoming_route():
+    """画面3: 申請を受けた人が見る、申請した人が申請の時に読んだ内容（保存したもの）。両方ともユーザー名で、再生成しない。"""
+    me = require_self(request.args.get("me"))
+    other = (request.args.get("with") or "").strip()
+    if not other:
+        return jsonify({"error": "with が必要です"}), 400
+    _mark_noindex()
+    if not _xs.enabled_for(me, other, db_path=DB):
+        return jsonify({"status": "off"}), 200
+    row = _xs.pending_render(other, me, db_path=DB)
+    if not row:
+        return jsonify({"status": "none"}), 200
+    names = _explanation_names(other, me)
+    return jsonify({"status": "ok", "html": X_explanation.personalize(row["symbolic_html"], "recipient", names),
+                    "applicant_name": names["viewer"]}), 200
+
+
+@app.post("/api/explanations/supplement")
+@login_required
+def explanation_supplement_route():
+    """画面1の「補足する」: 自分の文の言い換えについての補足（400 字まで）。運営だけが読む（相手には出さない）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("me"))
+    other = _other_id(body)
+    if not _xs.enabled_for(me, other, db_path=DB):
+        return jsonify({"error": "説明が出ていない相手です"}), 404
+    try:
+        text = _xs.clean_supplement(body.get("text"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not text:
+        return jsonify({"error": "補足が空です"}), 400
+    _xs.add_supplement("self", me, other, text, db_path=DB)
+    return jsonify({"saved": True}), 200
+
+
+@app.get("/api/explanations/declined_notes")
+@login_required
+def explanation_declined_notes_route():
+    """見送りに添えられた補足を、申請した人に届ける（受信箱）。届けた後は残さない。"""
+    me = require_self(request.args.get("me"))
+    _mark_noindex()
+    notes = _xs.take_decline_notes(me, db_path=DB)
+    names = _resolve_names([n["from"] for n in notes], fallback=UNNAMED_LABEL)
+    return jsonify([{"from_name": names.get(n["from"], UNNAMED_LABEL), "text": n["text"], "at": n["at"]} for n in notes]), 200
 
 
 @app.get("/api/my/purposes")

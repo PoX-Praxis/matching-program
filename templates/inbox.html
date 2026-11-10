@@ -14,6 +14,7 @@
   .ib-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
   .ib-actions button { min-height: 36px; padding: 0 16px; border-radius: 6px; font-size: 13.5px; cursor: pointer; }
   .ib-approve { background: #1a3a5c; color: #fff; border: 1px solid #1a3a5c; }
+  .ib-approve:disabled { opacity: .45; cursor: not-allowed; }
   .ib-decline { background: #fff; color: #454b54; border: 1px solid #cfd3d9; }
   .ib-empty { font-size: 13.5px; color: #666; }
   .ib-confirm { margin-top: 12px; padding: 10px 12px; background: #fbf5ec; border-radius: 6px; }
@@ -27,6 +28,7 @@
 {# 共通部品（PoXReason）は head に置く。title ブロックの中に置くと <title> の文字列になり、
    script が実行されず承認待ちの一覧が「なし」のまま止まる（指示書58 1-2）。 #}
 {% include "_match_reason.html" %}
+{% include "_explanation.html" %}
 {% endblock %}
 {% block content %}
 <main class="l-prose">
@@ -36,6 +38,12 @@
 
   <h2>承認が必要な案件</h2>
   <div id="approvalCards"><p class="ib-empty">なし</p></div>
+
+  <!-- 見送りに添えられた補足（指示書68 §3）。届けた後は残さない（この画面で一度だけ出る）。 -->
+  <section id="declineNotes" style="display:none">
+    <h2>見送りに添えられた補足</h2>
+    <div id="declineNoteItems"></div>
+  </section>
 
   <h2>未読メッセージ</h2>
   <table>
@@ -74,6 +82,22 @@ async function init() {
 
   renderApprovals(offers);
   renderMessages(inbox.conversations || []);
+  loadDeclineNotes();
+}
+
+/* 見送りに添えられた補足（申請した人に届ける。サーバーは届けた後に消す）。 */
+async function loadDeclineNotes() {
+  try {
+    const r = await fetch("/api/explanations/declined_notes");
+    if (!r.ok) return;
+    const notes = await r.json();
+    if (!notes.length) return;
+    document.getElementById("declineNoteItems").innerHTML = notes.map(n => `<div class="ib-card">
+      <div class="ib-head">${escHtml(n.from_name)} さんは今回は見送りました</div>
+      <p class="ex-supp">補足：「${escHtml(n.text)}」</p>
+      <p class="ib-when">この補足は、この画面で一度だけ表示されます</p></div>`).join("");
+    document.getElementById("declineNotes").style.display = "";
+  } catch (e) { /* 出さない */ }
 }
 
 /* 「〇月〇日」（届いた日。時刻は出さない） */
@@ -100,8 +124,11 @@ function renderApprovals(offers) {
       <div class="ib-head"><a href="/profile/${encodeURIComponent(o.from)}">${escHtml(o.from_name)}</a>${
         o.from_one_liner ? ` <span class="ib-one">─ ${escHtml(o.from_one_liner)}</span>` : ""}</div>
       <p class="ib-when">${escHtml(mdOf(o.at))}に申し出が届きました</p>
+      <div class="ib-explain" data-other="${oid}" style="display:none"></div>
       ${o.messages.map(m => PoXReason.offerHtml(m)).join("")}
       <div class="ib-reason" data-other="${oid}"><p class="ap-none">根拠を読み込んでいます</p></div>
+      <label class="ex-check" style="display:none"><input type="checkbox" class="ex-confirm" onchange="syncApprove(this)">
+        <span>内容を確認しました（違う点があれば補足してください）</span></label>
       <div class="ib-actions">
         <button class="ib-approve" onclick="doApprove('${oid}', this)">承認する</button>
         <button class="ib-decline" onclick="askDecline(this)">見送る</button>
@@ -115,9 +142,42 @@ function renderApprovals(offers) {
       </div>
     </div>`;
   }).join("");
-  el.querySelectorAll(".ib-reason").forEach(async slot => {
-    slot.innerHTML = PoXReason.approvalHtml(await PoXReason.fetchReason(slot.dataset.other));
+  el.querySelectorAll(".ib-card").forEach(async card => {
+    const other = card.dataset.other;
+    // 画面3（指示書68）: 申請した人が申請の時に読んだ内容（保存したもの）を、ユーザー名だけで出す。再生成しない。
+    // 説明があれば、これまでの根拠の欄の代わりに出し、承認には確認のチェックを必須にする。
+    if (await loadIncomingExplanation(card, other)) return;
+    const slot = card.querySelector(".ib-reason");
+    slot.innerHTML = PoXReason.approvalHtml(await PoXReason.fetchReason(other));
   });
+}
+
+async function loadIncomingExplanation(card, other) {
+  try {
+    const r = await fetch(`/api/explanations/incoming?with=${encodeURIComponent(other)}`);
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (d.status !== "ok") return false;
+    const box = card.querySelector(".ib-explain");
+    box.innerHTML = `<p class="ex-cap">${escHtml(d.applicant_name)} さんが申請の時に読んだ内容です（申請の時点のプロフィールにもとづきます）</p>${d.html}`;
+    PoXExplain.wireSupplement(box, { note: "承認・見送りのどちらにも添えられます（400 字まで）。" });
+    box.style.display = "";
+    card.querySelector(".ib-reason").style.display = "none";
+    card.querySelector(".ex-check").style.display = "";
+    card.dataset.explained = "1";
+    card.querySelector(".ib-approve").disabled = true;    // 確認のチェックが入るまで承認できない
+    return true;
+  } catch (e) { return false; }
+}
+
+function syncApprove(cb) {
+  cb.closest(".ib-card").querySelector(".ib-approve").disabled = !cb.checked;
+}
+
+/* 承認・見送りに添える補足（画面3 の「補足する」で開いた欄）。無ければ空。 */
+function supplementOf(card) {
+  const t = card && card.querySelector(".ib-explain textarea");
+  return t ? t.value.trim() : "";
 }
 
 /* 見送る（指示書63 段階1 §4-3）。確認を 1 回挟む（ダイアログは使わず、カードの中で確かめる）。
@@ -135,9 +195,10 @@ function cancelDecline(btn) {
 async function doDecline(otherId, btn) {
   if (btn) btn.disabled = true;
   try {
+    const card = btn && btn.closest(".ib-card");
     const res = await fetch("/api/connections/decline", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: otherId }),
+      body: JSON.stringify({ to_id: otherId, supplement: supplementOf(card) || null }),
     });
     if (PoX.handle(res)) { if (btn) btn.disabled = false; return; }
     if (!res.ok) { alert("見送れませんでした。時間をおいて再度お試しください。"); if (btn) btn.disabled = false; return; }
@@ -172,9 +233,16 @@ async function doApprove(otherId, btn) {
   if (!sid) { PoX.loginRedirect(); return; }
   if (btn) btn.disabled = true;                     // 二重押下防止（§5）
   try {
+    const card = btn && btn.closest(".ib-card");
+    const explained = card && card.dataset.explained === "1";
+    const body = { to_id: otherId };   // 承認は状態の遷移だけ（申し出の文は申し出る側だけが書く）
+    if (explained) {                   // 画面3: 確認のチェック（必須）と、承認に添える補足
+      body.explanation_confirmed = !!card.querySelector(".ex-confirm").checked;
+      body.supplement = supplementOf(card) || null;
+    }
     const res = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_id: otherId }),   // 承認は状態の遷移だけ（申し出の文は申し出る側だけが書く）
+      body: JSON.stringify(body),
     });
     if (PoX.handle(res)) { if (btn) btn.disabled = false; return; }
     const data = await res.json();

@@ -298,6 +298,33 @@ _SQLITE_DDL = [
         narrative   TEXT,
         updated_at  TEXT NOT NULL
     )""",
+    # 接続の説明（指示書68 §4）: 申請に添えた表示・承認の時のハッシュ・補足。台帳には書かない。
+    # 定義は src/explanation_store.py の _DDL と同じ（sqlite はそこでも作る）。
+    """CREATE TABLE IF NOT EXISTS explanation_renders (
+        id               TEXT PRIMARY KEY,
+        from_subject     TEXT NOT NULL,
+        to_subject       TEXT NOT NULL,
+        symbolic_html    TEXT NOT NULL,
+        viewer_html      TEXT NOT NULL,
+        card_digest      TEXT NOT NULL,
+        viewer_digest    TEXT NOT NULL,
+        viewer_key_id    TEXT NOT NULL,
+        recipient_digest TEXT,
+        recipient_key_id TEXT,
+        pair_digest      TEXT,
+        status           TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        approved_at      TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS explanation_supplements (
+        id           TEXT PRIMARY KEY,
+        render_id    TEXT,
+        from_subject TEXT NOT NULL,
+        to_subject   TEXT NOT NULL,
+        kind         TEXT NOT NULL,
+        text         TEXT NOT NULL,
+        created_at   TEXT NOT NULL
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -594,6 +621,33 @@ _PG_DDL = [
         doc_json    TEXT NOT NULL,
         narrative   TEXT,
         updated_at  TEXT NOT NULL
+    )""",
+    # 接続の説明（指示書68 §4）: 申請に添えた表示・承認の時のハッシュ・補足。台帳には書かない。
+    # 定義は src/explanation_store.py の _DDL と同じ（sqlite はそこでも作る）。
+    """CREATE TABLE IF NOT EXISTS explanation_renders (
+        id               TEXT PRIMARY KEY,
+        from_subject     TEXT NOT NULL,
+        to_subject       TEXT NOT NULL,
+        symbolic_html    TEXT NOT NULL,
+        viewer_html      TEXT NOT NULL,
+        card_digest      TEXT NOT NULL,
+        viewer_digest    TEXT NOT NULL,
+        viewer_key_id    TEXT NOT NULL,
+        recipient_digest TEXT,
+        recipient_key_id TEXT,
+        pair_digest      TEXT,
+        status           TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        approved_at      TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS explanation_supplements (
+        id           TEXT PRIMARY KEY,
+        render_id    TEXT,
+        from_subject TEXT NOT NULL,
+        to_subject   TEXT NOT NULL,
+        kind         TEXT NOT NULL,
+        text         TEXT NOT NULL,
+        created_at   TEXT NOT NULL
     )""",
 ]
 

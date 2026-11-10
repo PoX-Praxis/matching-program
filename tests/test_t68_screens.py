@@ -1,4 +1,4 @@
-"""指示書68 §9-3 — 接続の説明の画面1〜3・補足・保存・フラグ・許可リスト・鍵付きのハッシュ（テスト 399〜408）。
+"""指示書68 §9-3 — 接続の説明の画面1〜3・補足・保存・フラグ・許可リスト・鍵付きのハッシュ・取り込み（テスト 399〜409）。
 
 固定のデータは tests/fixtures/explanation_v0_4.json の架空の人のカードを、world2 の人（me・c_full・c_z）に割り当てて使う。
 KAORU・PA の文は使わない。数値は出さない。
@@ -30,12 +30,11 @@ def _cases():
         return {c["case"]: c for c in json.load(f)["cases"]}
 
 
-def _write(doc):
-    path = os.path.join(tempfile.mkdtemp(), "explanation_cards.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(doc, f, ensure_ascii=False)
-    S.clear_cache()
-    return path
+def _load(doc):
+    """説明の向きのレコードを入れ直す（表を空にしてから取り込む）。"""
+    with S._connect(appmod.DB) as con:
+        con.execute("DELETE FROM explanation_directions")
+    return S.import_doc(doc, db_path=appmod.DB)
 
 
 def _pair_doc(viewer="me", target="c_full", case="1_complement"):
@@ -55,10 +54,9 @@ def xs(world2, monkeypatch):
     monkeypatch.setenv("POX_EXPLANATION_ALLOWLIST", "me+c_full")
     monkeypatch.setenv("POX_EXPLANATION_DIGEST_KEY", KEY)
     monkeypatch.delenv("POX_EXPLANATION_DIGEST_KEY_PREV", raising=False)
-    path = _write(_pair_doc())
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", path)
-    yield path
-    S.clear_cache()
+    monkeypatch.delenv("POX_OPS_IMPORT_TOKEN", raising=False)
+    assert _load(_pair_doc())["saved"] == 2
+    yield
 
 
 def _card(sid, other):
@@ -95,7 +93,8 @@ def test_t399_screen2_saves_and_screen3_needs_confirmation(xs):
     # データが後から変わっても、画面3 は保存した表示のまま（再生成しない）
     doc = _pair_doc()
     doc["cards"][0]["card"]["purposes"][0]["meaning"]["text"] = "{O}は、別の説明で{N}の店に関われる可能性があります。"
-    os.environ["POX_EXPLANATION_CARDS_PATH"] = _write(doc)
+    assert S.import_doc(doc, db_path=appmod.DB)["saved"] == 2              # 同じ向き・同じ as-of は上書き
+    assert "別の説明で" in _card("me", "c_full")["html"]
     assert _cli("c_full").get("/api/explanations/incoming?with=me").get_json()["html"] == inc["html"]
     # 確認のチェックが無いと承認できない
     r = _cli("c_full").post("/approve", json={"to_id": "me"})
@@ -216,7 +215,7 @@ def test_t406_allowlist_only(xs, monkeypatch):
     other = _pair_doc(viewer="me", target="c_z", case="2_resonance")
     doc["people"].update({"minato": {"subject": "c_z"}})
     doc["cards"] += other["cards"]
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", _write(doc))
+    _load(doc)
     assert _card("me", "c_full")["status"] == "ok" and _card("c_full", "me")["status"] == "ok"   # どちら向きでも
     assert _card("me", "c_z") == {"status": "off"} and _card("c_z", "me") == {"status": "off"}
     assert [x["other"] for x in _cli("me").get("/api/explanations/list").get_json()["items"]] == ["c_full"]
@@ -230,23 +229,20 @@ def test_t406_allowlist_only(xs, monkeypatch):
     monkeypatch.setenv("POX_EXPLANATION", "on")
     assert _card("me", "c_z")["status"] == "ok"
     assert _card("c_z", "c_full") == {"status": "none"}                    # on でもデータの無い組は出さない（準備中と出さない）
-    # 形の違うファイル・読めないファイルは誰にも出さない
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", _write({"cards": [{"viewer": "aoi", "target": "haru", "card": {"x": 1}}]}))
-    assert _card("me", "c_full") == {"status": "none"}
-    bad = os.path.join(tempfile.mkdtemp(), "broken.json")
-    open(bad, "w").write("{")
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", bad)
-    S.clear_cache()
-    assert _card("me", "c_full") == {"status": "none"}
+    # 形の違う向きは保存されないので、誰にも出ない
+    doc = _pair_doc()
+    doc["cards"][0]["card"]["purposes"] = [{"ref": "viewer.purpose.p1"}]
+    r = _load(doc)
+    assert r["saved"] == 0 and r["dropped"] == 2 and _card("me", "c_full") == {"status": "none"}
 
 
 # ── 407 §7-12・§2-2: 一覧は 0 件・1 件・多件（10 件ずつ・並びは中立）。説明の無い相手は出さない ─────────────────
 def test_t407_list_zero_one_many(xs, monkeypatch):
     monkeypatch.setenv("POX_EXPLANATION", "on")
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", _write({"cards": []}))
+    _load({"cards": []})
     d = _cli("me").get("/api/explanations/list").get_json()
     assert d == {"status": "ok", "items": [], "page": 0, "has_prev": False, "has_next": False}
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", _write(_pair_doc()))
+    _load(_pair_doc())
     d = _cli("me").get("/api/explanations/list").get_json()
     assert len(d["items"]) == 1 and d["items"][0]["name"] == "ハル" and not d["has_next"]
     it = d["items"][0]["items"][0]
@@ -266,7 +262,7 @@ def test_t407_list_zero_one_many(xs, monkeypatch):
     cards.insert(3, {"viewer": "aoi", "target": "pz", "card": pend})          # 説明の無い相手（pending）
     people["ps"] = {"subject": "ps"}
     cards.append({"viewer": "aoi", "target": "ps", "card": sparse})           # 逆の向きだけの説明（疎）
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", _write({"people": people, "cards": cards}))
+    _load({"people": people, "cards": cards})
     p0 = _cli("me").get("/api/explanations/list?page=0").get_json()
     p1 = _cli("me").get("/api/explanations/list?page=1").get_json()
     ids = [x["other"] for x in p0["items"] + p1["items"]]
@@ -291,12 +287,12 @@ def test_t408_states_directions_and_v4_heading(xs, monkeypatch):
         assert card["purposes"] == cs["card"]["purposes"] and card["reverse_purposes"] == cs["card"]["reverse_purposes"]
         assert sorted(map(json.dumps, card["citations"])) == sorted(map(json.dumps, cs["card"]["citations"]))
         assert card["output_digest"] == X.output_digest(card)
-    # 向きのレコードの形のファイルでも、同じカードが出る（A の目的 × B の文 は、A の本体と B の「A さんから見た B さん」の両方に使う）
+    # 向きのレコードの形でも、同じカードが出る（A の目的 × B の文 は、A の本体と B の「A さんから見た B さん」の両方に使う）
     c = cases["1_complement"]["card"]
     fwd, rev = X.split_card(c)
     doc = {"format": S.FILE_FORMAT, "people": {"aoi": {"subject": "me"}, "haru": {"subject": "c_full"}},
            "directions": [{"need": "aoi", "offer": "haru", **fwd}, {"need": "haru", "offer": "aoi", **rev}]}
-    monkeypatch.setenv("POX_EXPLANATION_CARDS_PATH", _write(doc))
+    assert _load(doc)["saved"] == 2
     a = S.card_for("me", "c_full", db_path=appmod.DB)
     b = S.card_for("c_full", "me", db_path=appmod.DB)
     assert a["purposes"] == c["purposes"] and b["reverse_purposes"] == _swap(c["purposes"])
@@ -333,3 +329,64 @@ def _swap(purposes):
             u["need_ref"] = u["need_ref"].replace("viewer.", "target.", 1)
         p["missing_must"] = [m.replace("viewer.", "target.", 1) for m in p["missing_must"]]
     return out
+
+
+# ── 409 §5-2 案 B: 取り込みのルート（トークン・確かめ・上書き・件数だけ）────────────────────────────
+def test_t409_ops_import_route(xs, monkeypatch):
+    import display_names, handles
+    handles.set_handle("me", "aoi_h", db_path=appmod.DB)
+    handles.set_handle("c_full", "haru_h", db_path=appmod.DB)
+    with S._connect(appmod.DB) as con:
+        con.execute("DELETE FROM explanation_directions")
+    c = _cases()["1_complement"]["card"]
+    fwd, rev = X.split_card(c)
+    doc = {"format": S.FILE_FORMAT, "people": {"aoi": {"subject": "@aoi_h", "has_purposes": True},
+                                                "haru": {"subject": "@haru_h", "has_purposes": True}},
+           "directions": [{"need": "aoi", "offer": "haru", **fwd}, {"need": "haru", "offer": "aoi", **rev}]}
+    body = json.dumps(doc, ensure_ascii=False).encode("utf-8")
+    cli = appmod.app.test_client()
+
+    def post(tok=None, data=body):
+        h = {"Content-Type": "application/json"}
+        if tok is not None:
+            h["X-Ops-Import-Token"] = tok
+        return cli.post("/ops/explanations/import", data=data, headers=h)
+
+    tok = "t" * 40
+    assert post(tok).status_code == 404                                      # 未設定なら 404（閉じている）
+    monkeypatch.setenv("POX_OPS_IMPORT_TOKEN", "short")
+    assert post("short").status_code == 404                                  # 短いトークンは使わない
+    monkeypatch.setenv("POX_OPS_IMPORT_TOKEN", tok)
+    assert post().status_code == 404 and post("u" * 40).status_code == 404   # 無い・違う
+    r = post(tok)
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d == {"received": 2, "saved": 2, "dropped": 0, "directions": [{"index": 0, "ok": True}, {"index": 1, "ok": True}]}
+    blob = r.get_data(as_text=True)
+    for t in [x["text"] for x in c["citations"]] + ["aoi", "haru", "me", "c_full"]:
+        assert t not in blob, t                                              # 応答に文・ラベル・subject を出さない
+    first = _card("me", "c_full")
+    assert first["status"] == "ok"
+    assert post(tok).get_json()["saved"] == 2                               # 何度送っても同じ結果（上書き）
+    assert S.status(db_path=appmod.DB) == {"directions": 2} and _card("me", "c_full") == first
+    assert post(tok, data=b"\xef\xbb\xbf" + body).status_code == 200        # BOM 付き（Windows）でも読める
+    assert post(tok, data=b"{").status_code == 400
+    assert post(tok, data=b"[]").status_code == 400
+    # ハンドルを subject に直せない人の向き・確かめに落ちた向きは保存しない
+    bad = json.loads(json.dumps(doc))
+    bad["people"]["haru"]["subject"] = "@nobody_here"
+    with S._connect(appmod.DB) as con:
+        con.execute("DELETE FROM explanation_directions")
+    d = post(tok, data=json.dumps(bad).encode()).get_json()
+    assert d["saved"] == 0 and {x["why"] for x in d["directions"]} == {"人が解決できない"}
+    bad = json.loads(json.dumps(doc))
+    bad["directions"][0]["purposes"][0]["meaning"]["text"] = "{O}は、最適な相手で{N}の店に関われる可能性があります。"
+    bad["directions"][1]["purposes"][0]["elements"][0]["offer_quote"] = "原文に無い句"
+    d = post(tok, data=json.dumps(bad, ensure_ascii=False).encode()).get_json()
+    assert d["saved"] == 0 and [x["why"] for x in d["directions"]] == ["機械の確かめに落ちた"] * 2
+    display_names.set_display_name("c_full", "アプリ", db_path=appmod.DB)   # ① に人の名前が入っていれば落とす
+    d = post(tok).get_json()
+    assert [x["ok"] for x in d["directions"]] == [False, True]
+    assert S.status(db_path=appmod.DB) == {"directions": 1}
+    monkeypatch.delenv("POX_OPS_IMPORT_TOKEN")                               # 取り込みが終わったら消す → 404
+    assert post(tok).status_code == 404

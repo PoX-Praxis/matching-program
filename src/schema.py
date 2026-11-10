@@ -298,8 +298,20 @@ _SQLITE_DDL = [
         narrative   TEXT,
         updated_at  TEXT NOT NULL
     )""",
-    # 接続の説明（指示書68 §4）: 申請に添えた表示・承認の時のハッシュ・補足。台帳には書かない。
+    # 接続の説明（指示書68 §1-2・§4）: 説明の向きのレコード（取り込み・段階2 の生成）・申請に添えた表示・
+    # 承認の時のハッシュ・補足。台帳には書かない。
     # 定義は src/explanation_store.py の _DDL と同じ（sqlite はそこでも作る）。
+    """CREATE TABLE IF NOT EXISTS explanation_directions (
+        need_subject      TEXT NOT NULL,
+        offer_subject     TEXT NOT NULL,
+        as_of_digest      TEXT NOT NULL,
+        direction_json    TEXT NOT NULL,
+        need_has_purposes INTEGER NOT NULL DEFAULT 1,
+        source            TEXT NOT NULL,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        PRIMARY KEY (need_subject, offer_subject, as_of_digest)
+    )""",
     """CREATE TABLE IF NOT EXISTS explanation_renders (
         id               TEXT PRIMARY KEY,
         from_subject     TEXT NOT NULL,
@@ -622,8 +634,20 @@ _PG_DDL = [
         narrative   TEXT,
         updated_at  TEXT NOT NULL
     )""",
-    # 接続の説明（指示書68 §4）: 申請に添えた表示・承認の時のハッシュ・補足。台帳には書かない。
+    # 接続の説明（指示書68 §1-2・§4）: 説明の向きのレコード（取り込み・段階2 の生成）・申請に添えた表示・
+    # 承認の時のハッシュ・補足。台帳には書かない。
     # 定義は src/explanation_store.py の _DDL と同じ（sqlite はそこでも作る）。
+    """CREATE TABLE IF NOT EXISTS explanation_directions (
+        need_subject      TEXT NOT NULL,
+        offer_subject     TEXT NOT NULL,
+        as_of_digest      TEXT NOT NULL,
+        direction_json    TEXT NOT NULL,
+        need_has_purposes INTEGER NOT NULL DEFAULT 1,
+        source            TEXT NOT NULL,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        PRIMARY KEY (need_subject, offer_subject, as_of_digest)
+    )""",
     """CREATE TABLE IF NOT EXISTS explanation_renders (
         id               TEXT PRIMARY KEY,
         from_subject     TEXT NOT NULL,

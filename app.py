@@ -139,7 +139,8 @@ if _PROD and not mailer.is_configured():
 import explanation as X_explanation
 import explanation_store as _xs
 _xs_boot = _xs.startup_check()
-print(f"[explanation] mode={_xs_boot['mode']} digest_key={_xs_boot['key']} digest_key_prev={_xs_boot['key_prev']}")
+print(f"[explanation] mode={_xs_boot['mode']} digest_key={_xs_boot['key']} digest_key_prev={_xs_boot['key_prev']} "
+      f"import_route={'開いている' if _xs.ops_token_ok(os.environ.get(_xs.OPS_TOKEN_ENV)) else '閉じている'}")
 
 # ── セッションCookie設定 ─────────────────────────────────────────────
 # 有効期限は 30 日（auth_verify で session.permanent=True を張る）。既定では毎リクエストで
@@ -2589,6 +2590,32 @@ def _approved_view(me, other, row):
     reader = "viewer" if me == applicant else "recipient"
     return {"status": "approved", "html": X_explanation.personalize(body, reader, names),
             "approved_at": (row["approved_at"] or "")[:10]}
+
+
+@app.post("/ops/explanations/import")
+def ops_explanations_import():
+    """運営用の取り込みのルート（指示書68 §5-2 案 B・KAORU 2026-11-10）。説明の向きのレコードを本体の DB に入れる。
+
+    - トークン POX_OPS_IMPORT_TOKEN（32 文字以上）を X-Ops-Import-Token ヘッダで渡す。定数時間で比べる。
+      未設定・短い・一致しないときは 404（取り込みが終わったら環境変数を消して閉じる）
+    - スキーマと機械の確かめに落ちた向き・ハンドルを subject に直せない人の向きは保存しない
+    - 同じ向き・同じ as-of は上書き（何度送っても同じ結果）
+    - ログと応答には件数と通過の可否だけを出す（文・ラベル・subject は出さない）"""
+    if not _xs.ops_token_ok(request.headers.get(_xs.OPS_TOKEN_HEADER)):
+        abort(404)
+    raw = request.get_data(cache=False)
+    if len(raw) > _xs.IMPORT_MAX_BYTES:
+        return jsonify({"error": "大きすぎます"}), 413
+    try:
+        doc = json.loads(raw.decode("utf-8-sig"))           # Windows のツールが付ける BOM を許す
+    except (UnicodeDecodeError, ValueError):
+        return jsonify({"error": "JSON が読めません"}), 400
+    try:
+        res = _xs.import_doc(doc, db_path=DB, names_of=_plain_name)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return jsonify({"error": "形が違います"}), 400
+    app.logger.warning(f"[explanation-import] received={res['received']} saved={res['saved']} dropped={res['dropped']}")
+    return jsonify(res), 200
 
 
 @app.get("/api/explanations/card")

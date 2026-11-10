@@ -220,11 +220,96 @@ def save_direction(need_subject, offer_subject, direction, need_has_purposes=Tru
                      source, now, now))
 
 
-def _latest_direction(con, need_subject, offer_subject):
+def _latest_direction(con, need_subject, offer_subject, source="import"):
+    """その向きの最も新しく入れたレコード（既定は取り込み分だけ。生成した分は generated_direction で引く）。"""
     r = con.execute("SELECT direction_json, need_has_purposes FROM explanation_directions "
-                    "WHERE need_subject=%s AND offer_subject=%s ORDER BY updated_at DESC, created_at DESC",
-                    (need_subject, offer_subject)).fetchone()
+                    "WHERE need_subject=%s AND offer_subject=%s AND source=%s ORDER BY updated_at DESC, created_at DESC",
+                    (need_subject, offer_subject, source)).fetchone()
     return (json.loads(r[0]), bool(r[1])) if r else (None, None)
+
+
+def imported_direction(need_subject, offer_subject, db_path="pox.db"):
+    with _connect(db_path) as con:
+        return _latest_direction(con, need_subject, offer_subject)
+
+
+# ── 生成した向き（指示書69 §3）────────────────────────────────────────────────────────
+def save_generated(need_subject, offer_subject, direction, gen_key, version_key, meta, need_has_purposes=True,
+                   db_path="pox.db"):
+    """生成した向きを保存する（同じ向き・同じ as-of は上書き。版を上げて作り直したときは、古いものが置き換わる）。"""
+    body = json.dumps({k: direction.get(k) for k in X.DIRECTION_FIELDS}, ensure_ascii=False, sort_keys=True)
+    now = _now()
+    with _connect(db_path) as con:
+        con.execute("INSERT INTO explanation_directions (need_subject, offer_subject, as_of_digest, direction_json, "
+                    "need_has_purposes, source, created_at, updated_at, gen_key, version_key, superseded, meta_json) "
+                    "VALUES (%s, %s, %s, %s, %s, 'generated', %s, %s, %s, %s, 0, %s) "
+                    "ON CONFLICT (need_subject, offer_subject, as_of_digest) DO UPDATE SET "
+                    "direction_json=EXCLUDED.direction_json, need_has_purposes=EXCLUDED.need_has_purposes, "
+                    "source=EXCLUDED.source, updated_at=EXCLUDED.updated_at, gen_key=EXCLUDED.gen_key, "
+                    "version_key=EXCLUDED.version_key, superseded=0, meta_json=EXCLUDED.meta_json",
+                    (need_subject, offer_subject, as_of_digest(direction), body, 1 if need_has_purposes else 0, now, now,
+                     gen_key, version_key, json.dumps(meta, ensure_ascii=False, sort_keys=True)))
+
+
+def generated_direction(need_subject, offer_subject, as_of_dg, db_path="pox.db"):
+    """その向きの、いまの as-of の生成したレコード。{"direction", "gen_key", "version_key", "superseded", "meta"} か None。"""
+    with _connect(db_path) as con:
+        r = con.execute("SELECT direction_json, gen_key, version_key, superseded, meta_json, need_has_purposes "
+                        "FROM explanation_directions WHERE need_subject=%s AND offer_subject=%s AND as_of_digest=%s "
+                        "AND source='generated'", (need_subject, offer_subject, as_of_dg)).fetchone()
+    if not r:
+        return None
+    return {"direction": json.loads(r[0]), "gen_key": r[1], "version_key": r[2], "superseded": bool(r[3]),
+            "meta": json.loads(r[4]) if r[4] else {}, "need_has_purposes": bool(r[5])}
+
+
+def has_gen_key(gen_key, db_path="pox.db"):
+    with _connect(db_path) as con:
+        return con.execute("SELECT 1 FROM explanation_directions WHERE gen_key=%s AND superseded=0",
+                           (gen_key,)).fetchone() is not None
+
+
+def mark_superseded(current_version_key, db_path="pox.db"):
+    """プロンプト・モデルの版を上げたとき: 古い版で作った説明に印をつけるだけ（全体を作り直さない）。印の数を返す。"""
+    with _connect(db_path) as con:
+        n = con.execute("SELECT COUNT(*) FROM explanation_directions WHERE source='generated' AND superseded=0 "
+                        "AND version_key<>%s", (current_version_key,)).fetchone()[0]
+        con.execute("UPDATE explanation_directions SET superseded=1 WHERE source='generated' AND version_key<>%s",
+                    (current_version_key,))
+    return n
+
+
+# ── 1 日の生成の上限（指示書69 §3）──────────────────────────────────────────────────────
+DAILY_LIMIT_ENV = "POX_EXPLANATION_DAILY_LIMIT"
+DAILY_LIMIT_DEFAULT = 50
+
+
+def daily_limit():
+    try:
+        return max(0, int(os.environ.get(DAILY_LIMIT_ENV) or DAILY_LIMIT_DEFAULT))
+    except ValueError:
+        return DAILY_LIMIT_DEFAULT
+
+
+def _today():
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def used_today(db_path="pox.db"):
+    with _connect(db_path) as con:
+        return con.execute("SELECT COUNT(*) FROM explanation_generation_log WHERE day=%s", (_today(),)).fetchone()[0]
+
+
+def budget_left(db_path="pox.db"):
+    return max(0, daily_limit() - used_today(db_path))
+
+
+def log_generation(need_subject, offer_subject, gen_key, outcome, db_path="pox.db"):
+    """生成を 1 回数える（成否によらず。上限はこの数で見る）。outcome は show_reason か "explained"。文は残さない。"""
+    with _connect(db_path) as con:
+        con.execute("INSERT INTO explanation_generation_log (id, day, need_subject, offer_subject, gen_key, outcome, "
+                    "created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (f"eg_{uuid.uuid4().hex[:16]}", _today(), need_subject, offer_subject, gen_key, outcome, _now()))
 
 
 def status(db_path="pox.db"):
@@ -233,26 +318,33 @@ def status(db_path="pox.db"):
         return {"directions": con.execute("SELECT COUNT(*) FROM explanation_directions").fetchone()[0]}
 
 
-def card_for(viewer, target, db_path="pox.db"):
-    """見る人 × 相手のカード（フラグ・許可リストを通ったときだけ）。無ければ None。"""
+def card_for(viewer, target, db_path="pox.db", direction_of=None):
+    """見る人 × 相手のカード（フラグ・許可リストを通ったときだけ）。無ければ None。
+    direction_of(need, offer) → (向き, need_has_purposes) を渡せば、それで向きを引く（生成のバックエンドが動いているとき）。
+    渡さなければ、取り込み分だけ（POX_EXPLANATION_BACKEND=off と同じ）。"""
     if not enabled_for(viewer, target, db_path):
         return None
-    with _connect(db_path) as con:
-        fwd, _ = _latest_direction(con, viewer, target)
-        rev, rev_hp = _latest_direction(con, target, viewer)
+    if direction_of is None:
+        with _connect(db_path) as con:
+            fwd, _ = _latest_direction(con, viewer, target)
+            rev, rev_hp = _latest_direction(con, target, viewer)
+    else:
+        fwd, _ = direction_of(viewer, target)
+        rev, rev_hp = direction_of(target, viewer)
     if not fwd and not rev:
         return None
     return X.assemble(fwd, rev, True if rev_hp is None else rev_hp)
 
 
-def partners_of(viewer, db_path="pox.db"):
+def partners_of(viewer, db_path="pox.db", include_generated=False):
     """見る人と説明のある相手（どちらかの向きのレコードがある相手）。並びは取り込んだ順（中立）。"""
     if mode() == "off":
         return []
     with _connect(db_path) as con:
         rows = con.execute("SELECT need_subject, offer_subject, MIN(created_at) AS first FROM explanation_directions "
-                           "WHERE need_subject=%s OR offer_subject=%s GROUP BY need_subject, offer_subject "
-                           "ORDER BY first, need_subject, offer_subject", (viewer, viewer)).fetchall()
+                           "WHERE (need_subject=%s OR offer_subject=%s) AND (source='import' OR %s=1) "
+                           "GROUP BY need_subject, offer_subject ORDER BY first, need_subject, offer_subject",
+                           (viewer, viewer, 1 if include_generated else 0)).fetchall()
     out = []
     for a, b, _first in rows:
         other = b if a == viewer else a
@@ -272,7 +364,20 @@ _DDL = [
         source            TEXT NOT NULL,
         created_at        TEXT NOT NULL,
         updated_at        TEXT NOT NULL,
+        gen_key           TEXT,
+        version_key       TEXT,
+        superseded        INTEGER NOT NULL DEFAULT 0,
+        meta_json         TEXT,
         PRIMARY KEY (need_subject, offer_subject, as_of_digest)
+    )""",
+    """CREATE TABLE IF NOT EXISTS explanation_generation_log (
+        id            TEXT PRIMARY KEY,
+        day           TEXT NOT NULL,
+        need_subject  TEXT NOT NULL,
+        offer_subject TEXT NOT NULL,
+        gen_key       TEXT NOT NULL,
+        outcome       TEXT NOT NULL,
+        created_at    TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_renders (
         id               TEXT PRIMARY KEY,
@@ -288,7 +393,8 @@ _DDL = [
         pair_digest      TEXT,
         status           TEXT NOT NULL,
         created_at       TEXT NOT NULL,
-        approved_at      TEXT
+        approved_at      TEXT,
+        card_as_of       TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_supplements (
         id           TEXT PRIMARY KEY,
@@ -302,17 +408,28 @@ _DDL = [
 ]
 
 
+GENERATED_COLUMNS = (("gen_key", "TEXT"), ("version_key", "TEXT"), ("superseded", "INTEGER NOT NULL DEFAULT 0"),
+                     ("meta_json", "TEXT"))
+
+
 def _connect(db_path="pox.db"):
     con = get_connection(db_path)
     if not is_postgres():
         for ddl in _DDL:
             con.execute(ddl)
+        have = {r[1] for r in con.execute("PRAGMA table_info(explanation_directions)").fetchall()}
+        for col, typ in GENERATED_COLUMNS:                 # 指示書69 で足した列（古い sqlite のファイルにも足す）
+            if col not in have:
+                con.execute(f"ALTER TABLE explanation_directions ADD COLUMN {col} {typ}")
+        if "card_as_of" not in {r[1] for r in con.execute("PRAGMA table_info(explanation_renders)").fetchall()}:
+            con.execute("ALTER TABLE explanation_renders ADD COLUMN card_as_of TEXT")
         con.commit()
     return con
 
 
 _RENDER_COLS = ("id", "from_subject", "to_subject", "symbolic_html", "viewer_html", "card_digest", "viewer_digest",
-                "viewer_key_id", "recipient_digest", "recipient_key_id", "pair_digest", "status", "created_at", "approved_at")
+                "viewer_key_id", "recipient_digest", "recipient_key_id", "pair_digest", "status", "created_at", "approved_at",
+                "card_as_of")
 
 
 def _row(r):
@@ -327,7 +444,7 @@ def clean_supplement(text):
     return t or None
 
 
-def save_offer_render(applicant, recipient, symbolic_html, viewer_html, card_digest, db_path="pox.db"):
+def save_offer_render(applicant, recipient, symbolic_html, viewer_html, card_digest, db_path="pox.db", card_as_of=None):
     """申請に添えて、申請した人が読んだ表示をそのまま保存する（§2-3）。前の未承認の表示は置き換える。"""
     dg, kid = render_digest(viewer_html)
     rid = f"er_{uuid.uuid4().hex[:16]}"
@@ -335,9 +452,10 @@ def save_offer_render(applicant, recipient, symbolic_html, viewer_html, card_dig
         con.execute("DELETE FROM explanation_renders WHERE from_subject=%s AND to_subject=%s AND status='pending'",
                     (applicant, recipient))
         con.execute("INSERT INTO explanation_renders (id, from_subject, to_subject, symbolic_html, viewer_html, card_digest, "
-                    "viewer_digest, viewer_key_id, recipient_digest, recipient_key_id, pair_digest, status, created_at, approved_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL, 'pending', %s, NULL)",
-                    (rid, applicant, recipient, symbolic_html, viewer_html, card_digest, dg, kid, _now()))
+                    "viewer_digest, viewer_key_id, recipient_digest, recipient_key_id, pair_digest, status, created_at, approved_at, "
+                    "card_as_of) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL, 'pending', %s, NULL, %s)",
+                    (rid, applicant, recipient, symbolic_html, viewer_html, card_digest, dg, kid, _now(),
+                     json.dumps(card_as_of, ensure_ascii=False, sort_keys=True) if card_as_of else None))
     return rid
 
 

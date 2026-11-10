@@ -310,7 +310,21 @@ _SQLITE_DDL = [
         source            TEXT NOT NULL,
         created_at        TEXT NOT NULL,
         updated_at        TEXT NOT NULL,
+        gen_key           TEXT,
+        version_key       TEXT,
+        superseded        INTEGER NOT NULL DEFAULT 0,
+        meta_json         TEXT,
         PRIMARY KEY (need_subject, offer_subject, as_of_digest)
+    )""",
+    # 説明の生成の記録（指示書69 §3。1 日の上限を数える。文は残さない）
+    """CREATE TABLE IF NOT EXISTS explanation_generation_log (
+        id            TEXT PRIMARY KEY,
+        day           TEXT NOT NULL,
+        need_subject  TEXT NOT NULL,
+        offer_subject TEXT NOT NULL,
+        gen_key       TEXT NOT NULL,
+        outcome       TEXT NOT NULL,
+        created_at    TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_renders (
         id               TEXT PRIMARY KEY,
@@ -326,7 +340,8 @@ _SQLITE_DDL = [
         pair_digest      TEXT,
         status           TEXT NOT NULL,
         created_at       TEXT NOT NULL,
-        approved_at      TEXT
+        approved_at      TEXT,
+        card_as_of       TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_supplements (
         id           TEXT PRIMARY KEY,
@@ -646,7 +661,21 @@ _PG_DDL = [
         source            TEXT NOT NULL,
         created_at        TEXT NOT NULL,
         updated_at        TEXT NOT NULL,
+        gen_key           TEXT,
+        version_key       TEXT,
+        superseded        INTEGER NOT NULL DEFAULT 0,
+        meta_json         TEXT,
         PRIMARY KEY (need_subject, offer_subject, as_of_digest)
+    )""",
+    # 説明の生成の記録（指示書69 §3。1 日の上限を数える。文は残さない）
+    """CREATE TABLE IF NOT EXISTS explanation_generation_log (
+        id            TEXT PRIMARY KEY,
+        day           TEXT NOT NULL,
+        need_subject  TEXT NOT NULL,
+        offer_subject TEXT NOT NULL,
+        gen_key       TEXT NOT NULL,
+        outcome       TEXT NOT NULL,
+        created_at    TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_renders (
         id               TEXT PRIMARY KEY,
@@ -662,7 +691,8 @@ _PG_DDL = [
         pair_digest      TEXT,
         status           TEXT NOT NULL,
         created_at       TEXT NOT NULL,
-        approved_at      TEXT
+        approved_at      TEXT,
+        card_as_of       TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_supplements (
         id           TEXT PRIMARY KEY,
@@ -764,6 +794,11 @@ def _migrate_columns(con) -> None:
     # 指示書57（①v5）: 目的ごとの必要像（purpose_id）・必要像の文の配列（body_json）・与え像のピン留め。
     for col in ("purpose_id", "body_json", "offer_hash"):
         _add_column_if_missing(con, "necessities", col, "TEXT")
+    # 接続の説明の向きのレコードに、生成の鍵・版・superseded の印（指示書69 §3。指示書68 の表に足した列）。
+    for col, typ in (("gen_key", "TEXT"), ("version_key", "TEXT"), ("superseded", "INTEGER NOT NULL DEFAULT 0"),
+                     ("meta_json", "TEXT")):
+        _add_column_if_missing(con, "explanation_directions", col, typ)
+    _add_column_if_missing(con, "explanation_renders", "card_as_of", "TEXT")   # 承認時の説明が古いかを見る（指示書69 §3）
     # talk_posts の挿入順（指示書45B §2: discussion_hash v1 は挿入順で連結）。既存行は created_at 順で補完。
     _add_column_if_missing(con, "talk_posts", "ins_seq", "INTEGER")
     from talks import ensure_post_order

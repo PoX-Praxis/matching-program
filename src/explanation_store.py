@@ -180,9 +180,11 @@ def check_direction(direction, names=()):
     return None
 
 
-def import_doc(doc, db_path="pox.db", names_of=None):
+def import_doc(doc, db_path="pox.db", names_of=None, subject_exists=None, bind_of=None):
     """取り込み（§5-2 案 B）。通った向きだけを保存する（同じ向き・同じ as-of は上書き）。
-    戻り値は件数と、向きごとの通過の可否だけ（文・ラベル・subject は返さない）。names_of(subject) は呼び方（① に名前が無いかの確かめ用）。"""
+    戻り値は件数と、向きごとの通過の可否だけ（文・ラベル・subject は返さない）。names_of(subject) は呼び方（① に名前が無いかの確かめ用）。
+    subject_exists(subject) を渡すと、実在しない subject の向きは保存しない（指示書69 順3 の確認 4）。
+    bind_of(subject, direction) → (結びついた目的の数, 説明のある目的の数) を渡すと、必要の側の版との結びつきを数えて返す。"""
     raw, subj, hp = parse_import(doc)
     results, saved = [], 0
     seen = set()
@@ -191,6 +193,9 @@ def import_doc(doc, db_path="pox.db", names_of=None):
         b = _resolve_subject(subj.get(offer) or "", db_path) if offer in subj else None
         if not a or not b or a == b:
             results.append({"index": i, "ok": False, "why": "人が解決できない"})
+            continue
+        if subject_exists is not None and not (subject_exists(a) and subject_exists(b)):
+            results.append({"index": i, "ok": False, "why": "subject が存在しない"})
             continue
         if (a, b) in seen:
             results.append({"index": i, "ok": True, "why": "同じ向きの重なり（1 つとして保存）"})
@@ -203,7 +208,11 @@ def import_doc(doc, db_path="pox.db", names_of=None):
         save_direction(a, b, d, need_has_purposes=hp.get(need, True), source="import", db_path=db_path)
         seen.add((a, b))
         saved += 1
-        results.append({"index": i, "ok": True})
+        item = {"index": i, "ok": True}
+        if bind_of is not None:
+            k, n = bind_of(a, d)
+            item["bound"] = f"{k}/{n}"                     # 必要の側の目的が、本人の必要像の版（c4）に結びついた数
+        results.append(item)
     return {"received": len(raw), "saved": saved, "dropped": sum(1 for r in results if not r["ok"]), "directions": results}
 
 
@@ -399,7 +408,8 @@ _DDL = [
         agreed_event_hash TEXT,
         applicant_private INTEGER NOT NULL DEFAULT 0,
         recipient_private INTEGER NOT NULL DEFAULT 0,
-        deleted_at       TEXT
+        deleted_at       TEXT,
+        a1_json          TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS explanation_settings (
         subject_id    TEXT PRIMARY KEY,
@@ -428,7 +438,7 @@ _DDL = [
 
 RENDER_ADDED_COLUMNS = (("card_as_of", "TEXT"), ("card_json", "TEXT"), ("agreed_event_hash", "TEXT"),
                         ("applicant_private", "INTEGER NOT NULL DEFAULT 0"),
-                        ("recipient_private", "INTEGER NOT NULL DEFAULT 0"), ("deleted_at", "TEXT"))
+                        ("recipient_private", "INTEGER NOT NULL DEFAULT 0"), ("deleted_at", "TEXT"), ("a1_json", "TEXT"))
 GENERATED_COLUMNS = (("gen_key", "TEXT"), ("version_key", "TEXT"), ("superseded", "INTEGER NOT NULL DEFAULT 0"),
                      ("meta_json", "TEXT"))
 
@@ -452,7 +462,8 @@ def _connect(db_path="pox.db"):
 
 _RENDER_COLS = ("id", "from_subject", "to_subject", "symbolic_html", "viewer_html", "card_digest", "viewer_digest",
                 "viewer_key_id", "recipient_digest", "recipient_key_id", "pair_digest", "status", "created_at", "approved_at",
-                "card_as_of", "card_json", "agreed_event_hash", "applicant_private", "recipient_private", "deleted_at")
+                "card_as_of", "card_json", "agreed_event_hash", "applicant_private", "recipient_private", "deleted_at",
+                "a1_json")
 
 
 def _row(r):
@@ -575,10 +586,12 @@ def approve_supplements(render_id, db_path="pox.db"):
                                           (render_id,)).fetchall()]
 
 
-def mark_agreed(render_id, pair_digest_value, event_hash, db_path="pox.db"):
+def mark_agreed(render_id, pair_digest_value, event_hash, a1=None, db_path="pox.db"):
+    """合意を書いた印。a1（参照・HMAC・ラベル・版だけ。文は入っていない）も、確かめ直せるように残す。"""
     with _connect(db_path) as con:
-        con.execute("UPDATE explanation_renders SET pair_digest=%s, agreed_event_hash=%s WHERE id=%s",
-                    (pair_digest_value, event_hash, render_id))
+        con.execute("UPDATE explanation_renders SET pair_digest=%s, agreed_event_hash=%s, a1_json=%s WHERE id=%s",
+                    (pair_digest_value, event_hash, json.dumps(a1, ensure_ascii=False, sort_keys=True) if a1 else None,
+                     render_id))
 
 
 def subject_rows(subject_id, db_path="pox.db"):

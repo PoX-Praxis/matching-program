@@ -9,7 +9,7 @@
 モデルは差し替えられる（POX_EXPLANATION_BACKEND）:
   off（既定）: 生成しない（保存済みの取り込み分だけを出す）
   fixed: テスト用。決まった入力に決まった出力を返す（規則で句を選ぶ。モデルではない）
-  local: 手元の自前のモデル（transformers）。仕組みを通すためだけ（質は問わない）
+  local: 手元の自前のモデル（transformers）。モデルと revision を明示して指定したときだけ動く（既定のモデルは持たない）
   server: 段階3 で決めるモデルの推論サーバー（段階2 では使えない）
 
 外部の AI の API は使わない。数値・生テキスト・根拠・evidence_span・要約文・背景・経験・意志_なぜは入力に使わない。
@@ -37,7 +37,7 @@ BACKENDS = ("off", "fixed", "local", "server")
 FIELD_MAX = 300                                  # 入力の欄ごとの長さの上限（乗っ取りへの手当て）
 STATE_READ = ("持っているもの", "できること_型", "未分類")   # O の側の現状（縛られているものを除く）
 BOUND = "縛られているもの"
-LOCAL_DEFAULT = {"repo": "llm-jp/llm-jp-3-1.8b-instruct", "revision": "413b7929df092690b0f9449f3045baaf8deba0a5"}
+LOCAL_MODEL_ENV, LOCAL_REVISION_ENV = "POX_EXPLANATION_LOCAL_MODEL", "POX_EXPLANATION_LOCAL_REVISION"
 
 
 # ── プロンプト ─────────────────────────────────────────────────────────────────────
@@ -205,9 +205,11 @@ class LocalBackend(Backend):
     name = "local"
 
     def __init__(self, repo=None, revision=None, seed=0, max_new_tokens=(1024, 400)):
-        self.model = repo or os.environ.get("POX_EXPLANATION_LOCAL_MODEL") or LOCAL_DEFAULT["repo"]
-        self.revision = revision or os.environ.get("POX_EXPLANATION_LOCAL_REVISION") or (
-            LOCAL_DEFAULT["revision"] if self.model == LOCAL_DEFAULT["repo"] else None)
+        # モデルは段階3 で決める。既定のモデルは持たない（明示して指定しないと動かない。KAORU 2026-11-10）
+        self.model = repo or os.environ.get(LOCAL_MODEL_ENV)
+        self.revision = revision or os.environ.get(LOCAL_REVISION_ENV)
+        if not self.model or not self.revision:
+            raise ValueError(f"local のモデルが指定されていません（{LOCAL_MODEL_ENV} と {LOCAL_REVISION_ENV}）")
         self.decoding = {"temperature": 0, "do_sample": False, "seed": seed,
                          "max_new_tokens": {"1": max_new_tokens[0], "2": max_new_tokens[1]}}
         self._tok = self._lm = None
@@ -258,6 +260,9 @@ def startup_check():
     name = backend_name()
     if os.environ.get("RENDER") and name in ("fixed", "local"):
         raise SystemExit(f"[FATAL] POX_EXPLANATION_BACKEND={name} はテスト・開発用です。本番では off にしてください。")
+    if name == "local" and not (os.environ.get(LOCAL_MODEL_ENV) and os.environ.get(LOCAL_REVISION_ENV)):
+        raise SystemExit(f"[FATAL] POX_EXPLANATION_BACKEND=local ですが、モデルが指定されていません"
+                         f"（{LOCAL_MODEL_ENV} と {LOCAL_REVISION_ENV}。モデルは段階3 で決める）。")
     return {"backend": name, "generates": name in ("fixed", "local")}
 
 

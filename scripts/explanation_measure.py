@@ -151,6 +151,8 @@ def main(argv=None, backend=None):
     ap.add_argument("--exemplar", default=os.path.join(ROOT, "local", "68", "explanation_cards.json"))
     ap.add_argument("--out", default=os.path.join(ROOT, "local", "69"))
     ap.add_argument("--limit", type=int, default=0, help="集合ごとに先頭の N 件だけ（local の動作確かめ用）")
+    ap.add_argument("--model", default=None, help="local のモデル（必須。段階3 で決める）")
+    ap.add_argument("--revision", default=None, help="local のモデルの revision（必須）")
     args = ap.parse_args(argv)
     t0 = time.time()
 
@@ -160,7 +162,7 @@ def main(argv=None, backend=None):
                 return json.load(f)
         return None
 
-    backend = backend or (G.FixedBackend() if args.backend == "fixed" else G.LocalBackend())
+    backend = backend or (G.FixedBackend() if args.backend == "fixed" else G.LocalBackend(args.model, args.revision))
     lim = (lambda xs: xs[:args.limit]) if args.limit else (lambda xs: xs)
     n = n_person_from_kaoru(read(args.kaoru) or {})
     with open(os.path.join(DATA, "element_sets_v2.json"), encoding="utf-8") as f:

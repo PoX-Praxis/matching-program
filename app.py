@@ -2517,11 +2517,68 @@ def _record_explanation_agreement(render_id):
         if not row:
             return None
         c4 = {n["purpose_id"]: n.get("content_hash") for n in v5.live_necessities_v5(row["from_subject"], db_path=DB)}
+        card = json.loads(row.get("card_json") or "null") or {}
+        bindings = _bind_necessities(row["from_subject"], XA.cited_needs(card))
         conn = XA.connection_event_hash(row["from_subject"], row["to_subject"], db_path=DB)
-        return XA.record_agreement(row, conn, necessity_c4=c4, db_path=DB)
+        return XA.record_agreement(row, conn, necessity_c4=c4, db_path=DB, bindings=bindings)
     except Exception as e:  # noqa: BLE001
         app.logger.warning(f"[explanation-agreed] 合意の記録に失敗（承認は成立済み）: {type(e).__name__}")
         return None
+
+
+def _bind_necessities(subject, cited):
+    """説明の目的（カードの purpose_id）を、本人の生きている必要像の版（c4）に結びつける（指示書69 順3 の確認 1）。
+    取り込み分（KAORU×PA）は、目的の id がファイルのもの（p1 など）なので、引用元の必要像の文で照らし合わせる。
+    - v5 の人: 目的ごとの必要像の文に、引用元の文がすべて含まれる目的（1 つに決まるときだけ）
+    - v4 の人（目的が無い）: 生きている必要像の本文（必要像・seeking）に、引用元の文がすべて含まれる版
+    戻り値: {カードの purpose_id: {"purpose_id", "necessity_c4"}}。結びつかない目的は入れない。"""
+    import necessities as _nec
+    import v5
+    out = {}
+    live5 = v5.live_necessities_v5(subject, db_path=DB)
+    live4 = None
+    for pid, texts in (cited or {}).items():
+        want = [str(t).strip() for t in texts if str(t).strip()]
+        if not want:
+            continue
+        hits = [n for n in live5 if set(want) <= {str(x.get("文") or "").strip() for x in (n.get("sentences") or [])}]
+        if len(hits) == 1:
+            out[pid] = {"purpose_id": hits[0]["purpose_id"], "necessity_c4": hits[0].get("content_hash")}
+            continue
+        if live5:
+            continue
+        if live4 is None:
+            live4 = [n for n in _nec.get_live_necessities(subject, db_path=DB) if not n.get("purpose_id")]
+        for n in reversed(live4):                       # 新しい版から
+            with _nec._connect(DB) as con:
+                r = con.execute("SELECT seeking FROM necessities WHERE necessity_id=%s", (n["necessity_id"],)).fetchone()
+            body = str(n.get("necessity_text") or "") + "\n" + str((r or [None])[0] or "")
+            if all(t in body for t in want):
+                out[pid] = {"purpose_id": pid, "necessity_c4": n.get("content_hash")}
+                break
+    return out
+
+
+def _bind_count(subject, direction):
+    """取り込みの応答用: 説明のある目的のうち、本人の必要像の版に結びついた数（文は出さない）。"""
+    import explanation_agreement as XA
+    card = X_explanation.assemble(direction, None, True)
+    cited = XA.cited_needs(card)
+    return len(_bind_necessities(subject, cited)), len(cited)
+
+
+def _subject_exists(sid):
+    """subject が実在するか（ログインの記録・v5 の登録・v4 のプロフィールのどれかがある）。"""
+    if not sid:
+        return False
+    try:
+        import v5
+        if v5.get_doc(sid, db_path=DB) or get_profile_view(sid, db_path=DB) is not None:
+            return True
+        with auth._connect(DB) as con:
+            return con.execute("SELECT 1 FROM auth_identities WHERE subject_id=%s", (sid,)).fetchone() is not None
+    except Exception:  # noqa: BLE001
+        return False
 
 
 OFFER_MESSAGE_MAX = 400
@@ -2672,7 +2729,7 @@ def ops_explanations_import():
     except (UnicodeDecodeError, ValueError):
         return jsonify({"error": "JSON が読めません"}), 400
     try:
-        res = _xs.import_doc(doc, db_path=DB, names_of=_plain_name)
+        res = _xs.import_doc(doc, db_path=DB, names_of=_plain_name, subject_exists=_subject_exists, bind_of=_bind_count)
     except (ValueError, KeyError, TypeError, AttributeError):
         return jsonify({"error": "形が違います"}), 400
     app.logger.warning(f"[explanation-import] received={res['received']} saved={res['saved']} dropped={res['dropped']}")

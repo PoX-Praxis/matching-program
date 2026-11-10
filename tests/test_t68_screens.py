@@ -361,7 +361,8 @@ def test_t409_ops_import_route(xs, monkeypatch):
     r = post(tok)
     assert r.status_code == 200
     d = r.get_json()
-    assert d == {"received": 2, "saved": 2, "dropped": 0, "directions": [{"index": 0, "ok": True}, {"index": 1, "ok": True}]}
+    assert d == {"received": 2, "saved": 2, "dropped": 0,
+                 "directions": [{"index": 0, "ok": True, "bound": "0/1"}, {"index": 1, "ok": True, "bound": "0/1"}]}   # 架空の文は版に結びつかない
     blob = r.get_data(as_text=True)
     for t in [x["text"] for x in c["citations"]] + ["aoi", "haru", "me", "c_full"]:
         assert t not in blob, t                                              # 応答に文・ラベル・subject を出さない

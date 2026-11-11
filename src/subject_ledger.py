@@ -50,6 +50,8 @@ def profile_content_hash(profile_input: dict, canon_version: str = None) -> str:
         return profile_content_hash_p2(profile_input)
     if v == PROFILE_CANON_P3:
         return profile_content_hash_p3(profile_input)
+    if v == PROFILE_CANON_P4:
+        return profile_content_hash_p4(profile_input)
     sm = profile_input.get("supporting_raw") or {}
     fields = {"will_text": str(profile_input.get("will_text") or "")}
     for k in _STATE_KEYS:
@@ -61,7 +63,8 @@ def profile_content_hash(profile_input: dict, canon_version: str = None) -> str:
 
 PROFILE_CANON_P2 = "p2"
 PROFILE_CANON_P3 = "p3"          # 指示書61: p2 ＋ 意志_なぜ・経験（表示される宣言はすべて内容ハッシュに。指示書18 §2）
-PROFILE_CANON_V5 = PROFILE_CANON_P3   # いま v5 の宣言を書くときの版（p2 のイベントは p2 のまま読む）
+PROFILE_CANON_P4 = "p4"          # 指示書70: p3 ＋ 説明への使用 {"縛られているもの": true／false／null}
+PROFILE_CANON_V5 = PROFILE_CANON_P4   # いま v5 の宣言を書くときの版（p2・p3 のイベントはその版のまま読む）
 
 
 def profile_content_hash_p2(profile_input: dict) -> str:
@@ -111,6 +114,20 @@ def profile_content_hash_p3(profile_input: dict) -> str:
     fields = _p2_fields(profile_input)
     for k in ("意志_なぜ", "経験"):
         fields[k] = str(sm.get(k) or "")
+    return sha256_hex(canonicalize(fields))
+
+
+def profile_content_hash_p4(profile_input: dict) -> str:
+    """宣言の内容ハッシュ p4（指示書70）。対象＝p3 の対象 ＋ `説明への使用`（現状の「縛られているもの」を接続の説明に
+    使ってよいかの本人の答え）。答えていない（rev5 A 以外のプロンプトで作った）ものは null のまま入れ、答えと区別する。
+    p3 で書いたイベントは p3 のまま（遡及しない）。"""
+    sm = profile_input.get("supporting_raw") or {}
+    fields = _p2_fields(profile_input)
+    for k in ("意志_なぜ", "経験"):
+        fields[k] = str(sm.get(k) or "")
+    use = (profile_input.get("v5") or {}).get("説明への使用")
+    bound = use.get("縛られているもの") if isinstance(use, dict) else None
+    fields["説明への使用"] = {"縛られているもの": bound if isinstance(bound, bool) else None}
     return sha256_hex(canonicalize(fields))
 
 

@@ -622,45 +622,8 @@ def delete_subject_texts(subject_id, db_path="pox.db"):
     return [h for _, h in rows if h]
 
 
-# ── 「縛られているもの」の許可（指示書69 §4-3）と、目的の種類（§4-4）──────────────────────────────
-def bound_setting(subject_id, db_path="pox.db"):
-    """(許可しているか, 許可の版)。既定は使わない（版 0）。"""
-    with _connect(db_path) as con:
-        r = con.execute("SELECT bound_allowed, bound_version FROM explanation_settings WHERE subject_id=%s",
-                        (subject_id,)).fetchone()
-    return (bool(r[0]), int(r[1])) if r else (False, 0)
-
-
-def set_bound(subject_id, allowed, db_path="pox.db"):
-    """許可を切り替える（版を 1 上げる）。変わらなければ何もしない。新しい版を返す。"""
-    cur, ver = bound_setting(subject_id, db_path)
-    if cur == bool(allowed):
-        return ver
-    with _connect(db_path) as con:
-        con.execute("INSERT INTO explanation_settings (subject_id, bound_allowed, bound_version, updated_at) "
-                    "VALUES (%s, %s, %s, %s) ON CONFLICT (subject_id) DO UPDATE SET bound_allowed=EXCLUDED.bound_allowed, "
-                    "bound_version=EXCLUDED.bound_version, updated_at=EXCLUDED.updated_at",
-                    (subject_id, 1 if allowed else 0, ver + 1, _now()))
-    return ver + 1
-
-
-PURPOSE_KINDS = ("補完", "共鳴")
-
-
-def purpose_kinds(subject_id, db_path="pox.db"):
-    """本人が選んだ目的の種類 {purpose_id: kind}（選んでいない目的は入らない＝仮の規則）。"""
-    with _connect(db_path) as con:
-        return {r[0]: r[1] for r in con.execute("SELECT purpose_id, kind FROM purpose_kinds WHERE subject_id=%s",
-                                                (subject_id,)).fetchall()}
-
-
-def set_purpose_kind(subject_id, purpose_id, kind, db_path="pox.db"):
-    if kind not in PURPOSE_KINDS:
-        raise ValueError("kind は 補完 か 共鳴")
-    with _connect(db_path) as con:
-        con.execute("INSERT INTO purpose_kinds (subject_id, purpose_id, kind, updated_at) VALUES (%s, %s, %s, %s) "
-                    "ON CONFLICT (subject_id, purpose_id) DO UPDATE SET kind=EXCLUDED.kind, updated_at=EXCLUDED.updated_at",
-                    (subject_id, purpose_id, kind, _now()))
+# 「縛られているもの」の許可（指示書69 §4-3）と目的の種類（§4-4）の別の表（explanation_settings・purpose_kinds）は、
+# 指示書70 §5 で構造化の値（p4 の 説明への使用・c5 の 種類）に置き換えた。表の定義は次の整理まで残し、行は消す（ops70）。
 
 
 # ── 取り込みのトークン（§5-2 案 B）────────────────────────────────────────────────────

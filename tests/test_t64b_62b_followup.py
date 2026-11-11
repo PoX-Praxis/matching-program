@@ -122,10 +122,11 @@ def test_t320_handle_taken_on_preview(db):
 
 # ── 321 プロンプト A の 139 行目の注記 ─────────────────────────────────────────────────
 def test_t321_prompt_a_line_139():
+    # rev5（指示書70）で出力ルールに 2 行足したので、注記は 144 行目に移った（文は変えていない）
     lines = open(os.path.join(ROOT, "docs", "prompts", "v5_A_dialogue.txt"), encoding="utf-8").read().split("\n")
-    assert lines[138] == ("※ 下記は構造を示すために整形して表示しているだけである。**実際の第3段の出力は、この構造を改行なしの"
+    assert lines[143] == ("※ 下記は構造を示すために整形して表示しているだけである。**実際の第3段の出力は、この構造を改行なしの"
                           "1行に潰したミニファイ形式で、```json のコードブロック1つの中に**入れて行うこと（第3段の形式規則1〜7）。")
-    assert '"source": "v5r4-A"' in "\n".join(lines)                           # 版は上げない
+    assert '"source": "v5r5-A"' in "\n".join(lines)                           # 指示書70 で rev5
 
 
 # ── 322 `\(` `\)` を文字列の外だけ [ ] に戻す（ChatGPT の数式記号）────────────────────────────

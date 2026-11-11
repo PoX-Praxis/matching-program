@@ -178,6 +178,11 @@ if is_postgres():
         pass  # init_v4 は CLI 用に sys.exit する。起動時は握りつぶす
     except Exception as e:
         print(f"[app] v4 スキーマ初期化スキップ: {e}")
+    # 指示書70 の確認（2026-11-11）: v5r4-B の登録と、指示書69 の別の表の行数を、件数だけログに出す（中身は出さない）。
+    # POX_OPS_CLEAR_69_TABLES=1 のときだけ、数えた後に 69 の表の行を消す（行数を報告した後に KAORU が設定する）。
+    import ops70
+    for _line in ops70.startup_lines(os.environ, db_path=os.environ.get("POX_DB", "pox.db")):
+        print(_line)
 
 # ── 添付ファイルのアップロード設定 ──────────────────────────────
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
@@ -1328,7 +1333,15 @@ def _confirm_v5_ledger(pid, doc, assigned, prof, draft):
             pid, "subject", nec_in, origin="generated", generator=family,
             source_snapshot_hash=prof.get("content_hash"), generator_tag=generator_tag,
             attempt_n=draft["attempt_n"], actor=pid, db_path=DB,
-            purpose_id=purpose_id, sentences=p.get("必要像") or [], offer_hash=offer["offer_hash"])
+            purpose_id=purpose_id, sentences=p.get("必要像") or [], offer_hash=offer["offer_hash"],
+            purpose_kind=v5.purpose_kind_of(p))           # c5（指示書70）: 本人が選んだ目的の種類（無ければ null）
+        if not r.get("skipped") and r.get("prev_necessity"):
+            # 必要像の文の配列（文・順）が同じ目的の前の版と同じなら、前の版のベクトルを紐づけ直す（埋め込みを呼ばない。
+            # 種類・必須・数値だけが変わった版。指示書70 §3-5）。文が 1 つでも違えば、文単位ベクトルの作業が作り直す
+            prev = v5.necessity_body(r["prev_necessity"], db_path=DB) or {}
+            if [str(x.get("文") or "") for x in prev.get("sentences") or []] == \
+                    [str(x.get("文") or "") for x in p.get("必要像") or []]:
+                v5.copy_sentence_vectors("necessity", r["prev_necessity"], r["necessity_id"], db_path=DB)
         published.append(r)
     keep = {purpose_id for purpose_id, _ in assigned}
     for n in v5.live_necessities_v5(pid, db_path=DB):
@@ -2781,8 +2794,10 @@ def _record_policy_consent(sid):
 
 
 def _explanation_bound_allowed(sid):
-    """「縛られているもの」を説明に使ってよいか（§4-3。マイページの切り替え）。既定は使わない。"""
-    return _xs.bound_setting(sid, db_path=DB)[0]
+    """「縛られているもの」を説明に使ってよいか（指示書70 §5）。構造化の答え（p4 の 説明への使用）が true のときだけ。
+    答えていない（rev5 A 以外で作った）ときは使わない。"""
+    import v5
+    return v5.bound_use_of(v5.get_doc(sid, db_path=DB))
 
 
 def _explanation_person(sid):
@@ -2792,7 +2807,6 @@ def _explanation_person(sid):
     if not doc:
         return None
     live = {n["purpose_id"]: n for n in v5.live_necessities_v5(sid, db_path=DB)}
-    chosen = _xs.purpose_kinds(sid, db_path=DB)      # 本人が選んだ目的の種類（選んでいなければ仮の規則。§4-4）
     purposes = []
     for p in doc.get("purposes") or []:
         n = live.get(p.get("purpose_id"))
@@ -2803,7 +2817,7 @@ def _explanation_person(sid):
         if needs:
             purposes.append({"purpose_id": p["purpose_id"], "title": str(p.get("向かう先") or ""),
                              "means": str(p.get("手段") or ""), "needs": needs, "necessity_id": n["necessity_id"],
-                             "kind": chosen.get(p["purpose_id"])})
+                             "kind": v5.purpose_kind_of(p)})   # c5 の種類（選んでいなければ仮の規則。指示書70 §5）
     off = v5.latest_offer(sid, db_path=DB) or {}
     offers = [{"text": str(x.get("文") or "").strip(), "type": str(x.get("型") or "")}
               for x in (off.get("sentences") or []) if str(x.get("文") or "").strip()] if _offer_public(off.get("created_at")) else []

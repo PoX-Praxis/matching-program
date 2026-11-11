@@ -358,12 +358,13 @@ def test_t262_generator_recorded_as_family_and_tag(db):
 def test_t263_profile_structured_p3_covers_why_and_experience(db):
     _confirm("u_a", _doc())
     ev = [e["payload"] for e in le.get_events(type_="profile.structured", db_path=appmod.DB)][-1]
-    assert ev["canon_version"] == "p3"
+    assert ev["canon_version"] == "p4"                                    # 指示書70 で p3→p4（p4 も 意志_なぜ・経験 を含む）
     base = {"will_text": "w", "v5": _doc(), "supporting_raw": _doc()["supporting_material"]}
-    h = SL.profile_content_hash(base)
+    h = SL.profile_content_hash(base, "p3")
     for k in ("意志_なぜ", "経験"):
         changed = {**base, "supporting_raw": {**base["supporting_raw"], k: "変えた"}}
-        assert SL.profile_content_hash(changed) != h                       # p3 は変わる
+        assert SL.profile_content_hash(changed, "p3") != h                 # p3 は変わる
+        assert SL.profile_content_hash(changed) != SL.profile_content_hash(base)   # p4 も変わる
         assert SL.profile_content_hash(changed, "p2") == SL.profile_content_hash(base, "p2")   # p2 は変わらない
 
 
@@ -371,7 +372,7 @@ def test_t264_necessity_published_c4_without_alpha_beta(db):
     _confirm("u_a", _doc())
     with N._connect(appmod.DB) as con:
         rows = con.execute("SELECT canon_version, alpha, beta FROM necessities").fetchall()
-    assert {r[0] for r in rows} == {"c4"} and all(r[1] is None and r[2] is None for r in rows)
+    assert {r[0] for r in rows} == {"c5"} and all(r[1] is None and r[2] is None for r in rows)   # 指示書70 で c4→c5
     s = [{"文": "a", "必須": True, "型": "資源"}]
     h1 = N.compute_content_hash("", {"gate_s": 0.5, "gate_u": 0.3, "alpha": 1.0}, "ev", sentences=s, offer_hash="o")
     h2 = N.compute_content_hash("", {"gate_s": 0.5, "gate_u": 0.3, "alpha": 2.0}, "ev", sentences=s, offer_hash="o")
@@ -421,9 +422,10 @@ def test_t266_profile_shows_why():
 
 
 def test_t267_register_prompts_are_revision3():
-    """登録画面のプロンプトは docs/prompts/ と一字一句一致（指示書62 で rev4 に差し替え。rev3 の JSON も受け付ける）。"""
+    """登録画面のプロンプトは docs/prompts/ と一字一句一致（指示書62 で rev4 に、指示書70 で A だけ rev5 に差し替え。
+    B は rev4 のまま。前の版の JSON も受け付ける）。"""
     page = appmod.app.test_client().get("/register").get_data(as_text=True)
-    for pid, name, src in (("promptA", "v5_A_dialogue.txt", "v5r4-A"), ("promptB", "v5_B_selfwrite.txt", "v5r4-B")):
+    for pid, name, src in (("promptA", "v5_A_dialogue.txt", "v5r5-A"), ("promptB", "v5_B_selfwrite.txt", "v5r4-B")):
         m = re.search(rf'<pre id="{pid}">(.*?)</pre>', page, re.S)
         text = htmlmod.unescape(m.group(1))
         assert text == open(os.path.join(ROOT, "docs", "prompts", name), encoding="utf-8").read()

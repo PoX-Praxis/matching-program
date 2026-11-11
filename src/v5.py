@@ -27,7 +27,11 @@ FORBIDDEN = ("年以上", "必須スキル", "ができる方", "を募集")
 MEANS_MARKERS = ("そのために", "手段として")
 DROP_KEYS = ("p_sharpness", "gamma", "alpha", "beta")   # 規則 7: あれば捨てる（alpha・beta は指示書61 で追加）
 # 規則 14: どのプロンプトで作ったか（_meta.source）。無いもの＝改訂2（"v5r2"）として扱う（拒否しない）。
-SOURCES = ("v5r4-A", "v5r4-B", "v5r3-A", "v5r3-B", "v5r2-A", "v5r2-B")   # v5r4 は指示書62 で追加
+SOURCES = ("v5r5-A", "v5r4-A", "v5r4-B", "v5r3-A", "v5r3-B", "v5r2-A", "v5r2-B")   # v5r4 は指示書62・v5r5-A は指示書70
+# 規則 16（指示書70）: 本人の選択（目的の種類・「縛られているもの」を説明に使ってよいか）を持つ形。B は rev4 のまま
+# （B をどうするかは使用状況を確かめた後に決める）。これ以外の形は、選択を null（選んでいない・答えていない）として書く。
+CHOICE_SOURCES = ("v5r5-A",)
+PURPOSE_KINDS = ("補完", "共鳴")
 SOURCE_DEFAULT = "v5r2"
 # 規則 9: 根拠が「／」「/」・改行でつながれていたら、比較のときだけ分ける（保存は原文のまま）。
 # 改行は、AI が複数の引用を "\n" でつないで出した実例（2026-10）による。rev4 は「／」でつなぐ（指示書62）。
@@ -84,6 +88,8 @@ def validate(doc: dict):
     11 一行紹介・要約文・生テキストが空でない / 12 id（ハンドル）がある /
     13 generator が空でない / 14 _meta.source が既知の値か、無い（無ければ改訂2 として扱う）/
     15 目的ごとの 数値.gate_s・gate_u が 0〜1 の数値（範囲外・数値でない値・欠けは拒否。丸めない。指示書62-b）
+    16 本人の選択（指示書70）: v5r5-A は目的ごとの 種類（補完／共鳴）と、最上位の 説明への使用.縛られているもの
+       （true／false）が必須（値の外は拒否）。ほかの形は、どちらも null として書く（あっても使わない）
     """
     if not is_v5(doc):
         return False, "schema_version が v5 ではありません"
@@ -150,6 +156,19 @@ def validate(doc: dict):
             return False, "与え像の文が空です"
         if x.get("型") not in TYPES:
             return False, f"与え像の型は {'／'.join(TYPES)} のいずれかです"
+    if src in CHOICE_SOURCES:                             # 規則 16
+        for i, p in enumerate(purposes, 1):
+            if p.get("種類") not in PURPOSE_KINDS:
+                return False, f"目的 {i}: 種類は {'／'.join(PURPOSE_KINDS)} のいずれかです"
+        use = doc.get("説明への使用")
+        bound = use.get("縛られているもの") if isinstance(use, dict) else None
+        if not isinstance(bound, bool):
+            return False, '説明への使用は { "縛られているもの": true } か { "縛られているもの": false } です'
+        doc["説明への使用"] = {"縛られているもの": bound}
+    else:
+        for p in purposes:
+            p["種類"] = None
+        doc["説明への使用"] = {"縛られているもの": None}
     # 規則 8 は AI が書いた文（向かう先・手段・必要像・与え像）だけを見る。根拠は本人の言葉の引用なので対象外。
     written = [{k: v for k, v in p.items() if k not in ("根拠", "数値")} for p in purposes]
     blob = json.dumps({"p": written, "o": offers}, ensure_ascii=False)
@@ -174,6 +193,18 @@ def _gate_error(i, key, v):
     if not (math.isfinite(v) and 0 <= v <= 1):
         return f"目的 {i}: {key} の値 {v} が 0〜1 の範囲にありません。{_GATE_FIX}"
     return None
+
+
+def purpose_kind_of(purpose: dict):
+    """目的の種類（本人が選んだもの）。選んでいなければ None（読むときは仮の規則で補う。指示書69 §4-4）。"""
+    k = (purpose or {}).get("種類")
+    return k if k in PURPOSE_KINDS else None
+
+
+def bound_use_of(doc: dict) -> bool:
+    """現状の「縛られているもの」を接続の説明に使ってよいか（本人の答え）。true のときだけ使う（無い・null は使わない）。"""
+    use = (doc or {}).get("説明への使用")
+    return isinstance(use, dict) and use.get("縛られているもの") is True
 
 
 def source_of(doc: dict) -> str:

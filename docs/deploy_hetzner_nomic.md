@@ -1,3 +1,5 @@
+> **時点の記録（2026-07）。いまの正ではない。** いまの正は `docs/deploy_local_nomic.md`（自宅 PC と Cloudflare Tunnel。`render.yaml` の注記）。この文書は未使用の別案。
+
 # Nomic 推論サーバー構築手順（Hetzner VPS + Cloudflare Tunnel）
 
 **目的**: 採用モデル `nomic-emb-v2` の本番推論サーバーを Hetzner Cloud VPS に構築し、

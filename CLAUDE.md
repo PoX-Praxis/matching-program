@@ -1,64 +1,54 @@
-# PoX マッチングプラットフォーム — 開発引き継ぎ
+# PoX matching-program — AI が作業するときの決まり
+
+この文書は、決まり事と道案内だけを書く。現状と中身は、ほかの文書にある。
+
+## 作業の前に読む
+
+1. `docs/status.md`: いまの現状（1 ページ）
+2. `docs/OPERATIONS.md`: 運用の決まり（指示書・報告・判断・計測の置き方、入れてはいけないもの）
+3. 作業に関係する `docs/decisions/`（一覧は `docs/decisions/README.md`）
+4. 作業の指示書 `docs/instructions/<番号>.md` と、関係する前の報告 `docs/reports/`
+
+詳しい棚卸しは `docs/status-report.md`、本体の説明は `README.md`。
 
 ## リポジトリ
-- GitHub: `pox-praxis/matching-program` / ブランチ: `main`
-- デプロイ先: Render（`pox-web.onrender.com`。render.yaml のサービス名 `pox-web` に対応）
 
-## セキュリティ制約（絶対厳守）
-- `ANTHROPIC_API_KEY` / `GITHUB_TOKEN` / `DATABASE_URL` はコードにもリポジトリにも書かない
-- `.env`, `*.key`, `secrets.json` → コミット禁止
-- `pox.db`, `*.db` → `.gitignore` 済み
-- `seeker` カラムは viewer/public API レスポンスに絶対出さない
-- `GET /profile/<id>` は必ず `get_profile_view()` のみ呼ぶ（`get_seeker()` は呼ばない）
+- GitHub: `pox-praxis/matching-program`。正のブランチは `main`。作業はブランチを切って PR にする（`docs/OPERATIONS.md` §2）
+- 本番: Render の `pox-web`（`render.yaml` のサービス名）と Postgres
 
-## スキーマ: v4 二軸（意志/現状）
-v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4スロット）へ移行済み。
+## セキュリティの制約（絶対厳守）
 
-### v4 profile_view フィールド
-`schema_version`, `headline`, `pursuing`, `state_have`, `state_can_type`, `state_bound`, `state_unsorted`, `seeking`, `keys`, `trajectory`
+**秘密**
+- `ANTHROPIC_API_KEY`・`GITHUB_TOKEN`・`DATABASE_URL` などの鍵と値は、コードにもリポジトリにも書かない
+- `.env`・`*.key`・`secrets.json` はコミットしない。`pox.db`・`*.db` は `.gitignore` 済み
 
-### v3 後方互換フィールド
-`schema_version`, `headline`, `pursuing`, `needs`, `offering`, `phase_badge`, `keys`, `trajectory`
+**本人の層と公開の層**（`docs/decisions/003`）
+- `seeker` の列は、viewer の API と公開 API のレスポンスに絶対に出さない
+- `GET /profile/<id>` は、必ず `get_profile_view()` だけを呼ぶ（`get_seeker()` は呼ばない）
 
-## 完了済みタスク
-- v4 スキーマ全面移行（`src/profile_view.py`, `src/db.py`, `app.py`, 全テンプレート）
-- 構造化プロンプト v4「判断しない採集者」を `templates/register.html` に反映
-- 構造化プロンプト v5（2026-10-06 の文面）に差し替え（v4 の JSON も受け付ける）
-- 構造化プロンプト v5 改訂2（A 対話・B 自分で書く）に差し替え（指示書60）。本文は `docs/prompts/` が唯一の正で、画面はそこから読み込む
-- 構造化プロンプト v5 改訂3 に差し替え・共鳴の門・根拠の表示・生成元の記録・正準化 p3/c4（指示書61）
-- 構造化プロンプト v5 rev4（```json のコードブロックで出す・根拠は「／」）に差し替え・登録の形式補正の告知（指示書62）
-- iOS スマートクォート（`“` `”`）によるJSON登録エラー修正
-  - `src/profile_view.py`: `strip_code_fence()` でUnicodeエスケープ正規化
-  - `templates/register.html`: 送信前にJS側でも正規化
+**PII**（`docs/decisions/004`）
+- 埋め込み・LLM に送る文は、`pii_redaction` でマスクしてから送る。生の文を送らない
 
-## 継続中タスク
-- [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
-- [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
-  - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）
-  - `py qwen3_server\run_qwen3.bat`
-- [ ] Cloudflare トンネル: `cloudflared tunnel --url http://localhost:8000`
-- [ ] Render 環境変数を更新:
-  - `POX_EMBED_BACKEND=qwen3`
-  - `POX_QWEN3_ENDPOINT=https://<tunnel-url>/embed`
-  - `POX_EMBED_MODEL_TAG=qwen3-embedding-0.6b-d1024`
+**数値を出さない**（`docs/decisions/007`）
+- 照合の数値（g・スコア・gate・閾値）は、画面と公開 API に出さない。監査ルートだけ
 
-## 主要ファイル構成
-```
-app.py                        # Flask ルート
-src/
-  db.py                       # DB層（profiles/seekers 二層保存）
-  profile_view.py             # seeker → profile_view 変換（v3/v4 両対応）
-  db_connect.py               # SQLite/Postgres 接続切替
-templates/
-  register.html               # 登録フォーム（プロンプトは docs/prompts/ から読み込む・v4 JSON も受付）
-  mypage.html                 # マイページ（v4/v3 分岐表示）
-  profile.html                # 公開プロフィール
-  edit.html                   # 編集フォーム（意志 + 現状4スロット）
-qwen3_server/                 # Qwen3-Embedding ローカル推論サーバー
-docs/prompts/
-  v5_A_dialogue.txt                   # ① 構造化プロンプト v5 rev4 A（対話して作る・推奨）＝唯一の正
-  v5_B_selfwrite.txt                  # ① 同 B（自分で書いて作る・簡易）
-spec/
-  structuring_prompt_v5.md            # ① v5 の旧文面（2026-10-06・一発変換。改訂2 で置き換え）
-  structuring_prompt_v4_interview.md  # ① 構造化プロンプト v4 仕様書（旧）
-```
+**報告・ログ・リポジトリに入れないもの**（`docs/OPERATIONS.md` §5）
+- トークン・メールアドレス・生テキスト・根拠の本文・`evidence_span`
+- 個人の文（KAORU・PA など、実在する人の文）。手元の `local/`（`.gitignore` 済み）に置き、コミットしない
+- 本人以外の数値（PA の gate など）。計測の個別の数値
+
+**本番**
+- 本番の DB は読み取りだけ。`DATABASE_URL` をセッションに渡さない
+- 指示書が求めない限り、本番（Render・DB・台帳・トークン）に触れない
+
+## 実装の決まり
+
+- 構造化のプロンプトは `docs/prompts/` が唯一の正。画面はそこから読み込む（画面に直書きしない）
+- 画面のテンプレートでは `prompt(`・`confirm(` を使わない（テスト 63）
+- 古い経路は、指示書が求めない限り、消さずに閉じる（`docs/decisions/016`）
+- 計測の規則は、計測の前にコミットする。数値を見た後に変えるときは、規則の変更として記録し、確認を取る（`docs/decisions/010`）
+
+## 作業の終わり
+
+- 報告を `docs/reports/<番号>.md` に書き、`docs/status.md` を更新する（PR の最後のコミット）
+- 判断をしたら `docs/decisions/` に 1 ファイル足す

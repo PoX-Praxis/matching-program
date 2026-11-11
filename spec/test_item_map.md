@@ -740,3 +740,18 @@
 | 441 | `test_t441_generation_uses_structured_choices`（§6-9: 説明の生成が構造化の 種類 と 説明への使用 を使う・69 の別の表は読まない） |
 | 442 | `test_t442_c5_p4_hashes`（§3: c5・p4 は選んだ値と null を区別・c4・p3 の記録はその規則のまま確かめる・文が同じならベクトルを紐づけ直す・種類 null の同じ内容は版を足さない） |
 | 443 | `test_t443_ops_counts_and_clear`（確認 2・4: v5r4-B の登録と 69 の表の行数を件数だけ数える・環境変数のときだけ行を消す・台帳は変わらない） |
+
+
+### 71 接続の説明の表示 v0.5 — `tests/test_t71_explanation_v05.py`
+
+| 項目 | テスト（指示書71 §9） |
+|---|---|
+| 444 | `test_t444_summary_follows_states`（§9-1: 要旨が目的ごとの状態どおり・出さない目的と逆の向きは入れない） |
+| 445 | `test_t445_state_lines`（§9-2: 状態の 1 行が表どおり（すべて／一部／確かめる）・数値と割合が出ない） |
+| 446 | `test_t446_basis_folded_and_open_on_screen3`（§9-3: 根拠と確かめられることは <details> の中・画面1・2 は閉じ、画面3 は開く） |
+| 447 | `test_t447_reverse_frame_not_folded`（§9-4: ⑥ の枠・見出し・①・状態の 1 行は畳まない） |
+| 448 | `test_t448_check_section_replaces_unknown`（§9-5: 古い文が出ない・missing_must は確かめられることの節に、欠かせない要素が先・同じ要素は 1 回） |
+| 449 | `test_t449_supplement_note`（§9-6: 補足の案内の 1 文（画面1・3）） |
+| 450 | `test_t450_footer`（§9-7: 注記の新しい文） |
+| 451 | `test_t451_saved_display_is_not_redrawn`（§9-8: v0.4 で保存した表示は描き直されずにそのまま出る） |
+| 452 | `test_t452_names_in_summary_and_states`（§9-9: 画面3 に「あなた」が残らない・要旨と状態の 1 行にも呼び方の置き換えが効く） |

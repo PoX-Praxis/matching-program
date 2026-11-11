@@ -22,11 +22,18 @@
   .ex-unk li { list-style: none; font-size: 13px; color: #454b54; margin: 2px 0; }
   .ex-unk li::before { content: "・"; }
   .ex-nc { color: #454b54; font-size: 13.5px; }
+  /* v0.5（指示書71）: 要旨・目的ごとの状態の 1 行・根拠は開く形 */
+  .ex-summary { font-weight: 700; font-size: 14px; margin: 0 0 8px; }
+  .ex-state { color: #454b54; font-size: 13px; margin: 2px 0 4px; }
+  .ex-basis { margin: 2px 0 6px; }
+  .ex-basis > summary { cursor: pointer; font-size: 12.5px; color: #1a3a5c; list-style: none; display: inline-block; padding: 2px 0; }
+  .ex-basis > summary::-webkit-details-marker { display: none; }
+  .ex-basis > summary:hover { text-decoration: underline; }
   .ex-cite { font-size: 10.5px; color: #1a3a5c; margin-left: 1px; }
   .ex-stale { font-size: 12.5px; color: #7a5a10; background: #fbf5ec; padding: 4px 8px; border-radius: 4px; }
   .ex-supp { font-size: 13.5px; background: #f3f7fb; padding: 6px 10px; border-radius: 6px; }
   .ex-foot { color: #777; font-size: 12px; margin: 14px 0 2px; }
-  .ex-supp-btn { background: none; border: none; color: #1a3a5c; cursor: pointer; font-size: 13px; float: right; margin-top: -24px; padding: 0; }
+  .ex-supp-btn { background: none; border: none; color: #1a3a5c; cursor: pointer; font-size: 13px; display: block; margin: 2px 0 0 auto; padding: 0; }
   .ex-supp-btn:hover { text-decoration: underline; }
   .ex-deleted { color: #888; }
   .ex-cap { font-size: 12.5px; color: #555; margin: 6px 0 2px; }

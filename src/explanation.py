@@ -42,9 +42,23 @@ FORBIDDEN_WORDS = ("相性", "おすすめ", "オススメ", "間違いなく", 
 CONTACT = re.compile(r"https?://|www\.|[\w.+-]+@[\w-]+\.[\w.-]+|\d{2,4}-\d{2,4}-\d{3,4}")
 # ① の閉じた語彙（仕様 §4-3・§12-4 の 11）: どの文も「〜可能性があります。」で終わる
 MEANING_END = ("になれる可能性があります。", "に関われる可能性があります。")
-NOT_COVERED_TEXT = "欠かせない要素（{keys}）に当たる文は、{who}の公開の文の中には見つかりません"
-UNKNOWN_TEXT = "「{quote}」に当たる経験は、{who}の公開の文の中には見つかりません"
-FOOTER_TEXT = "AI による説明です。根拠は二人の公開の文です。機械の確かめは正しさを保証しません。"
+# ── 表示の文（指示書71・仕様 v0.5 の追記）。すべて決まった型で、LLM は使わない ──────────────────────────
+# v0.4 の「見つかりません」の文（NOT_COVERED_TEXT・UNKNOWN_TEXT）は、v0.5 で「つながった後に確かめられること」に置き換えた。
+# 保存済みの表示（画面2・承認時）は HTML の文字列のまま読むので、古い文の定数は要らない（描き直さない）。
+RENDER_VERSION = "v0.5"
+FOOTER_TEXT = ("AI による説明です。並び順は近さの順ではありません。説明は、選ばれた理由ではなく、"
+               "二人の公開の文から読み取った、つながる意味です。機械の確かめは正しさを保証しません。")
+SUMMARY_MEANING = "{list}に、つながる意味があります。"           # 要旨（§1）。先頭の文に「⟦V⟧の」を付ける
+SUMMARY_CHECK = "{list}は、つながった後に確かめられます。"
+STATE_TEXT = {                                                   # 目的ごとの状態の 1 行（§2。数値・割合は出さない）
+    "all": "この目的の要素のすべてに、つながる意味があります。",
+    "part": "この目的の要素の一部に、つながる意味があります。",
+    "check": "この目的は、つながった後に確かめられます。",
+}
+BASIS_SUMMARY = "根拠を見る ›"                                   # 根拠と確かめられることを畳む（§3）
+CHECK_HEAD = "つながった後に確かめられること"                     # §4（v0.4 の「文からは分からないこと」）
+CHECK_TEXT = "「{quote}」について、{who}の経験は公開の文からは分かりません。つながった後に確かめられます。"
+MUST_PREFIX = "欠かせない要素："
 DELETED_TEXT = "本文は削除されました"
 SUPPLEMENT_BUTTON = '<button type="button" class="ex-supp-btn">補足する ›</button>'
 HIDDEN_STATUSES = ("pending",)
@@ -226,41 +240,87 @@ def _ref_label(ref):
     return f"{V if side == 'viewer' else T}の{_REF_KIND.get(kind, kind)}（{_e(rest.split('.')[-1])}）"
 
 
-def _purpose_html(p, n, o, src, reverse, has_purposes=True):
+def _purpose_state(p):
+    """目的ごとの状態（v0.5 §2）。出さない目的は None。
+    all＝explained で、確かめられること（unknown・missing_must）が無い／part＝explained で、確かめられることがある／
+    check＝explained でなく、確かめられることがある。"""
     if p["status"] == "pending":
-        return ""
+        return None
     has_must = any(e["must"] for e in p["elements"]) or bool(p["missing_must"])
     if not p["elements"] and not has_must:
-        return ""                                       # 欠かせない要素が無く、組も無い目的は出さない（仕様 §4-2）
+        return None                                     # 欠かせない要素が無く、組も無い目的は出さない（仕様 §4-2）
+    pending_items = bool(p["unknown"] or p["missing_must"])
+    if p["status"] == "explained":
+        return "part" if pending_items else "all"
+    return "check" if pending_items else None
+
+
+def _check_items(p, o, src):
+    """「つながった後に確かめられること」の行（v0.5 §4）。欠かせない要素（missing_must）を先に、頭に印を付ける。
+    句は、分からないことの句があればそれ、無ければ必要の文（引用の原文）。同じ要素は 1 回だけ。"""
+    unk = {u["need_ref"]: u["need_quote"] for u in p["unknown"]}
+    items = []
+    for m in p["missing_must"]:
+        q = unk.get(m) or src.get(m) or _elem_key(m)
+        items.append(MUST_PREFIX + CHECK_TEXT.format(quote=_e(q), who=o))
+    for u in p["unknown"]:
+        if u["need_ref"] not in p["missing_must"]:
+            items.append(CHECK_TEXT.format(quote=_e(u["need_quote"]), who=o))
+    return items
+
+
+def _purpose_html(p, n, o, src, reverse, has_purposes=True):
+    state = _purpose_state(p)
+    if state is None:
+        return ""
     if reverse and not has_purposes:                    # 相手が v4（目的が無い）: 求めている相手の文を見出しにする（仕様 §4-6）
         head = f'<h4 class="ex-ph">■ {n}が求めている相手『{_e(p["title"])}』について</h4>'
     else:
         head = f'<h4 class="ex-ph">■ {n}の目的{p["number"]}「{_e(p["title"])}」について</h4>'
-    body = []
-    if p["status"] == "not_covered" or (p["status"] != "explained" and p["missing_must"]):
-        keys = "・".join(_elem_key(m) for m in p["missing_must"]) or "—"
-        body.append(f'<p class="ex-nc">{NOT_COVERED_TEXT.format(keys=keys, who=o)}</p>')
+    body, basis = [], []
     if p["status"] == "explained":
         marks = f'<sup class="ex-cite">{",".join(str(c + 1) for c in p["meaning"]["cites"])}</sup>'
         body.append(f'<p class="ex-meaning">{_sym(p["meaning"]["text"], n, o)}{marks}</p>')
         rows = []
         for i, e in sorted(enumerate(p["elements"]), key=lambda x: (not x[1]["must"], x[0])):   # 欠かせない要素を先に
-            name, basis = RELATIONS[e["relation"]]
+            name, basis_text = RELATIONS[e["relation"]]
             kind = "欠かせない要素" if e["must"] else "あれば嬉しい要素"
             rows.append(
                 f'<li class="ex-el" data-rel="{e["relation"]}"><div class="ex-k">{"●" if e["must"] else "○"} '
                 f'{kind}（{_e(_elem_key(e["need_ref"]))}）<sup class="ex-cite">{i + 1}</sup></div>'
                 f'<div class="ex-pair">{n}：{_quote(e["need_quote"], e["need_ref"], src)}</div>'
                 f'<div class="ex-pair">{o}：{_quote(e["offer_quote"], e["offer_ref"], src)}</div>'
-                f'<div class="ex-rel">［{_e(name)}］← {_e(basis)}</div></li>')
-        body.append('<div class="ex-sub">── その根拠として ──</div><ul class="ex-els">' + "".join(rows) + "</ul>")
-    if p["unknown"]:
-        items = "".join(f'<li>{UNKNOWN_TEXT.format(quote=_e(u["need_quote"]), who=o)}</li>' for u in p["unknown"])
-        body.append(f'<div class="ex-sub">── 文からは分からないこと ──</div><ul class="ex-unk">{items}</ul>')
-    if not body:
-        return ""
+                f'<div class="ex-rel">［{_e(name)}］← {_e(basis_text)}</div></li>')
+        basis.append('<div class="ex-sub">── その根拠として ──</div><ul class="ex-els">' + "".join(rows) + "</ul>")
+    body.append(f'<p class="ex-state">{STATE_TEXT[state]}</p>')
+    items = _check_items(p, o, src)
+    if items:
+        basis.append(f'<div class="ex-sub">── {CHECK_HEAD} ──</div><ul class="ex-unk">'
+                     + "".join(f"<li>{x}</li>" for x in items) + "</ul>")
+    # 根拠と確かめられることは畳む（1 回の操作で開く。JS が無くても開ける）。画面3 は open_basis() で開いて出す
+    body.append(f'<details class="ex-basis"><summary>{BASIS_SUMMARY}</summary>{"".join(basis)}</details>')
     cls = "ex-purpose ex-rev" if reverse else "ex-purpose"
-    return f'<div class="{cls}" data-ref="{_e(p["ref"])}" data-status="{_e(p["status"])}">{head}{"".join(body)}</div>'
+    return (f'<div class="{cls}" data-ref="{_e(p["ref"])}" data-status="{_e(p["status"])}" data-state="{state}">'
+            f'{head}{"".join(body)}</div>')
+
+
+def _summary_html(purposes):
+    """要旨（v0.5 §1）: 見る人の目的ごとの状態から、決まった型で組み立てる 1 行。出さない目的・逆の向きは入れない。"""
+    meaning, check_ = [], []
+    for p in sorted(purposes, key=lambda x: x["order"]):
+        st = _purpose_state(p)
+        if st in ("all", "part"):
+            meaning.append(f'目的{p["number"]}')
+        elif st == "check":
+            check_.append(f'目的{p["number"]}')
+    sentences = []
+    if meaning:
+        sentences.append(SUMMARY_MEANING.format(list="・".join(meaning)))
+    if check_:
+        sentences.append(SUMMARY_CHECK.format(list="・".join(check_)))
+    if not sentences:
+        return ""
+    return f'<p class="ex-summary">{V}の{"".join(sentences)}</p>'
 
 
 def render_symbolic(card, names=()):
@@ -273,7 +333,7 @@ def render_symbolic(card, names=()):
     if checked["status"] == "deleted":
         return f'<section class="ex-card" data-status="deleted"><p class="ex-deleted">{DELETED_TEXT}</p></section>'
     src = {c["ref"]: c["text"] for c in checked["citations"]}
-    parts = []
+    parts = [_summary_html(checked["purposes"])]                 # 先頭の 1 行（要旨。v0.5 §1）
     if checked["status"] == "stale" and checked.get("stale"):
         changed = "・".join(_ref_label(r) for r in checked["stale"]["changed_refs"]) or "—"
         parts.append(f'<p class="ex-stale">承認時の説明（{_e(checked["stale"]["approved_at"])}）。'
@@ -290,8 +350,8 @@ def render_symbolic(card, names=()):
         who = V if s["by"] == "viewer" else T
         parts.append(f'<p class="ex-supp">{who}の補足（{_e(s["at"])}）：「{_e(s["text"])}」</p>')
     parts.append(f'<p class="ex-foot">{FOOTER_TEXT}</p>' + SUPPLEMENT_BUTTON)
-    return (f'<section class="ex-card" data-schema="{SCHEMA_VERSION}" data-status="{_e(checked["status"])}">'
-            + "".join(x for x in parts if x) + "</section>")
+    return (f'<section class="ex-card" data-schema="{SCHEMA_VERSION}" data-render="{RENDER_VERSION}" '
+            f'data-status="{_e(checked["status"])}">' + "".join(x for x in parts if x) + "</section>")
 
 
 def personalize(symbolic_html, reader, names):
@@ -307,6 +367,14 @@ def personalize(symbolic_html, reader, names):
     if reader not in ("viewer", "recipient"):
         raise ValueError("reader は viewer か recipient")
     return symbolic_html.replace(V, v).replace(T, t)
+
+
+def open_basis(html_text):
+    """画面3（申請を受けた人）: 根拠と確かめられることを、最初から開いた状態にする（承認には内容の確認が必須のため。
+    v0.5 §3）。文字列の置き換えだけで、再生成しない。v0.4 で保存した表示（畳む枠が無い）は、そのまま返す。"""
+    if html_text is None:
+        return None
+    return html_text.replace('<details class="ex-basis">', '<details class="ex-basis" open>')
 
 
 def render(card, reader, names):

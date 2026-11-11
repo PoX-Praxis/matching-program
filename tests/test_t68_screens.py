@@ -88,7 +88,9 @@ def test_t399_screen2_saves_and_screen3_needs_confirmation(xs):
     assert S.verify_digest(row["viewer_html"], row["viewer_digest"], row["viewer_key_id"])
     inc = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()
     assert inc["status"] == "ok" and inc["applicant_name"] == "アオイ"
-    assert inc["html"] == X.personalize(row["symbolic_html"], "recipient", {"viewer": "アオイ", "target": "ハル"})
+    # 画面3 は保存した表示を置き換えるだけ（再生成しない）。根拠は最初から開いて出す（指示書71 §3）
+    assert inc["html"] == X.open_basis(X.personalize(row["symbolic_html"], "recipient", {"viewer": "アオイ", "target": "ハル"}))
+    assert '<details class="ex-basis" open>' in inc["html"] and '<details class="ex-basis">' not in inc["html"]
     assert "あなた" not in inc["html"] and "アオイ さん" in inc["html"] and "ハル さん" in inc["html"]
     # データが後から変わっても、画面3 は保存した表示のまま（再生成しない）
     doc = _pair_doc()

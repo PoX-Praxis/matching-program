@@ -132,7 +132,8 @@ def test_t169_t171_directory_no_status_no_truncation(monkeypatch):
     monkeypatch.setattr(appmod, "get_public_necessity", lambda i: {"necessity_text": "い" * 300})
     r = _cli().get("/seekers").get_json()[0]
     assert set(r) == {"id", "handle", "name", "one_liner", "will", "necessity", "purposes",
-                      "offers"}                          # purposes は指示書63 段階1・offers は指示書64
+                      "offers", "dests"}                 # purposes は指示書63 段階1・offers は指示書64・dests は指示書70 §4-5
+    assert r["dests"] == []                              # v4 の人は目的の見出しを持たない（一行紹介だけ）
     assert r["will"] == long_will and r["necessity"] == "い" * 300          # 171
     assert r["purposes"] == [{"dest": long_will, "needs": [{"text": "い" * 300, "must": False}]}]   # 切り詰めない
     blob = json.dumps(r, ensure_ascii=False)
@@ -145,7 +146,6 @@ def test_t170_no_counts(v4):
     assert "pool_size" not in _match()
     html = _tpl("connect.html")
     assert "プール" not in html and "pool_size" not in html
-    assert "まだ照合できる相手がいません" in html
 
 
 # ── 172 生 id を画面に出さない ────────────────────────────────────────────────
@@ -242,7 +242,7 @@ def test_t187_axes_are_summarized(v4):
     assert r["axis"] in {"will", "fill", "mutual"}
     assert r["axis"] == "mutual"                          # me と c1 は双方向に噛み合う
     assert [x["kind"] for x in r["reasons"]] == ["fill_mine", "fill_theirs"]
-    html = _cli().get("/connect").get_data(as_text=True)      # 共通部品（_match_reason.html）を含む
+    html = _tpl("_match_reason.html")                          # 共通部品（プロフィール・受信箱が使う。指示書70 §4-4）
     for label in ("意志が近い", "足りないところを埋める", "足りないところを互いに埋める"):
         assert label in html
     for old in ("共鳴が効いています", "補完が効いています", "意志の補完が効いています", "相互に噛み合っている"):

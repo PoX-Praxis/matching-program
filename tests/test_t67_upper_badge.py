@@ -49,16 +49,9 @@ def test_t381_related_hides_upper_for_unrelated(world2, related):
     # 申し出る前の根拠: 上層が通る相手（c_full）と通らない相手（c_part）で、まったく同じ応答（成否を読み取らせない）
     full, part = _preview("c_full"), _preview("c_part")
     assert full == part == {"status": "none", "message": appmod.PREVIEW_PREPARING, "reasons": []}
-    # 画面: 上層の相手がいない目的の文言（成立しないことを示す）を related では出さない
+    # 画面（つながるの「照合の結果」の節と、上層の保留の文言）は指示書70 §4-4 で外した
     html = _html()
-    assert '(!res.length && upperScope !== "related")' in html
-    assert 'upperScope = data.upper_scope || "all";' in html
-    # 0 件のとき（KAORU の決定・案 A）: related では目的ごとの見出しを出さず、文言だけを差し替える
-    assert 'const RELATED_ZERO_TEXT = "照合の結果の出し方を見直しています。いまは、登録者一覧から相手を探せます。";' in html
-    zero = html[html.index("if (!results.length) {"):html.index("status.innerHTML = \"\";")]
-    rel, other = zero.split("} else {")[0], zero.split("} else {")[1]
-    assert "RELATED_ZERO_TEXT" in rel and "renderGroups" not in rel                 # 見出し（目的ごとの表）を出さない
-    assert "renderGroups(groups, cards)" in other and "まだ照合できる相手がいません" in other   # all はいまのまま
+    assert "RELATED_ZERO_TEXT" not in html and "upperScope" not in html
 
 
 # ── 382 related: 申し出中・承認待ち・接続中の組では、いまと同じ表示 ─────────────────────────────────────

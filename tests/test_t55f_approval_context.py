@@ -97,8 +97,8 @@ def test_approval_screens_show_reason_and_offer_message():
 
 # ── §3 申し出の文の入力欄は経路によらない ─────────────────────────────────────────
 def test_connect_card_has_offer_message_box():
-    t = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert "PoXReason.composeHtml" in t and "message: ((box && box.value)" in t
+    t = open(os.path.join(ROOT, "templates", "profile.html"), encoding="utf-8").read()
+    assert 'id="offerMsg"' in t            # 申し出はプロフィールから（つながるのカードは指示書70 §4-4 で外した）
     part = open(os.path.join(ROOT, "templates", "_match_reason.html"), encoding="utf-8").read()
     assert 'maxlength="400"' in part and "任意・400字まで" in part
 

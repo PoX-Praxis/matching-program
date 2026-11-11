@@ -13,6 +13,7 @@ PoX ③ 最小プラットフォーム
       POX_DB=/path/to/pox.db python app.py ← DB パス変更
 """
 import sys, os, uuid, secrets, json
+from urllib.parse import quote as _urlquote
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from flask import Flask, request, jsonify, render_template, abort, redirect, url_for, session, g, Response
@@ -161,7 +162,9 @@ app.config.update(
 
 # 規約（プライバシーポリシー）の版。terms.accepted に記録（§3-3）。
 # ポリシー本文（最終更新）と揃える。本文差し替えは terms_hash が別途検出する。
-TERMS_VERSION = "2026-09"
+# 2026-11: 6-2（接続の説明）を含む版。説明の同意はこの版に一本化した（指示書70 §4-3。指示書69 の 2026-11-expl-v1 を置き換え。
+# すでに記録した 2026-11-expl-v1 の terms.accepted は消さない）。
+TERMS_VERSION = "2026-11"
 
 # Postgres 接続時は起動時にスキーマを初期化（冪等・再デプロイ安全）
 if is_postgres():
@@ -326,8 +329,12 @@ def auth_verify():
         except Exception as e:  # noqa: BLE001
             app.logger.warning(f"[auth] 台帳書き込みskip（ログインは成立）: {e}")
     # 401 から誘導された場合は元画面へ戻す（同一ブラウザのみ・§4-2）。既定はマイページ。
-    nxt = _safe_next(session.pop("login_next", None))
-    return redirect(nxt or f"/mypage?id={subject_id}")
+    nxt = _safe_next(session.pop("login_next", None)) or f"/mypage?id={subject_id}"
+    # すでに登録している人で、いまの版のポリシーに同意していなければ、このログインで一度だけ更新の同意を出す（指示書70 §4-3）。
+    session.pop("policy_prompted", None)
+    if not created and not _policy_consented(subject_id):
+        return redirect("/policy-update?next=" + _urlquote(nxt, safe=""))
+    return redirect(nxt)
 
 
 @app.post("/auth/logout")
@@ -596,7 +603,7 @@ def get_seekers():
 
     返すのは id・表示名・一行紹介・意志・公開条件を満たす必要像の本文と、目的ごとの向かう先・必要像の文
     （v5。プロフィールと同じ公開の日時の閾値。指示書63 段階1）、力になれること（v5。与え像の公開の閾値より後の版。
-    指示書64）だけ（seeker 原文・数値・根拠は返さない）。
+    指示書64）、一覧に出す目的の見出し dests（v5 の人だけ。指示書70 §4-5）だけ（seeker 原文・数値・根拠は返さない）。
     - **本文をサーバーで切り詰めない**（以前の 40 文字切断をやめた。見た目の丸めは CSS 側）
     - **generation_status を返さない**（非本人に生成状態を出さない。指示書27）
     - ログイン中なら**自分を除く**（照合の結果と同じく、一覧も他の人の面）
@@ -621,6 +628,9 @@ def get_seekers():
             "necessity": (pub or {}).get("necessity_text") or "",
             "purposes": prof["purposes"],
             "offers": prof.get("offers") or [],    # 力になれること（v5・公開の閾値より後の版だけ。指示書64）
+            # 一覧に出す目的の見出し（向かう先）。目的があるのは v5 の人だけ（_card_profile が offers を返すのは v5 の枝だけ）。
+            # v4 の人は空（一行紹介だけを出す。指示書70 §4-5）
+            "dests": [p["dest"] for p in prof["purposes"] if p.get("dest")] if "offers" in prof else [],
         })
     return jsonify(rows)
 
@@ -1647,12 +1657,13 @@ def confirm_draft(draft_id):
         except Exception as e:  # noqa: BLE001
             app.logger.warning(f"[policy-consent] 記録skip（確定は成功）: {e}")
 
-    # 接続の説明の同意（指示書69 §4-5。任意。terms.accepted に文書の種類と版を記録）
-    if cbody.get("explanation_consent_agreed") is True:
+    # 登録時の同意は 1 つ（利用規約・プライバシーポリシー。接続の説明を含む。指示書70 §4-1・§4-3）。
+    # いまの版を terms.accepted に記録する（すでに記録していれば書かない）。
+    if cbody.get("privacy_policy_agreed"):
         try:
-            _record_explanation_consent(pid)
+            _record_policy_consent(pid)
         except Exception as e:  # noqa: BLE001
-            app.logger.warning(f"[explanation-consent] 記録skip（確定は成功）: {e}")
+            app.logger.warning(f"[policy-consent] terms.accepted 記録skip（確定は成功）: {e}")
 
     if new_handle:
         try:
@@ -2739,40 +2750,32 @@ def ops_explanations_import():
 # ── 接続の説明の生成（指示書69 段階2）──────────────────────────────────────────────────
 # POX_EXPLANATION_BACKEND が off（既定・本番）なら生成しない（取り込み分だけ）。fixed（テスト）・local（開発・計測）のとき、
 # 候補の線（C2+b-1）に入る向きだけを、同意した人どうしで、1 日の上限の中で作る。上層の結果は使わない。
-EXPLANATION_TERMS_VERSION = "2026-11-expl-v1"   # 説明の同意の版（§4-5。KAORU 2026-11-10。プライバシーポリシーとは別の版）
-EXPLANATION_TERMS_DOCUMENT = "explanation"       # terms.accepted に記録する文書の種類
 _STATE_INDEX = {k: i for i, (k, _) in enumerate(STATE_SLOTS)}
 
 
-def _explanation_consented(sid):
-    """説明の新しい同意（terms.accepted の版）をしているか（§4-5）。同意の版が決まるまでは、誰も同意していない扱い。"""
-    if not EXPLANATION_TERMS_VERSION:
-        return False
+def _policy_consented(sid):
+    """いまの版のポリシー（TERMS_VERSION。6-2 接続の説明を含む）に同意しているか（指示書70 §4-3）。
+    文書の種類が無い terms.accepted がポリシーの同意。指示書69 の説明だけの同意（document=explanation）は数えない。"""
     try:
         import ledger_events as le
-        return any((e.get("payload") or {}).get("document") == EXPLANATION_TERMS_DOCUMENT
-                   and (e.get("payload") or {}).get("terms_version") == EXPLANATION_TERMS_VERSION
+        return any((e.get("payload") or {}).get("document") in (None, "privacy")
+                   and (e.get("payload") or {}).get("terms_version") == TERMS_VERSION
                    for e in le.get_events(type_="terms.accepted", actor=sid, db_path=DB))
     except Exception:  # noqa: BLE001
         return False
 
 
-def _explanation_terms_hash():
-    """説明の同意の文（templates/_explanation_consent.html）の SHA-256。版だけでは文の差し替えを検出できない。"""
-    try:
-        with open(os.path.join(os.path.dirname(__file__), "templates", "_explanation_consent.html"), encoding="utf-8") as f:
-            return sha256_hex(f.read())
-    except Exception:  # noqa: BLE001
-        return ""
+def _explanation_consented(sid):
+    """説明を作ってよいか: いまの版のポリシーに同意しているか（指示書70 §4-3。同意するまで、その人の説明は作らない）。"""
+    return _policy_consented(sid)
 
 
-def _record_explanation_consent(sid):
-    """説明の同意を terms.accepted として台帳に記録する（文書の種類と版つき。一度だけ）。"""
-    if _explanation_consented(sid):
+def _record_policy_consent(sid):
+    """いまの版のポリシーへの同意を terms.accepted として台帳に記録する（版と本文のハッシュ。一度だけ）。"""
+    if _policy_consented(sid):
         return False
-    append_event(sid, "terms.accepted", {"subject_id": sid, "document": EXPLANATION_TERMS_DOCUMENT,
-                                         "terms_version": EXPLANATION_TERMS_VERSION,
-                                         "terms_hash": _explanation_terms_hash()}, db_path=DB)
+    append_event(sid, "terms.accepted", {"subject_id": sid, "terms_version": TERMS_VERSION,
+                                         "terms_hash": _terms_hash()}, db_path=DB)
     _explanation_trigger(sid)          # 同意した人の説明を作れるようになる（off なら何もしない）
     return True
 
@@ -2938,61 +2941,16 @@ def _explanation_trigger(sid):
         threading.Thread(target=job, daemon=True).start()
 
 
-@app.get("/api/my/explanation_settings")
+@app.post("/api/my/policy_consent")
 @login_required
-def my_explanation_settings():
-    """本人の説明の設定（指示書69 §4-3・§4-4・§4-5）: 同意・「縛られているもの」の許可・目的ごとの種類（仮かどうか）。"""
-    me = require_self(request.args.get("id"))
-    import explanation_gen as XG
-    allowed, ver = _xs.bound_setting(me, db_path=DB)
-    chosen = _xs.purpose_kinds(me, db_path=DB)
-    purposes = []
-    for i, (pid, label, n) in enumerate(_purpose_order(me)):
-        needs = [{"type": str(x.get("型") or ""), "must": bool(x.get("必須"))} for x in (n.get("sentences") or [])]
-        purposes.append({"purpose_id": pid, "label": label, "number": i + 1,
-                         "kind": chosen.get(pid) or XG.purpose_kind_rule(needs), "provisional": pid not in chosen})
-    _mark_noindex()
-    return jsonify({"consented": _explanation_consented(me), "consent_version": EXPLANATION_TERMS_VERSION,
-                    "bound_allowed": allowed, "bound_version": ver, "purposes": purposes}), 200
-
-
-@app.post("/api/my/explanation_consent")
-@login_required
-def my_explanation_consent():
-    """説明の同意（§4-5）。terms.accepted に文書の種類と版を記録する（一度だけ）。"""
+def my_policy_consent():
+    """ポリシーの更新への同意（指示書70 §4-3。すでに登録している人に一度だけ出す画面から）。terms.accepted に版を記録する。"""
     body = request.get_json(force=True, silent=True) or {}
-    me = require_self(body.get("id"))
     if body.get("agree") is not True:
         return jsonify({"error": "同意の操作が必要です"}), 400
-    recorded = _record_explanation_consent(me)
-    return jsonify({"consented": True, "recorded": recorded, "consent_version": EXPLANATION_TERMS_VERSION}), 200
-
-
-@app.post("/api/my/explanation_settings")
-@login_required
-def save_my_explanation_settings():
-    """「縛られているもの」の許可（§4-3。既定は使わない）と、目的の種類（§4-4）を変える。変わったら説明を作り直す。"""
-    body = request.get_json(force=True, silent=True) or {}
-    me = require_self(body.get("id"))
-    changed = False
-    if "bound_allowed" in body:
-        if not isinstance(body["bound_allowed"], bool):
-            return jsonify({"error": "bound_allowed は true か false"}), 400
-        before = _xs.bound_setting(me, db_path=DB)[1]
-        changed |= _xs.set_bound(me, body["bound_allowed"], db_path=DB) != before
-    kinds = body.get("purpose_kinds")
-    if kinds is not None:
-        live = {pid for pid, _, _ in _purpose_order(me)}
-        if not isinstance(kinds, dict) or any(k not in live for k in kinds) or any(v not in _xs.PURPOSE_KINDS for v in kinds.values()):
-            return jsonify({"error": "目的の種類は、あなたの目的ごとに「補完」か「共鳴」"}), 400
-        cur = _xs.purpose_kinds(me, db_path=DB)
-        for pid, kind in kinds.items():
-            if cur.get(pid) != kind:
-                _xs.set_purpose_kind(me, pid, kind, db_path=DB)
-                changed = True
-    if changed:
-        _explanation_trigger(me)       # 許可・種類が変わると鍵が変わる。未承認の説明は作り直す（off なら何もしない）
-    return jsonify({"changed": changed}), 200
+    me = current_subject_id()
+    recorded = _record_policy_consent(me)
+    return jsonify({"consented": True, "recorded": recorded, "terms_version": TERMS_VERSION}), 200
 
 
 @app.get("/api/explanations/card")
@@ -3133,8 +3091,8 @@ def _purpose_order(me):
 @app.get("/api/my/musts")
 @login_required
 def my_musts():
-    """本人の目的ごとの必要像の文と「欠かせない要素」の印（優先度の変更の画面。指示書65-B 追補 §1）。本人のみ。
-    v4 の人（目的が無い）は purposes が空。数値は返さない。"""
+    """本人の目的ごとの必要像の文と「欠かせない要素」の印（マイページの表示だけ。指示書70 §4-2: 切り替えは外した。
+    変えたいときは構造化し直す）。本人のみ。v4 の人（目的が無い）は purposes が空。数値は返さない。"""
     me = require_self(request.args.get("id"))
     import necessities as _nec
     out = [{"purpose_id": pid, "label": label, "number": i + 1,
@@ -3143,43 +3101,6 @@ def my_musts():
            for i, (pid, label, n) in enumerate(_purpose_order(me))]
     _mark_noindex()
     return jsonify({"purposes": out, "max_musts": _nec.MAX_MUSTS_PER_PURPOSE}), 200
-
-
-@app.post("/api/my/musts")
-@login_required
-def save_my_musts():
-    """必須の優先度の変更（65B-7）。目的ごとに文ごとの「必須」をまとめて受け取り、変わった目的だけ
-    necessity.published の新しい版を書く（profile.structured は書かない・ベクトルは作り直さず紐づけ直す）。
-    本文: {"purposes": [{"purpose_id", "musts": [bool, ...]}]}。本人の目的だけ（他人の目的は 403）。"""
-    body = request.get_json(force=True, silent=True) or {}
-    me = require_self(body.get("id"))
-    import necessities as _nec
-    import v5
-    live = {pid: n for pid, _, n in _purpose_order(me)}
-    if not live:
-        return jsonify({"error": "目的ごとの必要像がありません（v5 で登録した人だけが変えられます）"}), 400
-    items = body.get("purposes")
-    if not isinstance(items, list):
-        return jsonify({"error": "purposes が必要です"}), 400
-    for it in items:                                    # 先にすべて確かめる（一部だけ書かない）
-        pid, musts = (it or {}).get("purpose_id"), (it or {}).get("musts")
-        if pid not in live:
-            return jsonify({"error": "あなたの目的ではありません"}), 403
-        if not isinstance(musts, list) or len(musts) != len(live[pid].get("sentences") or []):
-            return jsonify({"error": "必要像の文の数と合いません"}), 400
-        if sum(bool(m) for m in musts) > _nec.MAX_MUSTS_PER_PURPOSE:
-            return jsonify({"error": f"目的ごとに欠かせない要素は {_nec.MAX_MUSTS_PER_PURPOSE} つまでです"}), 400
-    changed = []
-    for it in items:
-        pid, old = it["purpose_id"], live[it["purpose_id"]]["necessity_id"]
-        r = _nec.republish_musts(old, it["musts"], actor=me, db_path=DB)
-        if r:
-            v5.copy_sentence_vectors("necessity", old, r["necessity_id"], db_path=DB)   # 文が同じなので作り直さない
-            changed.append(pid)
-    no_must = [it["purpose_id"] for it in items if not any(bool(m) for m in it["musts"])]
-    if changed:
-        _explanation_trigger(me)       # 欠かせない要素の切り替え（指示書69 §3。off なら何もしない）
-    return jsonify({"changed": changed, "no_must": no_must}), 200
 
 
 @app.get("/api/connections/state")
@@ -3644,7 +3565,25 @@ def api_profile_overrides(user_id):
 
 @app.get("/mypage")
 def mypage():
+    # ログイン中で、いまの版のポリシーに同意していない人には、このセッションで一度だけ更新の同意を出す（指示書70 §4-3。
+    # セッションが長く続いていて「次のログイン」が来ない人のため）。
+    sid = current_subject_id()
+    if sid and session.get("policy_prompted") != TERMS_VERSION and not _policy_consented(sid):
+        return redirect("/policy-update?next=" + _urlquote(request.full_path.rstrip("?"), safe=""))
     return render_template("mypage.html")
+
+
+@app.get("/policy-update")
+def policy_update():
+    """プライバシーポリシーの更新（接続の説明について）の同意。すでに登録している人に一度だけ出す（指示書70 §4-3）。
+    「あとで」でも先へ進める（同意するまで、その人の説明は作らない）。"""
+    nxt = _safe_next(request.args.get("next")) or "/mypage"
+    sid = current_subject_id()
+    if not sid or _policy_consented(sid):
+        return redirect(nxt)
+    session["policy_prompted"] = TERMS_VERSION      # このセッションでは、もう出さない
+    _mark_noindex()
+    return render_template("policy_update.html", next_url=nxt)
 
 
 # ── 新規ページルート ────────────────────────────────────────
@@ -3681,7 +3620,7 @@ def _read_prompts():
 
 @app.get("/register")
 def register():
-    return render_template("register.html", **_read_prompts())
+    return render_template("register.html", terms_version=TERMS_VERSION, **_read_prompts())
 
 
 @app.get("/profile/<seeker_id>")

@@ -303,7 +303,7 @@ def test_t214_establish_uses_purpose_event_hash(world):
 def test_t215_offer_message_box_only_for_offerer():
     """申し出の文の入力欄は申し出る側だけ（57 受理時の訂正 #5）。承認欄は文を「表示する」場所。"""
     assert 'id="offerMsg"' in TPL("profile.html")
-    assert "PoXReason.composeHtml" in TPL("connect.html")
+    assert "PoXReason.composeHtml" not in TPL("connect.html")           # つながるのカードは外した（指示書70 §4-4）
     for t in ("inbox.html", "mypage.html"):
         assert "apvMsg_" not in TPL(t) and "composeHtml" not in TPL(t)
     assert "PoXReason.offerHtml" in TPL("inbox.html")                  # 受けた文は受信箱で表示する（指示書63 段階1）

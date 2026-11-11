@@ -88,13 +88,13 @@ def test_t225_inbox_uses_session_identity_like_mypage():
 
 # ── 226 照合 0 件でも、承認待ちの申し出があれば受信箱へ ─────────────────────────────────
 def test_t226_zero_results_links_to_inbox_when_offers_pending():
+    # 照合の結果の節は外した（指示書70 §4-4）。受信箱への案内は、ログインしているときに常に出す
     src = TPL("connect.html")
-    zero = src[src.index("if (!results.length)"):src.index('status.innerHTML = "";')]
-    assert "PoXReason.fetchOffers()" in zero and "/inbox?id=" in zero
-    assert "未承認の接続の申し出が届いています" in zero
+    assert "申し出が届いている相手は、ここではなく" in src and '<a href="/inbox">受信箱</a>' in src
 
 
 def test_t58_connect_header_wording():
     src = TPL("connect.html")
-    assert "あなたの目的ごとの必要像から、いま噛み合いそうな相手を照合します。" in src
+    assert "あなたの目的と、相手の公開の文から、つながる意味が見つかった相手を示します。詳細と申請は、各プロフィールから。" in src
+    assert "あなたの目的ごとの必要像から、いま噛み合いそうな相手を照合します。" not in src   # 指示書70 §4-4
     assert "必要像と意志から" not in src

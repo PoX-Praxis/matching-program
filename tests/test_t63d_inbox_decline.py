@@ -130,7 +130,7 @@ def test_t299_channel_recorded_not_shown(world):
     assert _row("c_low", "me")[2] is None                                       # 決めた 2 つ以外は記録しない
     blob = json.dumps([e["payload"] for e in le.get_events(db_path=appmod.DB)], ensure_ascii=False)
     assert '"channel"' not in blob                                              # 台帳ではない
-    assert 'channel: "match"' in TPL("connect.html") and 'channel: "profile"' in TPL("profile.html")
+    assert 'channel: "profile"' in TPL("profile.html")      # つながるのカードは外した（指示書70 §4-4）
     for t in ("inbox.html", "mypage.html", "_match_reason.html"):
         assert "channel" not in TPL(t)
     assert "channel" not in json.dumps(_cli("me").get("/api/my/offers").get_json())

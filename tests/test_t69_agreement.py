@@ -131,70 +131,55 @@ def test_t426_anchor_includes_agreed(xs):
 
 # ── 427 §4-3: 「縛られているもの」の許可（既定は使わない・版を記録・変えたら作り直しのきっかけ）─────────────────────
 def test_t427_bound_permission(xs, monkeypatch):
-    calls = []
-    monkeypatch.setattr(appmod, "_explanation_trigger", lambda sid: calls.append(sid))
-    d = _cli("me").get("/api/my/explanation_settings").get_json()
-    assert d["bound_allowed"] is False and d["bound_version"] == 0
+    # 指示書70 §4-2: マイページの切り替えは外した（構造化の答え「説明への使用」を使う。§5 は rev5 の実装の後）。
+    # 既定は使わない。切り替えの道（/api/my/explanation_settings）は無い。
     assert appmod._explanation_bound_allowed("me") is False
-    assert _cli("me").post("/api/my/explanation_settings", json={"bound_allowed": True}).get_json() == {"changed": True}
-    assert appmod._explanation_bound_allowed("me") is True and S.bound_setting("me", db_path=appmod.DB) == (True, 1)
-    assert _cli("me").post("/api/my/explanation_settings", json={"bound_allowed": True}).get_json() == {"changed": False}
-    assert _cli("me").post("/api/my/explanation_settings", json={"bound_allowed": False}).get_json() == {"changed": True}
-    assert S.bound_setting("me", db_path=appmod.DB) == (False, 2) and calls == ["me", "me"]
-    assert _cli("me").post("/api/my/explanation_settings", json={"bound_allowed": "yes"}).status_code == 400
+    assert _cli("me").get("/api/my/explanation_settings").status_code == 404
+    assert _cli("me").post("/api/my/explanation_settings", json={"bound_allowed": True}).status_code == 404
+    assert appmod._explanation_bound_allowed("me") is False
     html = open(os.path.join(ROOT, "templates", "mypage.html"), encoding="utf-8").read()
-    assert "現状の「縛られているもの」を、接続の説明に使ってよい（初期設定は使いません）" in html
+    assert "接続の説明に使ってよい" not in html and "saveBound" not in html
 
 
-# ── 428 §4-4: 目的の種類（仮の規則・本人が選び直す・「仮」はマイページだけ・生成の入力に使う）────────────────────
+# ── 428 §4-4: 目的の種類（仮の規則で生成の入力に使う。指示書70 §4-2: 選ぶ道と表示は外した）────────────────────
 def test_t428_purpose_kinds(xs, monkeypatch):
-    calls = []
-    monkeypatch.setattr(appmod, "_explanation_trigger", lambda sid: calls.append(sid))
-    d = _cli("me").get("/api/my/explanation_settings").get_json()
-    ps = d["purposes"]
-    assert [p["kind"] for p in ps] == ["補完", "補完"] and all(p["provisional"] for p in ps)   # 仮の規則（関心の型の要素が無い）
-    pid = ps[1]["purpose_id"]
-    assert _cli("me").post("/api/my/explanation_settings", json={"purpose_kinds": {pid: "共鳴"}}).get_json() == {"changed": True}
-    ps2 = _cli("me").get("/api/my/explanation_settings").get_json()["purposes"]
-    assert ps2[1]["kind"] == "共鳴" and ps2[1]["provisional"] is False and ps2[0]["provisional"] is True
-    assert calls == ["me"]
-    for bad in ({pid: "その他"}, {"other_purpose": "補完"}, ["補完"]):
-        assert _cli("me").post("/api/my/explanation_settings", json={"purpose_kinds": bad}).status_code == 400
+    assert _cli("me").post("/api/my/explanation_settings", json={"purpose_kinds": {}}).status_code == 404
     person = appmod._explanation_person("me")
-    assert {p["purpose_id"]: p["kind"] for p in person["purposes"]}[pid] == "共鳴"
+    assert [p["kind"] for p in person["purposes"]] == [None, None]              # 本人が選んだ値は無い
     import explanation_gen as G
-    assert G.need_side(person)["block"]["purposes"][1]["種類"] == "共鳴"
-    assert "仮（選び直せます）" in open(os.path.join(ROOT, "templates", "mypage.html"), encoding="utf-8").read()
-    for f in ("profile.html", "inbox.html", "connect.html"):                    # 相手の画面には「仮」を出さない
-        assert "仮（" not in open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
+    assert [p["種類"] for p in G.need_side(person)["block"]["purposes"]] == ["補完", "補完"]   # 仮の規則（関心の型の要素が無い）
+    for f in ("mypage.html", "profile.html", "inbox.html", "connect.html"):    # 本人にも相手にも出さない（指示書70 §4-2）
+        html = open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
+        assert "仮（" not in html and "saveKind" not in html and "目的の種類" not in html, f
 
 
-# ── 429 §4-5: 説明の同意は別の版（terms.accepted に文書の種類と版）・取り込み分は同意の前でも出る ──────────────────
+# ── 429 §4-5 → 指示書70 §4-3: 説明の同意はポリシーの版に一本化（terms.accepted）・取り込み分は同意の前でも出る ──────────
 def test_t429_explanation_consent(xs):
     assert _card("me", "c_full")["status"] == "ok"                              # 取り込み分は同意の前でも出す
     assert appmod._explanation_consented("me") is False
-    assert _cli("me").post("/api/my/explanation_consent", json={}).status_code == 400
-    r = _cli("me").post("/api/my/explanation_consent", json={"agree": True}).get_json()
-    assert r == {"consented": True, "recorded": True, "consent_version": "2026-11-expl-v1"}
-    assert _cli("me").post("/api/my/explanation_consent", json={"agree": True}).get_json()["recorded"] is False
-    ev = [e for e in le.get_events(type_="terms.accepted", actor="me", db_path=appmod.DB)]
-    assert len(ev) == 1
-    p = ev[0]["payload"]
-    assert p["document"] == "explanation" and p["terms_version"] == "2026-11-expl-v1"
-    consent = open(os.path.join(ROOT, "templates", "_explanation_consent.html"), encoding="utf-8").read()
-    assert p["terms_hash"] == hashlib.sha256(consent.encode("utf-8")).hexdigest()
-    assert appmod._explanation_consented("me") is True and appmod._explanation_consented("c_full") is False
-    assert _cli("me").get("/api/my/explanation_settings").get_json()["consented"] is True
-    # 文言（案のまま）・公開の機能は準備中・ポリシーの節・登録とマイページに入っている
-    for t in ("引用は、あなたの文章から一字も変えずに抜き出します。", "（公開の機能は準備中）", "初期設定は使いません",
-              "AI の要約の文は記録に入れません。", "台帳には、内容を復元できない記録だけが残ります。"):
-        assert t in consent, t
+    # 指示書69 の説明だけの同意（2026-11-expl-v1）は、ポリシーの版の同意に数えない（記録は消さない）
+    appmod.append_event("me", "terms.accepted", {"subject_id": "me", "document": "explanation",
+                                                 "terms_version": "2026-11-expl-v1", "terms_hash": "x"}, db_path=appmod.DB)
+    assert appmod._explanation_consented("me") is False
+    assert _cli("me").post("/api/my/explanation_consent", json={"agree": True}).status_code == 404
+    assert _cli("me").post("/api/my/policy_consent", json={}).status_code == 400
+    r = _cli("me").post("/api/my/policy_consent", json={"agree": True}).get_json()
+    assert r == {"consented": True, "recorded": True, "terms_version": appmod.TERMS_VERSION}
+    assert _cli("me").post("/api/my/policy_consent", json={"agree": True}).get_json()["recorded"] is False
+    ev = [e["payload"] for e in le.get_events(type_="terms.accepted", actor="me", db_path=appmod.DB)]
+    assert len(ev) == 2 and ev[0]["document"] == "explanation"                 # 過去の記録として残る
+    p = ev[1]
+    assert "document" not in p and p["terms_version"] == "2026-11"
     priv = open(os.path.join(ROOT, "templates", "privacy.html"), encoding="utf-8").read()
+    assert p["terms_hash"] == hashlib.sha256(priv.encode("utf-8")).hexdigest()
+    assert appmod._explanation_consented("me") is True and appmod._explanation_consented("c_full") is False
     for t in ("6-2. 接続の説明（AI による説明）について", "第三者への提供には当たりません", "外部の AI のサービスは使いません",
-              "公開の機能は準備中", "モデルとプロンプトの版を記録します"):
+              "公開の機能は準備中", "モデルとプロンプトの版を記録します", "2026年11月の版のこのポリシーに同意した方に適用されます",
+              "構造化のときに、あなたが使ってよいと答えた場合だけ使います"):
         assert t in priv, t
+    assert not os.path.exists(os.path.join(ROOT, "templates", "_explanation_consent.html"))
     for f in ("register.html", "mypage.html"):
-        assert '{% include "_explanation_consent.html" %}' in open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
+        assert "_explanation_consent" not in open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
 
 
 # ── 430 §4-6: 「非公開にする」の切り替えの値を記録する（台帳には入れない）───────────────────────────────

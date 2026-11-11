@@ -83,18 +83,14 @@ def test_t307_directory_rows(world, monkeypatch):
 
 # ── 308 すべての段にラベル・欠かせない要素を先に最大 2 文・常設の注記 ─────────────────────────────
 def test_t308_labels_order_and_note():
+    # つながるのカード（目指していること・必要としている相手・なぜこの人か）は、指示書70 §4-4・§4-5 で外した。
+    # 受信箱への案内は、ログインしているときに常に出す（0 件の画面だけでなく）。
     html = TPL("connect.html")
-    body = html[html.index("const MUST_TAG"):html.index("/* ── 照合の結果（v4 照合）")]
-    assert '<span class="cf-k">目指していること</span>' in body
-    assert '<span class="cf-k">必要としている相手</span>' in body
-    assert "(b.must ? 1 : 0) - (a.must ? 1 : 0)" in body and "xs.slice(0, 2)" in body and "全文を見る" in body
-    assert "欠かせない要素" in body
-    assert "dir-nec" not in html and "rec-nec" not in html                     # 色だけで区別しない
-    assert '<span class="cf-k">なぜこの人か</span>' in html and "r.for_purpose" in html
+    for gone in ("const MUST_TAG", '<span class="cf-k">目指していること</span>', '<span class="cf-k">必要としている相手</span>',
+                 '<span class="cf-k">なぜこの人か</span>', "loadRecommendations"):
+        assert gone not in html, gone
     assert "申し出が届いている相手は、ここではなく" in html
-    rec = html[html.index("async function loadRecommendations("):html.index("if (!sid) {", html.index("async function loadRecommendations("))]
-    assert 'getElementById("inboxNote").style.display = sid ? "" : "none"' in rec   # 0 件の画面だけでなく常に
-    assert "${profileRows(r)}" in html[html.index("function renderDirectory("):]
+    assert 'getElementById("inboxNote").style.display = sid ? "" : "none"' in html
 
 
 # ── 309 v4 の相手のカード: 意志・公開の必要像（力になれることの節は無い） ──────────────────────────

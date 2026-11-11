@@ -111,21 +111,16 @@
   "supporting_material": { "一行紹介": "...", "要約文": "...", "生テキスト": [ "..." ] }
 }'></textarea>
 <p style="font-size:12px;color:#777;margin:6px 0 0">v4 の JSON も今までどおり登録できます。</p>
+<!-- 登録時の同意は 1 つにまとめる（指示書70 §4-1・§4-3。接続の説明＝ポリシー 6-2 を含む。説明だけの別の欄は置かない） -->
 <div id="consentRow" style="margin:14px 0;font-size:13px;line-height:1.6">
   <label><input type="checkbox" id="policyAgree">
-    <a href="/privacy" target="_blank">プライバシーポリシー</a>を読み、特に「重要な点」（必要像の公開・接続の公開・消せない記録があること）に同意します</label>
+    <a href="/privacy" target="_blank">利用規約・プライバシーポリシー（接続の説明を含む）</a>に同意する</label>
 </div>
-<!-- 接続の説明の同意（指示書69 §4-5。プライバシーポリシーとは別の版。同意しなくても登録できる。同意するまで説明は作らない） -->
-<details id="explainConsentRow" style="margin:6px 0 14px;font-size:13px;line-height:1.6">
-  <summary>接続の説明（AI による説明）について</summary>
-  {% include "_explanation_consent.html" %}
-</details>
-<label style="font-size:13px"><input type="checkbox" id="explainAgree"> 接続の説明について、上の内容に同意します（任意。マイページからも同意できます）</label>
 <button class="submit-btn" onclick="register(this)">登録する</button>
 <div id="msg"></div>
 
 <script>
-const PRIVACY_POLICY_VERSION = "2026-09";   // 同意記録に紐づける版（ポリシー最終更新と揃える・指示書13 §3-5 / 16 §7）
+const PRIVACY_POLICY_VERSION = "{{ terms_version }}";   // 同意記録に紐づける版（app.TERMS_VERSION。指示書13 §3-5 / 16 §7・指示書70 §4-3）
 // 登録はログイン後に行う（選択肢1）。プロフィールはセッションの subject_id に束縛される。
 let sessionId = null;
 (async function initRegister() {
@@ -161,7 +156,7 @@ async function register(btn) {
   // プライバシーポリシー同意ガード（既存の "consent"＝登録内容合意 とは別物）
   if (!document.getElementById("policyAgree").checked) {
     el.className = "err";
-    el.textContent = "プライバシーポリシーへの同意が必要です（上のチェックを入れてください）";
+    el.textContent = "利用規約・プライバシーポリシーへの同意が必要です（上のチェックを入れてください）";
     return;
   }
 
@@ -373,7 +368,6 @@ async function confirmDraft(draftId, btn) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ privacy_policy_agreed: true,
                              privacy_policy_version: PRIVACY_POLICY_VERSION,
-                             explanation_consent_agreed: !!(document.getElementById("explainAgree") || {}).checked,
                              handle: (document.getElementById("handleInput") || {}).value || "",
                              purpose_map: purposeMap(),
                              offer_keep: v5PreviewShown ? offerKeep() : null }),

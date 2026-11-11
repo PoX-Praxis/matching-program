@@ -13,9 +13,9 @@ def test_connect_route_ok():
     r = _c().get("/connect")
     assert r.status_code == 200
     b = r.get_data(as_text=True)
-    assert "照合の結果" in b and "登録者一覧" in b
+    assert "照合の結果" not in b and "登録者一覧" in b   # 照合の結果の節は外した（指示書70 §4-4）
     assert "おすすめ" not in b                      # 選別の語は使わない（指示書55 §2-1）
-    assert "/v4/match" in b and 'fetch("/seekers")' in b
+    assert "/v4/match" not in b and 'fetch("/seekers")' in b
 
 
 def test_connect_has_no_sort_or_score():

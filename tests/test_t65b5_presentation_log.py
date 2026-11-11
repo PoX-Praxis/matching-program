@@ -77,5 +77,4 @@ def test_t366_offer_records_element(world2):
     with ledger._connect(appmod.DB) as con:
         r = con.execute("SELECT element_ref FROM connection_requests WHERE from_subject='me' AND to_subject='c_part'").fetchone()
     assert r[0] == f"{nec}:1"
-    html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert 'data-element="${i}"' in html and "element_idx: btn.dataset.element" in html
+    # 画面（つながるの要素ごとの申し出）は指示書70 §4-4 で外した

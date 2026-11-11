@@ -49,18 +49,14 @@ def test_t368_availability_wording(world2, monkeypatch):
     part = open(os.path.join(ROOT, "templates", "_match_reason.html"), encoding="utf-8").read()
     body = part[part.index("function approvalHtml("):part.index("/* 申し出る前の根拠")]
     assert "いま照合できません" in body and "照合による根拠はありません" in body
-    html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert "いま照合できません" in html
 
 
 # ── 369 文言の書き分け（要素・目的全体・可用性・下層が閉じている間）──────────────────────────────
 def test_t369_wording_split():
-    connect = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
     reason = open(os.path.join(ROOT, "templates", "_match_reason.html"), encoding="utf-8").read()
     src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
-    assert "この要素に応える人が見つかりませんでした" in connect                 # 要素（言い切る）
-    assert "いまは、この目的をすべて満たす相手はいません" in connect             # 目的全体（控えめに）
-    assert "いま照合できません" in connect and "いま照合できません" in reason   # 可用性
+    # つながるの目的・要素ごとの文言は、照合の結果の節とともに外した（指示書70 §4-4）
+    assert "いま照合できません" in reason                                       # 可用性
     assert 'PREVIEW_PREPARING = "要素単位の照合は準備中です"' in src            # 下層が閉じている間
     # 閉じている間の申し出前の根拠で「あなたの必要に応える文は見つかりませんでした」と言い切らない
     assert "PREVIEW_NONE if lower_open else PREVIEW_PREPARING" in src

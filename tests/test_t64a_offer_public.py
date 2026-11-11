@@ -85,8 +85,7 @@ def test_t311b_after_threshold_on_cards_and_reasons(world, monkeypatch):
     assert C_OK_OFFER in c["offers"]                                                     # カード
     x = next(r for r in c["reasons"] if r["kind"] == "fill_mine")
     assert x["offer"] == C_OK_OFFER and "offer_hidden" not in x                         # つながるの根拠
-    html = TPL("connect.html")
-    assert '<span class="cf-k">力になれること</span>' in html and "offers.slice(0, 2)" in html
+    # 画面のカード（つながるの「照合の結果」）は指示書70 §4-4 で外した
 
 
 # ── 312 閾値より前の版: 第三者には出ず、つながるの根拠は断り書き ──────────────────────────────

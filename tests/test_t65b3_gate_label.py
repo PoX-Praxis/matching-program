@@ -46,8 +46,7 @@ def test_t353_offer_candidate_by_own_gate(world, monkeypatch):
     p1 = {p["candidate_id"]: p for e in g[pids[0]]["elements"] for p in e["people"]}
     assert p1["c_gate"]["offer_candidate"] is False and p1["c_gate"]["label"] == LABEL
     assert p1["c_ok"]["offer_candidate"] is True                                       # 門が立って通る
-    html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert "p.offer_candidate ?" in html and "p.label ?" in html
+    # 画面（つながるの「照合の結果」の節）は指示書70 §4-4 で外した
 
 
 # ── 354 照合の関数: 門が閉じても要素を比べる。門の結果は自分の目的の分だけ返す ─────────────────────────

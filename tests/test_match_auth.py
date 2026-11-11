@@ -122,9 +122,11 @@ def test_t165_effective_axis_is_strongest_not_limiting():
 
 
 def test_t165_ui_no_longer_uses_limiting_axis_or_score():
-    html = _cli().get("/connect").get_data(as_text=True)      # 共通部品（_match_reason.html）を含む描画結果
+    html = _cli().get("/connect").get_data(as_text=True)
     assert "limiting_axis" not in html and "総合" not in html and "sortMode" not in html   # 163・164 の先取り
-    assert "PoXReason.reasonHtml(r)" in html and "意志が近い" in html and "足りないところを埋める" in html
+    part = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates",
+                             "_match_reason.html"), encoding="utf-8").read()       # 共通部品（プロフィール・受信箱が使う）
+    assert "limiting_axis" not in part and "意志が近い" in part and "足りないところを埋める" in part
 
 
 # ── 同型の一巡: プロフィールの編集は本人のみ（以前は未認証で書き換えられた）─────────────

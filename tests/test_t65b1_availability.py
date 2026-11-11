@@ -60,8 +60,6 @@ def test_t328_reason_not_stopped_by_others(world):
 
 # ── 329 画面: システムの状態として伝える（個人の情報は出さない） ────────────────────────────────
 def test_t329_notice_is_system_state():
-    html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert "照合の準備が済んでいない登録者がいるため、その人たちは、いまの照合の対象に入っていません。" in html
-    assert "data.partial_pool" in html
+    # 画面の告知（つながるの「照合の結果」の節）は指示書70 §4-4 で外した
     src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
     assert "store.count_missing_tag(MODEL_TAG)" not in src                     # 全員を止める判定は残っていない

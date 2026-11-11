@@ -143,7 +143,6 @@ def test_t203_zero_result_reason_is_own_side_only(v4):
     # 相手ごとの理由のキーが無い（upper_scope は上層の印を出す範囲の設定の名前。相手ごとの値ではない。指示書67）
     assert set(d) <= {"status", "groups", "results", "has_offer", "match_run_id", "upper_scope"}
     html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert "まだ照合できる相手がいません" in html and "まだ必要像がありません" in html
     assert "excluded" not in html and "not_linked" not in html                # 相手ごとの除外理由は出さない
 
 

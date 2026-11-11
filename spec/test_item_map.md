@@ -538,11 +538,11 @@
 |---|---|
 | 342 | `test_t342_only_necessity_published`（1: necessity.published が 1 件増え、profile.structured は増えない） |
 | 343 | `test_t343_same_body_except_must_and_hash_changes`（2・3: 文・型・数値・evidence_commit・offer_hash が同じで必須だけが違い、ハッシュが変わる。内容ハッシュの検証が通る） |
-| 344 | `test_t344_third_must_refused`（4: 目的ごとの上限を越える必須はサーバーでも拒否） |
+| 344 | `test_t344_third_must_refused`（4: 目的ごとの上限を越える必須は版を書く仕組みが拒否。指示書70 §4-2 でマイページの切り替えは外した） |
 | 345 | `test_t345_zero_musts_allowed`（5: 0 にできる・上層が無い・文言） |
 | 346 | `test_t346_vectors_relinked_not_reembedded`（6: 埋め込みを呼ばず、新しい版の id に紐づけ直す） |
 | 347 | `test_t347_next_match_uses_new_marks`（7: 次の照合から新しい印・目的の並びは登録の順・申し出中の組は申し出の時点） |
-| 348 | `test_t348_only_owner`（8: 未ログインは 401・他人の目的は 403） |
+| 348 | `test_t348_only_owner`（8: 表示の GET は未ログイン 401。切り替えの POST は指示書70 §4-2 で外した（405）） |
 | 349 | `test_t349_not_for_v4`（9: v4 の人には出ない） |
 | 350 | `test_t350_no_change_no_version`（10: 何も変えずに保存したら版を書かない） |
 | 351 | `test_t351_trajectory_shows_change`（追補 §1-3: 軌跡に日付と目的の名前だけ・第三者は必要像と同じ閾値・作り直しは当たらない） |
@@ -692,7 +692,7 @@
 | 416 | `test_t416_candidates_do_not_use_upper`（§7-7: 上層の関数を呼ぶと失敗する状態でも候補を出せる・候補の線（C2+b-1・δ −0.020）と judgment_version の記録） |
 | 417 | `test_t417_bound_only_with_permission`（§7-8: 「縛られているもの」は許可が無ければ使わない・O の側では使わない・許可を外すと鍵が変わり作り直す） |
 | 418 | `test_t418_r4_only_complement_vs_resonance`（§7-9: 補完の目的で R4 だけなら出さない・共鳴なら出す・目的の種類の仮の規則（§4-4 の案）） |
-| 419 | `test_t419_no_generation_without_consent`（§7-10: 新しい同意をしていない人の説明は作らない。説明の同意だけの版 2026-11-expl-v1） |
+| 419 | `test_t419_no_generation_without_consent`（§7-10: 新しい同意をしていない人の説明は作らない。説明の同意だけの版 2026-11-expl-v1）（指示書70 §4-3 で、版はポリシーの 2026-11 に一本化） |
 | 420 | `test_t420_backend_off_imports_only`（§7-11: off（既定）では取り込み分だけ・知らない値は off・本番で fixed・local は起動しない・server は段階3 まで使えない） |
 | 421 | `test_t421_no_external_api_calls`（§7-12: 説明の部品と計測のスクリプトに、外部の API を呼ぶコードが無い） |
 | 422 | `test_t422_measure_runs_end_to_end`（§5: 計測の仕組みが fixed で最後まで通る・決定性・段2 に原文が漏れない・文を書かない） |
@@ -705,9 +705,9 @@
 | 424 | `test_t424_pair_digest_is_keyed`（§4-2 (1)(2): pair_digest は a1 の HMAC・句も HMAC（素のハッシュではない）・鍵が違えば違う・generation_digest はモデル・revision・プロンプトの sha のハッシュ） |
 | 425 | `test_t425_delete_keeps_hash_and_records_redaction`（§4-2 (5): 既定は数えるだけ・本文・表示・補足・向きのレコードが消え、ハッシュと台帳のイベントは残る・redaction.recorded（hash_kind explanation）・画面は「本文は削除されました」・台帳の鎖が壊れない） |
 | 426 | `test_t426_anchor_includes_agreed`（§4-2 (7): 日次のアンカーの root に、合意のイベントも含まれる） |
-| 427 | `test_t427_bound_permission`（§4-3: 「縛られているもの」の許可は既定で使わない・切り替えるたびに版を上げる・変えたら作り直しのきっかけ・マイページの文言） |
-| 428 | `test_t428_purpose_kinds`（§4-4: 仮の規則・本人が選び直すと「仮」が外れる・形の違う値と他人の目的は 400・生成の入力に使う・「仮」はマイページだけ） |
-| 429 | `test_t429_explanation_consent`（§4-5: 説明の同意だけ別の版・terms.accepted に文書の種類と版と文のハッシュ・一度だけ・取り込み分は同意の前でも出る・同意の文言・ポリシーの節・登録とマイページ） |
+| 427 | `test_t427_bound_permission`（§4-3: 「縛られているもの」の許可は既定で使わない・切り替えるたびに版を上げる・変えたら作り直しのきっかけ・マイページの文言）（指示書70 §4-2 でマイページの切り替えと設定の道を外した: 既定で使わない・道は 404） |
+| 428 | `test_t428_purpose_kinds`（§4-4: 仮の規則・本人が選び直すと「仮」が外れる・形の違う値と他人の目的は 400・生成の入力に使う・「仮」はマイページだけ）（指示書70 §4-2 で選ぶ道と表示を外した: 仮の規則で生成の入力に使う・どの画面にも出さない） |
+| 429 | `test_t429_explanation_consent`（§4-5: 説明の同意だけ別の版・terms.accepted に文書の種類と版と文のハッシュ・一度だけ・取り込み分は同意の前でも出る・同意の文言・ポリシーの節・登録とマイページ）（指示書70 §4-3 でポリシーの版に一本化: 説明だけの同意は数えず記録は残す・POST /api/my/policy_consent・本文のハッシュ） |
 | 430 | `test_t430_private_switch_recorded`（§4-6: 「非公開にする」の値を申請者・承認者ごとに記録する・台帳には入れない・画面2・3 の切り替え） |
 
 
@@ -718,3 +718,13 @@
 | 431 | `test_t431_imported_binds_to_live_necessity`（取り込み分を、引用元の必要像の文で本人の目的の id と c4 に結びつける・取り込みの応答に結びつきの数・a1 の必要の側が null にならない・残した a1 で pair_digest を確かめ直せる・手作り（fixed）は残る・実在しない subject は保存しない）、`test_t431b_v4_person_binds_by_necessity_text`（v4 の人は必要像の本文で結びつける） |
 | 432 | `test_t432_local_requires_explicit_model`（local は既定のモデルを持たず、モデルと revision を明示しないと起動しない） |
 | 433 | `test_t433_66c_archived`（66C の道具を archive/66c/ に移し、CI のテストから外す） |
+
+
+### 70 §4 画面の整理 — `tests/test_t70_screens.py`
+
+| 項目 | テスト（指示書70 §6 の 4〜7） |
+|---|---|
+| 434 | `test_t434_mypage_has_no_switches`（§6-4: マイページに必須・種類・縛られているものの切り替えと説明の同意の欄が無い・必須は表示だけ・構造化し直す入口は残る・外した道は 404／405） |
+| 435 | `test_t435_policy_update_once`（§6-5: 既存の利用者にポリシー更新の同意が一度だけ出る（ログインとマイページ・セッションに 1 回）・同意すると terms.accepted に版と本文のハッシュ・もう出ない・同意するまで説明は作らない）、`test_t435b_register_single_consent`（登録の同意は 1 つのチェック・版は app.TERMS_VERSION） |
+| 436 | `test_t436_connect_page`（§6-6: つながるに「照合の結果」の節が無い・「つながる意味が見つかった相手」の見出しと新しい冒頭の説明・受信箱の案内は残る） |
+| 437 | `test_t437_directory_rows`（§6-7: 登録者一覧は表示名（@ハンドル）と目的の見出しだけ・v4 の人は一行紹介だけ・絞り込みと並びは今のまま） |

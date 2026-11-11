@@ -106,8 +106,7 @@ def test_t335_no_must_purpose_has_no_upper(world2):
     d, g, pids = _match()
     assert g[pids[1]]["no_must"] is True and g[pids[1]]["results"] == []   # c_z は目的2 の要素に応えるが上層は無い
     assert g[pids[0]]["no_must"] is False
-    html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert "この目的には欠かせない要素がありません" in html
+    # 画面の文言（つながるの「照合の結果」の節）は指示書70 §4-4 で外した
 
 
 # ── 336 目的ごとの表: 結果の無い目的も出る・上層の印・目的全体の文言・並びは中立（id 順）───────────────
@@ -115,9 +114,7 @@ def test_t336_table_per_purpose_neutral_order(world2):
     d, g, pids = _match()
     assert [x["purpose_id"] for x in d["groups"]][:2] == pids         # 結果の無い目的も表に出る
     assert [r["candidate_id"] for r in g[pids[0]]["results"]] == ["c_full"]   # c_part は欠かせない X に届かない
-    html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    for t in ("欠かせない要素をすべて覆う人", "いまは、この目的をすべて満たす相手はいません", "この要素に応える人が見つかりませんでした"):
-        assert t in html, t
+    # 画面の表（つながるの「照合の結果」の節）は指示書70 §4-4 で外した
     src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
     assert "# id 順（中立。g の順にしない）" in src and "ids = sorted(" in src
 
@@ -128,8 +125,7 @@ def test_t337_lower_layer_flag_closed_by_default(world2, monkeypatch):
     assert match_config.lower_layer_open() is False
     d, g, pids = _match()
     assert all("elements" not in x for x in d["groups"])
-    html = open(os.path.join(ROOT, "templates", "connect.html"), encoding="utf-8").read()
-    assert "if (!Array.isArray(g.elements)) return \"\";" in html          # サーバーが返さなければ行を出さない
+    # 画面（つながるの「照合の結果」の節）は指示書70 §4-4 で外した
 
 
 # ── 338 フラグを開けると、要素ごとに応える人（id 順）と「見つかりませんでした」の行が出る ──────────────────

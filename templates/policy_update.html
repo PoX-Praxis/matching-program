@@ -1,0 +1,39 @@
+{% extends "_base.html" %}
+{% block title %}プライバシーポリシーの更新 — PoX{% endblock %}
+{% block head %}
+<style>
+  .pu p{font-size:14px;line-height:1.9;color:#454b54;margin:0 0 14px}
+  .pu .acts{display:flex;align-items:center;gap:18px;margin-top:22px;flex-wrap:wrap}
+  .pu button{border:1px solid #1f3a5f;background:#1f3a5f;color:#fff;border-radius:6px;font-size:15px;
+       font-weight:700;padding:11px 22px;cursor:pointer}
+  .pu .later{font-size:13.5px;color:#1f3a5f}
+  .pu .err{color:#8c2f34;font-size:13px;margin-top:10px}
+</style>
+{% endblock %}
+{% block content %}
+{#- 指示書70 §4-3: すでに登録している人に、次のログインで一度だけ出す。同意すると terms.accepted にポリシーの版を記録する。
+    「あとで」でも先へ進める（同意するまで、その人の説明は作らない。取り込み分は出し続ける）。 -#}
+<main class="l-prose pu">
+  <h1>プライバシーポリシーが更新されました（接続の説明について）。</h1>
+  <p>「6-2. 接続の説明（AI による説明）について」を加えました。
+    <a href="/privacy#explanation" target="_blank">プライバシーポリシーを読む</a></p>
+  <p>同意するまで、あなたについての説明は作りません。</p>
+  <div class="acts">
+    <button type="button" id="agree">同意する</button>
+    <a class="later" id="later" href="{{ next_url }}">あとで</a>
+  </div>
+  <div class="err" id="err"></div>
+</main>
+<script>
+document.getElementById("agree").addEventListener("click", async function () {
+  const btn = this; btn.disabled = true;
+  try {
+    const r = await fetch("/api/my/policy_consent", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                     body: JSON.stringify({ agree: true }) });
+    if (r.ok) { location.href = document.getElementById("later").getAttribute("href"); return; }
+  } catch (_) {}
+  document.getElementById("err").textContent = "記録できませんでした。時間をおいてもう一度お試しください。";
+  btn.disabled = false;
+});
+</script>
+{% endblock %}

@@ -100,7 +100,7 @@ def test_t435_policy_update_once(db, monkeypatch):
 def test_t435b_register_single_consent():
     html = appmod.app.test_client().get("/register").get_data(as_text=True)
     assert html.count('type="checkbox" id="policyAgree"') == 1
-    assert "利用規約・プライバシーポリシー（接続の説明を含む）</a>に同意する" in html
+    assert ">プライバシーポリシー（接続の説明を含む）</a>に同意する" in html and "利用規約" not in html   # 指示書70 の確認 5
     assert "explainAgree" not in html and "explanation_consent_agreed" not in html
     assert f'const PRIVACY_POLICY_VERSION = "{appmod.TERMS_VERSION}";' in html     # 版は app.TERMS_VERSION の 1 か所
     src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()

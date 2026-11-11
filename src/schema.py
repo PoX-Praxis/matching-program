@@ -834,6 +834,8 @@ def _migrate_columns(con) -> None:
     # 指示書57（①v5）: 目的ごとの必要像（purpose_id）・必要像の文の配列（body_json）・与え像のピン留め。
     for col in ("purpose_id", "body_json", "offer_hash"):
         _add_column_if_missing(con, "necessities", col, "TEXT")
+    # 指示書70（c5）: 本人が選んだ目的の種類（"補完"／"共鳴"）。選んでいなければ NULL。
+    _add_column_if_missing(con, "necessities", "purpose_kind", "TEXT")
     # 接続の説明の向きのレコードに、生成の鍵・版・superseded の印（指示書69 §3。指示書68 の表に足した列）。
     for col, typ in (("gen_key", "TEXT"), ("version_key", "TEXT"), ("superseded", "INTEGER NOT NULL DEFAULT 0"),
                      ("meta_json", "TEXT")):

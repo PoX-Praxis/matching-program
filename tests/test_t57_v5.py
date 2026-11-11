@@ -138,8 +138,8 @@ def test_t207_one_event_per_purpose_c3(db):
     assert [e["payload"]["purpose_id"] for e in evs] == ids
     assert all(e["payload"]["offer_hash"] == v5.offer_hash(_doc()["与え像"]) for e in evs)
     with N._connect(db) as con:
-        # 新しく書く版は c4（指示書61 で c3 から上げた。c3 の行の検証は test_t61 で確かめる）
-        assert {r[0] for r in con.execute("SELECT canon_version FROM necessities").fetchall()} == {"c4"}
+        # 新しく書く版は c5（指示書61 で c3→c4、指示書70 で c4→c5。前の版の行の検証は test_t61・test_t70 で確かめる）
+        assert {r[0] for r in con.execute("SELECT canon_version FROM necessities").fetchall()} == {"c5"}
 
 
 def test_t208_offer_change_changes_each_purpose_hash(db):
@@ -163,7 +163,7 @@ def test_t209_profile_structured_canon_version(db):
     _confirm("u_a", _doc())
     p4 = [e["payload"] for e in le.get_events(type_="profile.structured", db_path=db) if e["payload"]["subject_id"] == "u_v4"][0]
     p5 = [e["payload"] for e in le.get_events(type_="profile.structured", db_path=db) if e["payload"]["subject_id"] == "u_a"][0]
-    assert "canon_version" not in p4 and p5["canon_version"] == "p3"      # 無いもの＝c1（v5 は 61 で p2→p3）
+    assert "canon_version" not in p4 and p5["canon_version"] == "p4"      # 無いもの＝c1（v5 は 61 で p2→p3・70 で p3→p4）
     assert p4["content_hash"] == profile_content_hash({"will_text": "w"})   # c1 のまま読める
     assert le.verify_chain(db_path=db)["ok"] is True
 

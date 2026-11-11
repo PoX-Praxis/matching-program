@@ -114,7 +114,7 @@
 <!-- 登録時の同意は 1 つにまとめる（指示書70 §4-1・§4-3。接続の説明＝ポリシー 6-2 を含む。説明だけの別の欄は置かない） -->
 <div id="consentRow" style="margin:14px 0;font-size:13px;line-height:1.6">
   <label><input type="checkbox" id="policyAgree">
-    <a href="/privacy" target="_blank">利用規約・プライバシーポリシー（接続の説明を含む）</a>に同意する</label>
+    <a href="/privacy" target="_blank">プライバシーポリシー（接続の説明を含む）</a>に同意する</label>
 </div>
 <button class="submit-btn" onclick="register(this)">登録する</button>
 <div id="msg"></div>
@@ -156,7 +156,7 @@ async function register(btn) {
   // プライバシーポリシー同意ガード（既存の "consent"＝登録内容合意 とは別物）
   if (!document.getElementById("policyAgree").checked) {
     el.className = "err";
-    el.textContent = "利用規約・プライバシーポリシーへの同意が必要です（上のチェックを入れてください）";
+    el.textContent = "プライバシーポリシーへの同意が必要です（上のチェックを入れてください）";
     return;
   }
 
@@ -228,6 +228,8 @@ function renderV5Preview(draft) {
     const hint = pu.purpose_id || `p${i + 1}`;
     h += `<div style="border-top:1px solid #eee;padding-top:8px;margin-top:8px">`;
     h += `<p style="margin:4px 0"><b>目的 ${i + 1}</b>: ${esc(pu["向かう先"] || "")}<br><span style="font-size:12px;color:#666">手段: ${esc(pu["手段"] || "")}</span></p>`;
+    // 目的の種類（rev5 A は対話の中で本人が選び済み。ここは読み取りの表示だけ。指示書70 §4-1）
+    if (pu["種類"]) h += `<p style="margin:2px 0;font-size:12px;color:#555">目的の種類: ${esc(pu["種類"])}</p>`;
     h += `<ul style="margin:4px 0 6px">` + (pu["必要像"] || []).map(x =>
       `<li>${x["必須"] ? '<b style="font-size:11px;color:#1f3a5f;border:1px solid #b9c6d6;border-radius:3px;padding:0 5px;margin-right:6px">欠かせない要素</b>' : ""}${esc(x["文"])}</li>`).join("") + `</ul>`;
     if (existing.length) {
@@ -247,6 +249,11 @@ function renderV5Preview(draft) {
       `<li><label><input type="checkbox" class="offerKeep" data-i="${i}" checked> ${esc(x["文"])}</label></li>`).join("") + `</ul>`;
   }
   h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">すべて外した場合（または「力になれること」が無い場合）は、現状で照合します。</p>`;
+  // 「縛られているもの」を接続の説明に使ってよいか（rev5 A の答え。読み取りの表示だけ。指示書70 §4-1）
+  const use = (p["説明への使用"] || {})["縛られているもの"];
+  if (use === true || use === false) {
+    h += `<p style="font-size:12px;color:#555;margin:6px 0">現状の「縛られているもの」を接続の説明に: ${use ? "使う" : "使わない"}（AI との対話での答え）</p>`;
+  }
   h += `<p style="font-size:12px;color:#666;margin:6px 0">対応を選ばなかった前の目的は「取り下げ」になり、記録としては残ります。</p>`;
   el.className = "";
   el.innerHTML = h + handleBoxHtml(draft) + confirmButtonHtml(draft) + `</div>`;

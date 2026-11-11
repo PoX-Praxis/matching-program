@@ -34,7 +34,7 @@ def _case(name):
 
 
 def _text(h):
-    h = re.sub(r"<details.*?</details>", "", h)
+    h = re.sub(r'<details class="ex-src">.*?</details>', "", h)   # 「原文」の開く印だけを除く（根拠の枠は v0.5 で details）
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", h))
 
 
@@ -99,10 +99,11 @@ def test_t388_reader_wording():
 def test_t389_purpose_order_is_profile_order():
     card, names = _case("2_resonance")                      # 目的1 は not_covered、目的2 は explained
     t = _text(X.render(card, "viewer", names))
-    assert t.index("あなたの目的1") < t.index("あなたの目的2")
+    # 目的の枠（見出し「■ …」）の並び。先頭の要旨（指示書71 §1）は状態ごとにまとめるので、見出しで比べる
+    assert t.index("■ あなたの目的1") < t.index("■ あなたの目的2")
     card["purposes"].reverse()                               # JSON の並びを入れ替えても、order（プロフィールの順）で並ぶ
     t2 = _text(X.render(card, "viewer", names))
-    assert t2.index("あなたの目的1") < t2.index("あなたの目的2")
+    assert t2.index("■ あなたの目的1") < t2.index("■ あなたの目的2")
 
 
 # ── 390 確かめに落ちた部分は出さない（引用の実在・句の長さ・ラベル・R1/R2 の述語・禁止の語・呼び方・補充しない）（§7-4）─────
@@ -160,7 +161,10 @@ def test_t392_states_render_without_breaking():
     assert "承認時の説明（2026-11-01）" in seen["4_stale_supplemented"]
     assert "ハル さんの力になれること（2）" in seen["4_stale_supplemented"]          # 違う欄は読める形で
     assert "ハル さんの補足（2026-11-05）" in seen["4_stale_supplemented"]
-    assert "欠かせない要素（1-1・1-2）に当たる文は、ソラ さんの公開の文の中には見つかりません" in seen["3_sparse"]
+    # 指示書71 §4: 欠けている欠かせない要素は「つながった後に確かめられること」に、必要の文の引用を入れた型で並ぶ
+    assert ("欠かせない要素：「店の売上と在庫を毎日記録できる仕組みを、実際に作ってきた人。」について、"
+            "ソラ さんの経験は公開の文からは分かりません。つながった後に確かめられます。") in seen["3_sparse"]
+    assert "見つかりません" not in seen["3_sparse"]
     card, names = _case("1_complement")
     card["status"] = "deleted"
     h = X.render(card, "viewer", names)

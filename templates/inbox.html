@@ -162,7 +162,8 @@ async function loadIncomingExplanation(card, other) {
     if (d.status !== "ok") return false;
     const box = card.querySelector(".ib-explain");
     box.innerHTML = `<p class="ex-cap">${escHtml(d.applicant_name)} さんが申請の時に読んだ内容です（申請の時点のプロフィールにもとづきます）</p>${d.html}`;
-    PoXExplain.wireSupplement(box, { note: "承認・見送りのどちらにも添えられます（400 字まで）。" });
+    PoXExplain.wireSupplement(box, { note: "承認・見送りのどちらにも添えられます（400 字まで）。"
+                                          + "「つながった後に確かめられること」への答えも、ここに書けます。" });   // 指示書71 §5
     box.style.display = "";
     card.querySelector(".ib-reason").style.display = "none";
     card.querySelector(".ex-check").style.display = "";

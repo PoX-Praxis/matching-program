@@ -61,7 +61,7 @@
     --surface: #16212f;
     --surface-2: #1c2938;
     --overlay: rgba(0,0,0,.6);
-    --shadow: rgba(0,0,0,.25);
+    --shadow: rgba(0,0,0,.12);   /* 暗い地では影を薄くし、縁の線（☰ のメニューの --line-strong）で見分ける（§3） */
     --text: #e6ebf2;
     --text-sub: #c3cbd6;
     --text-muted: #9aa5b4;
@@ -88,4 +88,8 @@
     --band-main: #3a2f1c;
   }
   html{ background: var(--bg); color: var(--text); }
+  /* 入力欄は地の色に合わせる（暗い表示で既定の灰色にしない）。ページごとの指定があれば、そちらが勝つ（:where で強さを 0 にする） */
+  :where(textarea, select, input:not([type=checkbox], [type=radio], [type=submit], [type=button], [type=file])){
+    background-color: var(--surface); color: var(--text);
+  }
 </style>

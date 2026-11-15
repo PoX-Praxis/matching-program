@@ -278,18 +278,20 @@ def test_t461_screen3_shows_the_question_as_read(xs):
     assert _offer().status_code == 200
     row = S.pending_render("me", "c_full", db_path=appmod.DB)
     inc = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()["html"]   # 画面3
-    assert inc == X.open_basis(X.personalize(row["symbolic_html"], "recipient", NAMES))  # 再生成しない
-    assert _asks(inc) == [ASK_1_3] and '<details class="ex-basis" open>' in inc
+    assert inc == X.incoming_html(row["symbolic_html"], NAMES)                         # 再生成しない（組み直すだけ）
+    assert _asks(inc) == [ASK_1_3] and '<details class="ex-basis" open>' not in inc     # 根拠は閉じる（指示書74 §1-3）
+    main = inc[inc.index('class="ex-side ex-side-main"'):]                              # 問いは申請者の目的の側（指示書74 §7）
+    assert _asks(main) == [ASK_1_3]
     assert "あなた" not in inc and re.search(r"⟦[VT]⟧", inc) is None
 
 
 # ── 462 版・置き場所・render_digest ────────────────────────────────────────────────────────
 def test_t462_version_placement_and_render_digest(monkeypatch):
     monkeypatch.setenv("POX_EXPLANATION_DIGEST_KEY", KEY)
-    assert X.RENDER_VERSION == "v0.7"
+    assert X.RENDER_VERSION == "v0.8"                                                # 指示書74 で v0.8（問いの型は v0.7 のまま）
     card, names = _open_card()
     h = X.render(card, "viewer", names)
-    assert 'data-render="v0.7"' in h
+    assert 'data-render="v0.8"' in h
     blk = _purpose_block(h, "viewer.purpose.p1")
     basis = blk[blk.index('<details class="ex-basis">'):]
     head = blk[:blk.index('<details class="ex-basis">')]

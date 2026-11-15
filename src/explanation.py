@@ -45,7 +45,7 @@ MEANING_END = ("になれる可能性があります。", "に関われる可能
 # ── 表示の文（指示書71・仕様 v0.5、指示書73・仕様 v0.7 の追記）。すべて決まった型で、LLM は使わない ───────────
 # v0.4 の「見つかりません」の文は v0.5 で、v0.5 の「つながった後に確かめられること」は v0.7 で使わなくなった。
 # 保存済みの表示（画面2・承認時）は HTML の文字列のまま読むので、古い文の定数は要らない（描き直さない）。
-RENDER_VERSION = "v0.7"
+RENDER_VERSION = "v0.8"
 FOOTER_TEXT = ("AI による説明です。並び順は近さの順ではありません。説明は、選ばれた理由ではなく、"
                "二人の公開の文から読み取った、つながる意味です。機械の確かめは正しさを保証しません。")
 SUMMARY_MEANING = "{list}に、つながる意味があります。"           # 要旨（v0.7 §15-2）。つながる意味がある目的だけ
@@ -60,6 +60,12 @@ FACT_TEXT = "「{quote}」について、{who}の経験は公開の文からは�
 MUST_PREFIX = "欠かせない要素："
 ASK_HEAD = "つながった後に尋ねること"                            # 問い（事実と混ぜない。v0.7 §15-4）
 ASK_TEXT = "「{quote}」について、経験はありますか。いまは、関われる状況ですか。"
+BASIS_HEAD = "根拠"                                             # 根拠の節の見出し（v0.8 §16-3。v0.7 までは「その根拠として」）
+# 画面3 の組み直し（v0.8 §16-4）の印と見出し。見出しは決まった型で、LLM は使わない
+MAIN_OPEN, MAIN_CLOSE = "<!--ex:main-->", "<!--/ex:main-->"
+REV_OPEN, REV_CLOSE = "<!--ex:rev:{kind}-->", "<!--/ex:rev-->"   # kind: p＝相手に目的がある／s＝求めている相手（v4）
+SIDE_HEAD_REV = {"p": "{t}（受けた人）の目的から見た、{v}", "s": "{t}（受けた人）が求めている相手から見た、{v}"}
+SIDE_HEAD_MAIN = "{v}（申請した人）の目的から見た、{t}"
 DELETED_TEXT = "本文は削除されました"
 SUPPLEMENT_BUTTON = '<button type="button" class="ex-supp-btn">補足する ›</button>'
 HIDDEN_STATUSES = ("pending",)
@@ -302,6 +308,20 @@ def _ask_target(purposes, src):
     return (first["ref"], q) if q else (None, None)
 
 
+def _rank(p):
+    """目的の並びの段（v0.8 §16-2）: 0＝explained（欠かせない要素がすべて覆われた）／1＝open（いまは explained で
+    missing_must がある目的を含む）／2＝それ以外（not_covered など）。check() の後のカードに使う。"""
+    if p["status"] == "explained":
+        return 1 if _is_open(p) else 0
+    return 2
+
+
+def _ordered(purposes):
+    """目的の並び（v0.8 §16-2）: 状態の順（explained → open → not_covered）。同じ状態の中はプロフィールの順。
+    目的の番号（目的1・目的2）は変えない。人の順位ではなく、一人のカードの中の目的の並び。"""
+    return sorted(purposes, key=lambda x: (_rank(x), x["order"]))
+
+
 def _purpose_html(p, n, o, src, reverse, has_purposes=True, ask=None):
     state = _purpose_state(p)
     if state is None:
@@ -324,7 +344,7 @@ def _purpose_html(p, n, o, src, reverse, has_purposes=True, ask=None):
                 f'<div class="ex-pair">{n}：{_quote(e["need_quote"], e["need_ref"], src)}</div>'
                 f'<div class="ex-pair">{o}：{_quote(e["offer_quote"], e["offer_ref"], src)}</div>'
                 f'<div class="ex-rel">［{_e(name)}］← {_e(basis_text)}</div></li>')
-        basis.append('<div class="ex-sub">── その根拠として ──</div><ul class="ex-els">' + "".join(rows) + "</ul>")
+        basis.append(f'<div class="ex-sub">── {BASIS_HEAD} ──</div><ul class="ex-els">' + "".join(rows) + "</ul>")
     body.append(f'<p class="ex-state">{STATE_TEXT[state]}</p>')
     items = _fact_items(p, o, src)
     if items:
@@ -333,18 +353,17 @@ def _purpose_html(p, n, o, src, reverse, has_purposes=True, ask=None):
     if ask and not reverse:                             # 問いは本体の向きだけ（⑥ には出さない）。事実の節の後ろに別の節で
         basis.append(f'<div class="ex-sub">── {ASK_HEAD} ──</div><ul class="ex-ask">'
                      f"<li>{ASK_TEXT.format(quote=_e(ask))}</li></ul>")
-    # 根拠・分からないこと・問いは畳む（1 回の操作で開く。JS が無くても開ける）。画面3 は open_basis() で開いて出す
+    # 根拠・分からないこと・問いは畳む（1 回の操作で開く。JS が無くても開ける）。画面3 も閉じて出す（v0.8 §16-3）
     body.append(f'<details class="ex-basis"><summary>{BASIS_SUMMARY}</summary>{"".join(basis)}</details>')
     cls = "ex-purpose ex-rev" if reverse else "ex-purpose"
-    return (f'<div class="{cls}" data-ref="{_e(p["ref"])}" data-status="{_e(p["status"])}" data-state="{state}">'
-            f'{head}{"".join(body)}</div>')
+    return (f'<div class="{cls}" data-ref="{_e(p["ref"])}" data-status="{_e(p["status"])}" data-state="{state}" '
+            f'data-number="{int(p["number"])}">{head}{"".join(body)}</div>')
 
 
 def _summary_html(purposes):
     """要旨（v0.7 §15-2）: 見る人の目的のうち、つながる意味がある目的（all・part）だけを書く 1 行。
     「分からない」の目的・出さない目的・逆の向きは入れない。書く目的が無ければ要旨を出さない。"""
-    meaning = [f'目的{p["number"]}' for p in sorted(purposes, key=lambda x: x["order"])
-               if _purpose_state(p) in ("all", "part")]
+    meaning = [f'目的{p["number"]}' for p in _ordered(purposes) if _purpose_state(p) in ("all", "part")]
     if not meaning:
         return ""
     return f'<p class="ex-summary">{V}の{SUMMARY_MEANING.format(list="・".join(meaning))}</p>'
@@ -360,20 +379,25 @@ def render_symbolic(card, names=()):
     if checked["status"] == "deleted":
         return f'<section class="ex-card" data-status="deleted"><p class="ex-deleted">{DELETED_TEXT}</p></section>'
     src = {c["ref"]: c["text"] for c in checked["citations"]}
-    parts = [_summary_html(checked["purposes"])]                 # 先頭の 1 行（要旨。v0.5 §1）
+    # 本体の向き（見る人の目的の側）と逆の向き（⑥）を印で囲む。画面3 は、保存したこの HTML を印で切り分けて並べ直す
+    # （v0.8 §16-4。文は保存したものをそのまま使う）。印は HTML の注記なので、画面には出ない
+    parts = [MAIN_OPEN, _summary_html(checked["purposes"])]      # 先頭の 1 行（要旨。v0.5 §1）
     if checked["status"] == "stale" and checked.get("stale"):
         changed = "・".join(_ref_label(r) for r in checked["stale"]["changed_refs"]) or "—"
         parts.append(f'<p class="ex-stale">承認時の説明（{_e(checked["stale"]["approved_at"])}）。'
                      f'現在のプロフィールと違う欄: {changed}</p>')
-    # 目的はプロフィールの順で固定（成否で並べ替えない。仕様 §4-2）。問いはカード 1 枚に 1 つまで（v0.7 §15-4）
+    # 目的は状態の順（explained → open → not_covered。同じ状態の中はプロフィールの順。v0.8 §16-2）。
+    # 問いはカード 1 枚に 1 つまで（v0.7 §15-4）
     ask_ref, ask_quote = _ask_target(checked["purposes"], src)
-    for p in sorted(checked["purposes"], key=lambda x: x["order"]):
+    for p in _ordered(checked["purposes"]):
         parts.append(_purpose_html(p, V, T, src, reverse=False, ask=ask_quote if p["ref"] == ask_ref else None))
+    parts.append(MAIN_CLOSE)
     rev = [h for h in (_purpose_html(p, T, V, src, reverse=True, has_purposes=checked["target_has_purposes"])
-                       for p in sorted(checked["reverse_purposes"], key=lambda x: x["order"])) if h]
+                       for p in _ordered(checked["reverse_purposes"])) if h]
     if rev:
         head = f"{T}から見た{V}" if checked["target_has_purposes"] else f"{T}が求めている相手"
-        parts.append(f'<div class="ex-sub ex-revh">── {head} ──</div>' + "".join(rev))
+        parts.append(REV_OPEN.format(kind="p" if checked["target_has_purposes"] else "s")
+                     + f'<div class="ex-sub ex-revh">── {head} ──</div>' + "".join(rev) + REV_CLOSE)
     for s in checked.get("supplements") or []:
         who = V if s["by"] == "viewer" else T
         parts.append(f'<p class="ex-supp">{who}の補足（{_e(s["at"])}）：「{_e(s["text"])}」</p>')
@@ -398,11 +422,62 @@ def personalize(symbolic_html, reader, names):
 
 
 def open_basis(html_text):
-    """画面3（申請を受けた人）: 根拠・分からないこと・問いを、最初から開いた状態にする（承認には内容の確認が必須のため。
-    v0.5 §3）。文字列の置き換えだけで、再生成しない。v0.4 で保存した表示（畳む枠が無い）は、そのまま返す。"""
+    """指示書74 より前に保存した申請の画面3（前の形）: 根拠・分からないこと・問いを、最初から開いた状態にする（v0.5 §3。
+    v0.8 で取りやめたが、前に保存した表示は前の形のまま出す）。文字列の置き換えだけで、再生成しない。v0.4 で保存した表示（畳む枠が無い）は、そのまま返す。"""
     if html_text is None:
         return None
     return html_text.replace('<details class="ex-basis">', '<details class="ex-basis" open>')
+
+
+_MAIN_RE = re.compile(re.escape(MAIN_OPEN) + r"(.*?)" + re.escape(MAIN_CLOSE), re.S)
+_REV_RE = re.compile(r"<!--ex:rev:([ps])-->(.*?)" + re.escape(REV_CLOSE), re.S)
+_REVH_RE = re.compile(r'<div class="ex-sub ex-revh">.*?</div>', re.S)
+_REV_STATE_RE = re.compile(r'<div class="ex-purpose ex-rev" data-ref="[^"]*" data-status="[^"]*" '
+                           r'data-state="(all|part|unknown)" data-number="(\d+)">')
+
+
+def incoming_layout(symbolic_html):
+    """画面3（申請を受けた人の詳細の画面）の並び（v0.8 §16-4）。申請者が申請の時に読んだ表示（保存した記号のままの HTML）を、
+    印（MAIN_OPEN・REV_OPEN）で切り分けて、受けた人の目的の側（逆の向き）を先に、申請者の目的の側（本体）を後に並べ直す。
+
+    - 文は保存した HTML の切れ端をそのまま使う（作り直さない・モデルを呼ばない）。根拠は閉じたまま
+    - 足すのは、決まった型の見出し（どちらの側か）と、受けた人の側の要旨（保存した目的の状態と番号から、要旨の型で組む）だけ
+    - ⑥ の見出し（「── ⟦T⟧から見た⟦V⟧ ──」）は、側の見出しに置き換える
+    - 印の無い表示（指示書74 より前に保存したもの）は None（呼ぶ側が前の形のまま出す）"""
+    if symbolic_html is None:
+        return None
+    m = _MAIN_RE.search(symbolic_html)
+    if not m:
+        return None
+    r = _REV_RE.search(symbolic_html, m.end())
+    head_end = symbolic_html.index(">") + 1                     # <section ...>
+    opening = symbolic_html[:head_end].replace("<section ", '<section data-layout="incoming" ', 1)
+    tail = symbolic_html[(r.end() if r else m.end()):]          # 補足・注記・「補足する」・</section>
+    parts = [opening]
+    if r:
+        kind, rev = r.group(1), _REVH_RE.sub("", r.group(2), count=1)
+        parts.append(f'<div class="ex-side ex-side-rev"><div class="ex-side-h">'
+                     f'{SIDE_HEAD_REV[kind].format(t=T, v=V)}</div>')
+        if kind == "p":
+            nums = [n for st, n in _REV_STATE_RE.findall(rev) if st in ("all", "part")]
+            if nums:
+                parts.append(f'<p class="ex-summary">{T}の{SUMMARY_MEANING.format(list="・".join(f"目的{n}" for n in nums))}</p>')
+        parts.append(rev + "</div>")
+    if m.group(1).strip():
+        parts.append(f'<div class="ex-side ex-side-main"><div class="ex-side-h">{SIDE_HEAD_MAIN.format(t=T, v=V)}</div>'
+                     + m.group(1) + "</div>")
+    parts.append(tail)
+    return "".join(parts)
+
+
+def incoming_html(symbolic_html, names):
+    """画面3 に出す HTML（受けた人が実際に見る表示。承認のときは、これをその人の表示として残す）。
+    印のある表示は incoming_layout で並べ直し、根拠は閉じたまま（v0.8 §16-3）。
+    印の無い表示（指示書74 より前に保存した申請）は、前の形のまま（名前の置き換えと、根拠を開く印だけ）。"""
+    lay = incoming_layout(symbolic_html)
+    if lay is None:
+        return open_basis(personalize(symbolic_html, "recipient", names))
+    return personalize(lay, "recipient", names)
 
 
 def render(card, reader, names):
@@ -486,7 +561,7 @@ def short_form(card, names=()):
         return None
     def items_of(purposes, n, o, reverse):
         out = []
-        for p in sorted(purposes, key=lambda x: x["order"]):
+        for p in _ordered(purposes):                               # 状態の順（v0.8 §16-2）
             if p["status"] != "explained":
                 continue
             first = next((x for x in re.split(r"(?<=。)", p["meaning"]["text"]) if x.strip()), "")

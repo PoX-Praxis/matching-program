@@ -95,15 +95,15 @@ def test_t388_reader_wording():
             assert "あなた" not in p["meaning"]["text"] and not any(n in p["meaning"]["text"] for n in names.values())
 
 
-# ── 389 目的の並びはプロフィールの順。成否で変わらない（§7-3）────────────────────────────────────
+# ── 389 目的の並びは状態の順、同じ状態の中はプロフィールの順（指示書74 §2 で §7-3 を改めた）────────────────────────────────────
 def test_t389_purpose_order_is_profile_order():
     card, names = _case("2_resonance")                      # 目的1 は not_covered、目的2 は explained
     t = _text(X.render(card, "viewer", names))
-    # 目的の枠（見出し「■ …」）の並び。先頭の要旨（指示書71 §1）は状態ごとにまとめるので、見出しで比べる
-    assert t.index("■ あなたの目的1") < t.index("■ あなたの目的2")
-    card["purposes"].reverse()                               # JSON の並びを入れ替えても、order（プロフィールの順）で並ぶ
+    # 目的の枠（見出し「■ …」）の並び。つながる意味がある目的2 が先（番号は変えない）
+    assert t.index("■ あなたの目的2") < t.index("■ あなたの目的1")
+    card["purposes"].reverse()                               # JSON の並びを入れ替えても、同じ並び
     t2 = _text(X.render(card, "viewer", names))
-    assert t2.index("■ あなたの目的1") < t2.index("■ あなたの目的2")
+    assert t2.index("■ あなたの目的2") < t2.index("■ あなたの目的1")
 
 
 # ── 390 確かめに落ちた部分は出さない（引用の実在・句の長さ・ラベル・R1/R2 の述語・禁止の語・呼び方・補充しない）（§7-4）─────

@@ -42,23 +42,24 @@ FORBIDDEN_WORDS = ("相性", "おすすめ", "オススメ", "間違いなく", 
 CONTACT = re.compile(r"https?://|www\.|[\w.+-]+@[\w-]+\.[\w.-]+|\d{2,4}-\d{2,4}-\d{3,4}")
 # ① の閉じた語彙（仕様 §4-3・§12-4 の 11）: どの文も「〜可能性があります。」で終わる
 MEANING_END = ("になれる可能性があります。", "に関われる可能性があります。")
-# ── 表示の文（指示書71・仕様 v0.5 の追記）。すべて決まった型で、LLM は使わない ──────────────────────────
-# v0.4 の「見つかりません」の文（NOT_COVERED_TEXT・UNKNOWN_TEXT）は、v0.5 で「つながった後に確かめられること」に置き換えた。
+# ── 表示の文（指示書71・仕様 v0.5、指示書73・仕様 v0.7 の追記）。すべて決まった型で、LLM は使わない ───────────
+# v0.4 の「見つかりません」の文は v0.5 で、v0.5 の「つながった後に確かめられること」は v0.7 で使わなくなった。
 # 保存済みの表示（画面2・承認時）は HTML の文字列のまま読むので、古い文の定数は要らない（描き直さない）。
-RENDER_VERSION = "v0.5"
+RENDER_VERSION = "v0.7"
 FOOTER_TEXT = ("AI による説明です。並び順は近さの順ではありません。説明は、選ばれた理由ではなく、"
                "二人の公開の文から読み取った、つながる意味です。機械の確かめは正しさを保証しません。")
-SUMMARY_MEANING = "{list}に、つながる意味があります。"           # 要旨（§1）。先頭の文に「⟦V⟧の」を付ける
-SUMMARY_CHECK = "{list}は、つながった後に確かめられます。"
-STATE_TEXT = {                                                   # 目的ごとの状態の 1 行（§2。数値・割合は出さない）
+SUMMARY_MEANING = "{list}に、つながる意味があります。"           # 要旨（v0.7 §15-2）。つながる意味がある目的だけ
+STATE_TEXT = {                                                   # 目的ごとの状態の 1 行（v0.7 §15-1。数値・割合は出さない）
     "all": "この目的の要素のすべてに、つながる意味があります。",
     "part": "この目的の要素の一部に、つながる意味があります。",
-    "check": "この目的は、つながった後に確かめられます。",
+    "unknown": "この目的については、公開の文からは分かりません。",
 }
-BASIS_SUMMARY = "根拠を見る ›"                                   # 根拠と確かめられることを畳む（§3）
-CHECK_HEAD = "つながった後に確かめられること"                     # §4（v0.4 の「文からは分からないこと」）
-CHECK_TEXT = "「{quote}」について、{who}の経験は公開の文からは分かりません。つながった後に確かめられます。"
+BASIS_SUMMARY = "根拠を見る ›"                                   # 根拠・分からないこと・問いを畳む（v0.5 §13-3）
+FACT_HEAD = "文からは分からないこと"                             # 分からないこと（事実だけ。v0.7 §15-3）
+FACT_TEXT = "「{quote}」について、{who}の経験は公開の文からは分かりません。"
 MUST_PREFIX = "欠かせない要素："
+ASK_HEAD = "つながった後に尋ねること"                            # 問い（事実と混ぜない。v0.7 §15-4）
+ASK_TEXT = "「{quote}」について、経験はありますか。いまは、関われる状況ですか。"
 DELETED_TEXT = "本文は削除されました"
 SUPPLEMENT_BUTTON = '<button type="button" class="ex-supp-btn">補足する ›</button>'
 HIDDEN_STATUSES = ("pending",)
@@ -240,36 +241,68 @@ def _ref_label(ref):
     return f"{V if side == 'viewer' else T}の{_REF_KIND.get(kind, kind)}（{_e(rest.split('.')[-1])}）"
 
 
+def _is_open(p):
+    """open と同じに扱う目的か（v0.7 §15-1）: 確かめ済みの組があり、欠かせない要素に覆われていないものがある。
+    いまは生成が open を出さないので、「explained で missing_must がある」目的（取り込み分のカード）を open とみなす。
+    check() の後のカードに使う（explained の目的は、組と ① が確かめを通っている）。"""
+    return p["status"] == "explained" and bool(p["elements"]) and bool(p["missing_must"])
+
+
 def _purpose_state(p):
-    """目的ごとの状態（v0.5 §2）。出さない目的は None。
-    all＝explained で、確かめられること（unknown・missing_must）が無い／part＝explained で、確かめられることがある／
-    check＝explained でなく、確かめられることがある。"""
+    """目的ごとの状態（v0.7 §15-1）。出さない目的は None。
+    all＝explained で、分からないこと（unknown・missing_must）が無い／part＝explained で分からないことがある（open を含む）／
+    unknown＝explained でなく（not_covered）、分からないことがある。"""
     if p["status"] == "pending":
         return None
     has_must = any(e["must"] for e in p["elements"]) or bool(p["missing_must"])
     if not p["elements"] and not has_must:
         return None                                     # 欠かせない要素が無く、組も無い目的は出さない（仕様 §4-2）
-    pending_items = bool(p["unknown"] or p["missing_must"])
+    facts = bool(p["unknown"] or p["missing_must"])
     if p["status"] == "explained":
-        return "part" if pending_items else "all"
-    return "check" if pending_items else None
+        return "part" if facts else "all"
+    return "unknown" if facts else None
 
 
-def _check_items(p, o, src):
-    """「つながった後に確かめられること」の行（v0.5 §4）。欠かせない要素（missing_must）を先に、頭に印を付ける。
+def _fact_items(p, o, src):
+    """「文からは分からないこと」の行（v0.7 §15-3。事実だけ）。欠かせない要素（missing_must）を先に、頭に印を付ける。
     句は、分からないことの句があればそれ、無ければ必要の文（引用の原文）。同じ要素は 1 回だけ。"""
     unk = {u["need_ref"]: u["need_quote"] for u in p["unknown"]}
     items = []
     for m in p["missing_must"]:
         q = unk.get(m) or src.get(m) or _elem_key(m)
-        items.append(MUST_PREFIX + CHECK_TEXT.format(quote=_e(q), who=o))
+        items.append(MUST_PREFIX + FACT_TEXT.format(quote=_e(q), who=o))
     for u in p["unknown"]:
         if u["need_ref"] not in p["missing_must"]:
-            items.append(CHECK_TEXT.format(quote=_e(u["need_quote"]), who=o))
+            items.append(FACT_TEXT.format(quote=_e(u["need_quote"]), who=o))
     return items
 
 
-def _purpose_html(p, n, o, src, reverse, has_purposes=True):
+def _ask_quote(p, src):
+    """問いの句（v0.7 §15-4 の 3・4）。対象は missing_must のうち、必要の並び順（引用の並び）で最初の 1 つで、
+    必要像の要素に実在するもの。句は、同じ要素の unknown の句（check() で原文の連続した部分・40 字以内と確かめ済み）、
+    無ければ必要の文の全文が 40 字以内のときだけ全文。どちらも無ければ None（問いを出さない）。"""
+    order = {ref: i for i, ref in enumerate(src)}
+    must = sorted((m for m in p["missing_must"] if m in src), key=order.get)
+    if not must:
+        return None
+    m = must[0]
+    q = next((u["need_quote"] for u in p["unknown"] if u["need_ref"] == m), None)
+    if q is None and len(src[m]) <= QUOTE_MAX:
+        q = src[m]
+    return q
+
+
+def _ask_target(purposes, src):
+    """カード 1 枚に 1 つまで（v0.7 §15-4 の 1・2・5）: 本体の向きで、プロフィールの順で最初の open の目的だけに問いを出す。
+    戻り値: (目的の参照, 句)。その目的に句が無ければ、問いは出さない（次の目的に回さない）。"""
+    first = next((p for p in sorted(purposes, key=lambda x: x["order"]) if _is_open(p)), None)
+    if first is None:
+        return None, None
+    q = _ask_quote(first, src)
+    return (first["ref"], q) if q else (None, None)
+
+
+def _purpose_html(p, n, o, src, reverse, has_purposes=True, ask=None):
     state = _purpose_state(p)
     if state is None:
         return ""
@@ -293,11 +326,14 @@ def _purpose_html(p, n, o, src, reverse, has_purposes=True):
                 f'<div class="ex-rel">［{_e(name)}］← {_e(basis_text)}</div></li>')
         basis.append('<div class="ex-sub">── その根拠として ──</div><ul class="ex-els">' + "".join(rows) + "</ul>")
     body.append(f'<p class="ex-state">{STATE_TEXT[state]}</p>')
-    items = _check_items(p, o, src)
+    items = _fact_items(p, o, src)
     if items:
-        basis.append(f'<div class="ex-sub">── {CHECK_HEAD} ──</div><ul class="ex-unk">'
+        basis.append(f'<div class="ex-sub">── {FACT_HEAD} ──</div><ul class="ex-unk">'
                      + "".join(f"<li>{x}</li>" for x in items) + "</ul>")
-    # 根拠と確かめられることは畳む（1 回の操作で開く。JS が無くても開ける）。画面3 は open_basis() で開いて出す
+    if ask and not reverse:                             # 問いは本体の向きだけ（⑥ には出さない）。事実の節の後ろに別の節で
+        basis.append(f'<div class="ex-sub">── {ASK_HEAD} ──</div><ul class="ex-ask">'
+                     f"<li>{ASK_TEXT.format(quote=_e(ask))}</li></ul>")
+    # 根拠・分からないこと・問いは畳む（1 回の操作で開く。JS が無くても開ける）。画面3 は open_basis() で開いて出す
     body.append(f'<details class="ex-basis"><summary>{BASIS_SUMMARY}</summary>{"".join(basis)}</details>')
     cls = "ex-purpose ex-rev" if reverse else "ex-purpose"
     return (f'<div class="{cls}" data-ref="{_e(p["ref"])}" data-status="{_e(p["status"])}" data-state="{state}">'
@@ -305,22 +341,13 @@ def _purpose_html(p, n, o, src, reverse, has_purposes=True):
 
 
 def _summary_html(purposes):
-    """要旨（v0.5 §1）: 見る人の目的ごとの状態から、決まった型で組み立てる 1 行。出さない目的・逆の向きは入れない。"""
-    meaning, check_ = [], []
-    for p in sorted(purposes, key=lambda x: x["order"]):
-        st = _purpose_state(p)
-        if st in ("all", "part"):
-            meaning.append(f'目的{p["number"]}')
-        elif st == "check":
-            check_.append(f'目的{p["number"]}')
-    sentences = []
-    if meaning:
-        sentences.append(SUMMARY_MEANING.format(list="・".join(meaning)))
-    if check_:
-        sentences.append(SUMMARY_CHECK.format(list="・".join(check_)))
-    if not sentences:
+    """要旨（v0.7 §15-2）: 見る人の目的のうち、つながる意味がある目的（all・part）だけを書く 1 行。
+    「分からない」の目的・出さない目的・逆の向きは入れない。書く目的が無ければ要旨を出さない。"""
+    meaning = [f'目的{p["number"]}' for p in sorted(purposes, key=lambda x: x["order"])
+               if _purpose_state(p) in ("all", "part")]
+    if not meaning:
         return ""
-    return f'<p class="ex-summary">{V}の{"".join(sentences)}</p>'
+    return f'<p class="ex-summary">{V}の{SUMMARY_MEANING.format(list="・".join(meaning))}</p>'
 
 
 def render_symbolic(card, names=()):
@@ -338,9 +365,10 @@ def render_symbolic(card, names=()):
         changed = "・".join(_ref_label(r) for r in checked["stale"]["changed_refs"]) or "—"
         parts.append(f'<p class="ex-stale">承認時の説明（{_e(checked["stale"]["approved_at"])}）。'
                      f'現在のプロフィールと違う欄: {changed}</p>')
-    # 目的はプロフィールの順で固定（成否で並べ替えない。仕様 §4-2）
+    # 目的はプロフィールの順で固定（成否で並べ替えない。仕様 §4-2）。問いはカード 1 枚に 1 つまで（v0.7 §15-4）
+    ask_ref, ask_quote = _ask_target(checked["purposes"], src)
     for p in sorted(checked["purposes"], key=lambda x: x["order"]):
-        parts.append(_purpose_html(p, V, T, src, reverse=False))
+        parts.append(_purpose_html(p, V, T, src, reverse=False, ask=ask_quote if p["ref"] == ask_ref else None))
     rev = [h for h in (_purpose_html(p, T, V, src, reverse=True, has_purposes=checked["target_has_purposes"])
                        for p in sorted(checked["reverse_purposes"], key=lambda x: x["order"])) if h]
     if rev:
@@ -370,7 +398,7 @@ def personalize(symbolic_html, reader, names):
 
 
 def open_basis(html_text):
-    """画面3（申請を受けた人）: 根拠と確かめられることを、最初から開いた状態にする（承認には内容の確認が必須のため。
+    """画面3（申請を受けた人）: 根拠・分からないこと・問いを、最初から開いた状態にする（承認には内容の確認が必須のため。
     v0.5 §3）。文字列の置き換えだけで、再生成しない。v0.4 で保存した表示（畳む枠が無い）は、そのまま返す。"""
     if html_text is None:
         return None

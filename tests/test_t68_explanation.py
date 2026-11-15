@@ -161,9 +161,10 @@ def test_t392_states_render_without_breaking():
     assert "承認時の説明（2026-11-01）" in seen["4_stale_supplemented"]
     assert "ハル さんの力になれること（2）" in seen["4_stale_supplemented"]          # 違う欄は読める形で
     assert "ハル さんの補足（2026-11-05）" in seen["4_stale_supplemented"]
-    # 指示書71 §4: 欠けている欠かせない要素は「つながった後に確かめられること」に、必要の文の引用を入れた型で並ぶ
+    # 指示書73 §4-3（指示書71 §4 を改める）: 欠けている欠かせない要素は「文からは分からないこと」に、事実だけの型で並ぶ
     assert ("欠かせない要素：「店の売上と在庫を毎日記録できる仕組みを、実際に作ってきた人。」について、"
-            "ソラ さんの経験は公開の文からは分かりません。つながった後に確かめられます。") in seen["3_sparse"]
+            "ソラ さんの経験は公開の文からは分かりません。") in seen["3_sparse"]
+    assert "確かめられます" not in seen["3_sparse"]
     assert "見つかりません" not in seen["3_sparse"]
     card, names = _case("1_complement")
     card["status"] = "deleted"

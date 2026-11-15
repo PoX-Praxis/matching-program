@@ -143,9 +143,12 @@ def test_t448_check_section_replaces_unknown():
 
 # ── 449（§9-6）補足の案内 ───────────────────────────────────────────────────────────────
 def test_t449_supplement_note():
-    line = "「文からは分からないこと」や「つながった後に尋ねること」について、ここに書けます。書かなくてもかまいません。"   # 指示書73 §4-5
-    for f in ("profile.html", "inbox.html"):
-        assert line in open(os.path.join(ROOT, "templates", f), encoding="utf-8").read(), f
+    # 指示書74 §3 で、画面3 の補足は「承認までのやり取り」に置き換えた。画面1 の補足の案内は 1 文目だけ（報告74 の確認 5）
+    prof = open(os.path.join(ROOT, "templates", "profile.html"), encoding="utf-8").read()
+    assert "あなたの文の言い換えについての補足です（400 字まで）。運営だけが読み、相手には届きません。" in prof
+    assert "つながった後に尋ねること" not in prof
+    part = open(os.path.join(ROOT, "templates", "_explanation.html"), encoding="utf-8").read()
+    assert "説明の違う点や、聞きたいことを、ここに書けます。書かなくてもかまいません。" in part
 
 
 # ── 450（§9-7）注記 ─────────────────────────────────────────────────────────────────

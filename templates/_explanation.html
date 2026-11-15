@@ -44,6 +44,20 @@
   .ex-side + .ex-side { margin-top: 18px; padding-top: 10px; border-top: 1px dashed #dfe3e8; }
   .ex-side-h { font-size: 13px; font-weight: 700; color: #1a3a5c; margin: 2px 0 8px; }
   .ex-supp-box { margin: 6px 0; }
+  /* 承認までのやり取り（指示書74 §3）: これまでの発言の並びと、書く欄 */
+  .ex-x { border: 1px solid #dfe3e8; border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  .ex-x-h { font-size: 13.5px; font-weight: 700; margin: 0 0 4px; }
+  .ex-x-note { font-size: 12.5px; color: #555; margin: 2px 0 8px; line-height: 1.6; }
+  .ex-x-list { list-style: none; margin: 0 0 8px; padding: 0; }
+  .ex-x-item { border-left: 3px solid #c9d6e3; padding: 2px 0 2px 10px; margin: 6px 0; }
+  .ex-x-item.ex-x-mine { border-left-color: #b9d3b0; }
+  .ex-x-offer { border-left-color: #e3d6b5; }
+  .ex-x-who { font-size: 12px; color: #666; }
+  .ex-x-text { font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
+  .ex-x-empty { font-size: 12.5px; color: #888; }
+  .ex-x textarea { width: 100%; box-sizing: border-box; font-size: 13px; }
+  .ex-x-act { display: flex; gap: 10px; align-items: center; margin-top: 4px; font-size: 12.5px; color: #666; }
+  .ex-x-send { background: #1a3a5c; color: #fff; border: 1px solid #1a3a5c; border-radius: 6px; padding: 4px 14px; cursor: pointer; }
   .ex-supp-box textarea { width: 100%; box-sizing: border-box; font-size: 13px; }
   .ex-supp-box .ex-supp-note { font-size: 12px; color: #666; margin: 2px 0; }
   .ex-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; margin: 10px 0 2px; }
@@ -91,6 +105,51 @@ window.PoXExplain = (function () {
     return box.querySelector("textarea");
   }
 
+  /* 承認までのやり取り（指示書74 §3）。申請中は、発言の並びと書く欄（最初から開いた状態）。承認の後は、読むだけ。
+     呼び方はユーザー名。申し出の文（ひとこと）があれば先頭に出す。本文はサーバーがエスケープして返さないので、ここでエスケープする。 */
+  const EXCHANGE_NOTE = "説明の違う点や、聞きたいことを、ここに書けます。書かなくてもかまいません。<br>"
+                      + "承認されたときは、このやり取りが残ります。見送り・取り下げのときは消えます。";
+  async function loadExchange(root, other) {
+    if (!root) return false;
+    let d;
+    try {
+      const r = await fetch(`/api/explanations/exchange?with=${encodeURIComponent(other)}`);
+      if (!r.ok) { root.style.display = "none"; return false; }
+      d = await r.json();
+    } catch (e) { root.style.display = "none"; return false; }
+    if (d.status !== "open" && d.status !== "closed") { root.innerHTML = ""; root.style.display = "none"; return false; }
+    const open = d.status === "open";
+    const li = (cls, who, at, text) => `<li class="ex-x-item${cls}"><div class="ex-x-who">${esc(who)} さん・${esc(at)}</div>`
+                                     + `<div class="ex-x-text">${esc(text)}</div></li>`;
+    const msgs = (d.offer_messages || []).map(o => li(" ex-x-offer", `${o.name}`, `${o.at}（申請の文）`, o.text))
+      .concat((d.items || []).map(x => li(x.mine ? " ex-x-mine" : "", x.name, x.at, x.text)));
+    if (!open && !msgs.length) { root.innerHTML = ""; root.style.display = "none"; return false; }
+    const form = !open ? "" : d.can_post
+      ? `<textarea maxlength="${d.max_chars}" rows="3"></textarea>
+         <div class="ex-x-act"><button type="button" class="ex-x-send">送る</button><span class="ex-x-msg"></span>
+         <span>あと ${esc(d.remaining)} 通（1 通 ${esc(d.max_chars)} 字まで）</span></div>`
+      : `<p class="ex-x-note">この申請で書ける数の上限に達しました。</p>`;
+    root.innerHTML = `<div class="ex-x"><div class="ex-x-h">承認までのやり取り</div>
+      ${open ? `<p class="ex-x-note">${EXCHANGE_NOTE}</p>` : ""}
+      <ul class="ex-x-list">${msgs.join("") || '<li class="ex-x-empty">まだ書かれていません</li>'}</ul>${form}</div>`;
+    root.style.display = "";
+    const send = root.querySelector(".ex-x-send");
+    if (send) send.addEventListener("click", async () => {
+      const t = root.querySelector("textarea").value.trim();
+      if (!t) return;
+      send.disabled = true;
+      try {
+        const r = await fetch("/api/explanations/exchange", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                              body: JSON.stringify({ to_id: other, text: t }) });
+        if (r.ok) { await loadExchange(root, other); return; }
+        const e = await r.json().catch(() => ({}));
+        root.querySelector(".ex-x-msg").textContent = e.message || e.error || "送れませんでした";
+      } catch (e) { root.querySelector(".ex-x-msg").textContent = "送れませんでした"; }
+      send.disabled = false;
+    });
+    return true;
+  }
+
   /* 一覧の 1 件（短い形: 名前・目的の見出し・① の 1 文）。開くと画面1 の全体（相手のプロフィール）。 */
   function listItemHtml(it) {
     const first = (it.items || [])[0] || {};
@@ -98,6 +157,6 @@ window.PoXExplain = (function () {
       <div class="ex-lh">■ ${first.head || ""}</div><div class="ex-lm">${first.meaning || ""}</div></div>`;
   }
 
-  return { esc, wireSupplement, listItemHtml, SUPP_MAX };
+  return { esc, wireSupplement, listItemHtml, loadExchange, SUPP_MAX };
 })();
 </script>

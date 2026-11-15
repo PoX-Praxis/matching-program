@@ -17,6 +17,10 @@
   .ib-row .ib-row-name { font-weight: 700; font-size: 14.5px; color: #1a3a5c; }
   .ib-row .ib-row-when { font-size: 12.5px; color: #666; white-space: nowrap; }
   .ib-back { font-size: 13px; margin: 6px 0 4px; display: inline-block; }
+  .ib-row-new { font-size: 11.5px; color: #1a3a5c; background: #e8f0f8; border-radius: 3px; padding: 1px 6px; margin-left: 8px; }
+  .ib-decline-note { margin: 8px 0 0; }
+  .ib-decline-note label { display: block; font-size: 12.5px; color: #5a4410; margin-bottom: 2px; }
+  .ib-decline-note textarea { width: 100%; box-sizing: border-box; font-size: 13px; }
   .ib-when { font-size: 12.5px; color: #666; margin: 2px 0 6px; }
   .ib-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
   .ib-actions button { min-height: 36px; padding: 0 16px; border-radius: 6px; font-size: 13.5px; cursor: pointer; }
@@ -147,13 +151,13 @@ function renderApprovals(offers) {
   if (!byFrom.size) { el.innerHTML = `<p class="ib-empty">承認待ちの案件はありません</p>`; return; }
   el.innerHTML = [...byFrom.values()].map(o =>
     `<a class="ib-row" href="/inbox?from=${encodeURIComponent(o.from)}">
-       <span class="ib-row-name">${escHtml(o.from_name)}</span>
+       <span class="ib-row-name">${escHtml(o.from_name)}${o.new_exchange ? '<span class="ib-row-new">新しいやり取り</span>' : ""}</span>
        <span class="ib-row-when">${escHtml(mdOf(o.at))}に届きました</span></a>`).join("");
 }
 
-/* 詳細（承認）画面（指示書74 §1-2）。上から: 申請が届いたこと・届いた日／申し出の文／説明（受けた人の目的の側 →
-   申請者の目的の側 → 注記。サーバーが保存した表示から組み直したもの）／補足の欄（開いた状態）／確認のチェック／
-   ［承認する］［見送る］。一行紹介は出さない。 */
+/* 詳細（承認）画面（指示書74 §1-2・§3）。上から: 申請が届いたこと・届いた日／説明（受けた人の目的の側 →
+   申請者の目的の側 → 注記。サーバーが保存した表示から組み直したもの）／承認までのやり取り（開いた状態。申し出の文は先頭）／
+   確認のチェック／［承認する］［見送る］。一行紹介は出さない。説明が無い申請は、これまでの申し出の文と根拠の欄。 */
 function renderDetail(offers, from) {
   const el = document.getElementById("detailCard");
   const o = byPerson(offers).get(from);
@@ -162,19 +166,21 @@ function renderDetail(offers, from) {
   el.innerHTML = `<div class="ib-card" data-other="${oid}">
       <div class="ib-head"><a href="/profile/${encodeURIComponent(o.from)}">${escHtml(o.from_name)}</a> さんから申請が届きました</div>
       <p class="ib-when">${escHtml(mdOf(o.at))}</p>
-      ${o.messages.map(m => PoXReason.offerHtml(m)).join("")}
+      <div class="ib-offer">${o.messages.map(m => PoXReason.offerHtml(m)).join("")}</div>
       <div class="ib-explain" data-other="${oid}" style="display:none"></div>
+      <div class="ib-exchange" style="display:none"></div>
       <div class="ib-reason" data-other="${oid}"><p class="ap-none">根拠を読み込んでいます</p></div>
       <label class="ex-check" style="display:none"><input type="checkbox" class="ex-confirm" onchange="syncApprove(this)">
         <span>内容を確認しました（違う点があれば補足してください）</span></label>
-      <label class="ex-private" style="display:none;font-size:12.5px;color:#555"><input type="checkbox" class="ex-private-cb">
-        この接続の内容を非公開にする（承認された接続の、引用した文の組・関係・日付は、公開することがあります。公開の機能は準備中）</label>
       <div class="ib-actions">
         <button class="ib-approve" onclick="doApprove('${oid}', this)">承認する</button>
         <button class="ib-decline" onclick="askDecline(this)">見送る</button>
       </div>
       <div class="ib-confirm" style="display:none">
         <p>見送ると相手に伝わります。元に戻せません</p>
+        <div class="ib-decline-note" style="display:none">
+          <label>見送りに添える補足（任意・400 字まで）。申請した人に一度だけ届けて、消します。承認までのやり取りは消えます。</label>
+          <textarea maxlength="400" rows="2"></textarea></div>
         <div class="ib-actions">
           <button class="ib-decline-go" onclick="doDecline('${oid}', this)">見送る</button>
           <button class="ib-decline" onclick="cancelDecline(this)">やめる</button>
@@ -198,14 +204,14 @@ async function loadIncomingExplanation(card, other) {
     if (d.status !== "ok") return false;
     const box = card.querySelector(".ib-explain");
     box.innerHTML = `<p class="ex-cap">${escHtml(d.applicant_name)} さんが申請の時に読んだ内容です（申請の時点のプロフィールにもとづきます）</p>${d.html}`;
-    // 補足の欄は、確認のチェックの上に、最初から開いた状態で置く（指示書74 §6 順1。やり取りの箱は順3 で置き換える）
-    PoXExplain.wireSupplement(box, { note: "承認・見送りのどちらにも添えられます（400 字まで）。"
-                                          + "「文からは分からないこと」や「つながった後に尋ねること」について、ここに書けます。書かなくてもかまいません。",   // 指示書73 §4-5
-                                     open: true });
+    box.querySelectorAll(".ex-supp-btn").forEach(b => { b.style.display = "none"; });   // 補足は、やり取りに置き換えた（指示書74 §3）
     box.style.display = "";
     card.querySelector(".ib-reason").style.display = "none";
+    card.querySelector(".ib-offer").style.display = "none";            // 申し出の文は、やり取りの先頭に出る
+    // 承認までのやり取り（指示書74 §3）。確認のチェックの上に、最初から開いた状態で置く
+    await PoXExplain.loadExchange(card.querySelector(".ib-exchange"), other);
     card.querySelector(".ex-check").style.display = "";
-    card.querySelector(".ex-private").style.display = "block";
+    card.querySelector(".ib-decline-note").style.display = "";         // 見送りに添える補足は残す（報告74 の確認 2）
     card.dataset.explained = "1";
     card.querySelector(".ib-approve").disabled = true;    // 確認のチェックが入るまで承認できない
     return true;
@@ -216,9 +222,9 @@ function syncApprove(cb) {
   cb.closest(".ib-card").querySelector(".ib-approve").disabled = !cb.checked;
 }
 
-/* 承認・見送りに添える補足（画面3 の「補足する」で開いた欄）。無ければ空。 */
+/* 見送りに添える補足（見送りの確認の欄。申請した人に一度だけ届けて消す）。無ければ空。 */
 function supplementOf(card) {
-  const t = card && card.querySelector(".ib-explain textarea");
+  const t = card && card.querySelector(".ib-decline-note textarea");
   return t ? t.value.trim() : "";
 }
 
@@ -278,10 +284,8 @@ async function doApprove(otherId, btn) {
     const card = btn && btn.closest(".ib-card");
     const explained = card && card.dataset.explained === "1";
     const body = { to_id: otherId };   // 承認は状態の遷移だけ（申し出の文は申し出る側だけが書く）
-    if (explained) {                   // 画面3: 確認のチェック（必須）と、承認に添える補足
+    if (explained) {                   // 画面3: 確認のチェック（必須）。違う点・聞きたいことは、承認までのやり取りで
       body.explanation_confirmed = !!card.querySelector(".ex-confirm").checked;
-      body.explanation_private = !!card.querySelector(".ex-private-cb").checked;
-      body.supplement = supplementOf(card) || null;
     }
     const res = await fetch("/approve", {
       method: "POST", headers: { "Content-Type": "application/json" },

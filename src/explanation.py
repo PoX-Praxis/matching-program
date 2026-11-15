@@ -463,10 +463,16 @@ def _node_rank(node):
 
 
 def incoming_layout(symbolic_html):
-    """画面3（申請を受けた人の詳細の画面）の並び（v0.8 §16-4・指示書74 追補1）。申請者が申請の時に読んだ表示（保存した記号のままの
+    """画面3（申請を受けた人の詳細の画面）: 受けた人の目的の側（逆の向き）を先に。side_layout の first="rev"。"""
+    return side_layout(symbolic_html, first="rev")
+
+
+def side_layout(symbolic_html, first="rev"):
+    """二つの側の並び（v0.8 §16-4・指示書74 追補1・報告74 の確認 7）。申請者が申請の時に読んだ表示（保存した記号のままの
     HTML）を、いちばん外側の要素ごとに切り分けて並べ直す。v0.4・v0.5・v0.7・v0.8 のどの形でも同じやり方。
 
-    - 受けた人の目的の側（逆の向き）を先に、申請者の目的の側（本体）を後に。それぞれの中で目的を状態の順に（同じ段の中は保存した順＝
+    - first="rev": 受けた人の目的の側（逆の向き）を先に（画面3・受けた人が見る承認の後の表示）。
+      first="main": 申請者の目的の側（本体）を先に（申請者が見る承認の後の表示）。それぞれの中で目的を状態の順に（同じ段の中は保存した順＝
       プロフィールの順）
     - 文は保存した HTML の切れ端をそのまま使う（作り直さない・モデルを呼ばない）。根拠は保存したまま（閉じた形）
     - 足すのは、決まった型の見出し（どちらの側か）と、受けた人の側の要旨（保存した目的の状態と見出しの番号から、要旨の型で組む。
@@ -505,18 +511,20 @@ def incoming_layout(symbolic_html):
         return None
     main.sort(key=_node_rank)                                   # 安定な並べ替え（同じ段の中は保存した順）
     rev.sort(key=_node_rank)
-    opening = symbolic_html[:head_end].replace("<section ", '<section data-layout="incoming" ', 1)
-    parts = [opening]
+    layout = "incoming" if first == "rev" else "applicant"
+    opening = symbolic_html[:head_end].replace("<section ", f'<section data-layout="{layout}" ', 1)
+    side_rev = side_main = ""
     if rev:
-        parts.append(f'<div class="ex-side ex-side-rev"><div class="ex-side-h">{SIDE_HEAD_REV[kind].format(t=T, v=V)}</div>')
+        side_rev = f'<div class="ex-side ex-side-rev"><div class="ex-side-h">{SIDE_HEAD_REV[kind].format(t=T, v=V)}</div>'
         nums = [m.group(1) for m in (_REV_NUM_RE.search(n) for n in rev if _node_rank(n) < 2) if m] if kind == "p" else []
         if nums:
-            parts.append(f'<p class="ex-summary">{T}の{SUMMARY_MEANING.format(list="・".join(f"目的{n}" for n in nums))}</p>')
-        parts.append("".join(rev) + "</div>")
+            side_rev += f'<p class="ex-summary">{T}の{SUMMARY_MEANING.format(list="・".join(f"目的{n}" for n in nums))}</p>'
+        side_rev += "".join(rev) + "</div>"
     if main or pre:
-        parts.append(f'<div class="ex-side ex-side-main"><div class="ex-side-h">{SIDE_HEAD_MAIN.format(t=T, v=V)}</div>'
+        side_main = (f'<div class="ex-side ex-side-main"><div class="ex-side-h">{SIDE_HEAD_MAIN.format(t=T, v=V)}</div>'
                      + "".join(pre + main) + "</div>")
-    return "".join(parts + tail) + "</section>"
+    sides = [side_rev, side_main] if first == "rev" else [side_main, side_rev]
+    return "".join([opening] + sides + tail) + "</section>"
 
 
 def incoming_html(symbolic_html, names):

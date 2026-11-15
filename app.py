@@ -164,7 +164,7 @@ app.config.update(
 # ポリシー本文（最終更新）と揃える。本文差し替えは terms_hash が別途検出する。
 # 2026-11: 6-2（接続の説明）を含む版。説明の同意はこの版に一本化した（指示書70 §4-3。指示書69 の 2026-11-expl-v1 を置き換え。
 # すでに記録した 2026-11-expl-v1 の terms.accepted は消さない）。
-TERMS_VERSION = "2026-11"
+TERMS_VERSION = "2026-11b"
 
 # Postgres 接続時は起動時にスキーマを初期化（冪等・再デプロイ安全）
 if is_postgres():
@@ -2708,11 +2708,14 @@ def _approved_view(me, other, row):
     names = _explanation_names(applicant, recipient)
     sup = X_explanation.supplements_html([{"by": "viewer" if s["from"] == applicant else "target", "text": s["text"],
                                            "at": (s["at"] or "")[:10]} for s in row["supplements"]])
+    reader = "viewer" if me == applicant else "recipient"
+    # 見る人の側を先に（報告74 の確認 7）: 申請者には申請者の目的の側を、受けた人には受けた人の目的の側を先に。
+    # 保存した表示を並べ直すだけ（文は変えない）。並べ直せない形は保存した形のまま
     body = row["symbolic_html"]
+    body = X_explanation.side_layout(body, first="main" if reader == "viewer" else "rev") or body
     if sup:
         body = body.replace('<p class="ex-foot">', sup + '<p class="ex-foot">', 1)
     body = body.replace(X_explanation.SUPPLEMENT_BUTTON, "")       # 承認の後の表示に「補足する」は置かない（補足は承認・見送りのとき）
-    reader = "viewer" if me == applicant else "recipient"
     return {"status": "approved", "html": X_explanation.personalize(body, reader, names),
             "approved_at": (row["approved_at"] or "")[:10], "stale": _approved_is_stale(row)}
 
@@ -3068,6 +3071,95 @@ def explanation_supplement_route():
     return jsonify({"saved": True}), 200
 
 
+# ── 承認までのやり取り（指示書74 §3）──────────────────────────────────────────────────
+# 申請から承認（または見送り・取り下げ）までの間、申請者と受けた人が、その申請について言葉を交わす。説明が添えられた申請だけ
+# （報告74 の確認 1）。承認されたら、承認時の説明と一緒に読むだけで残す。見送り・取り下げで消す（delete_pending）。
+# 本文は台帳・pair_digest・render_digest・ログに入れない。
+EXCHANGE_CLOSED_MESSAGE = "申請中の相手とだけ、やり取りができます"
+
+
+def _exchange_render(me, other):
+    """me と other の間の申請（説明を添えたもの）。(行, 申請した人, 受けた人, 書けるか)。無ければ (None, ...)。"""
+    from ledger import connection_state
+    state = connection_state(me, other, db_path=DB)
+    if state in ("pending_out", "pending_in"):
+        applicant, recipient = (me, other) if state == "pending_out" else (other, me)
+        row = _xs.pending_render(applicant, recipient, db_path=DB)
+        if row:
+            return row, applicant, recipient, True
+    if state == "connected":
+        row = _xs.approved_render(me, other, db_path=DB)
+        if row and not row.get("deleted_at"):
+            return row, row["from_subject"], row["to_subject"], False
+    return None, None, None, False
+
+
+@app.get("/api/explanations/exchange")
+@login_required
+def explanation_exchange_get():
+    """やり取りを読む（当事者の二人だけ）。申請中なら、開いた人宛ての発言を「読んだ」にする。
+    status: off／none（申請が無い・説明が添えられていない）／open（申請中。書ける）／closed（承認の後。読むだけ）。"""
+    me = require_self(request.args.get("me"))
+    other = (request.args.get("with") or "").strip()
+    if not other or other == me:
+        return jsonify({"error": "with が必要です"}), 400
+    _mark_noindex()
+    if not _xs.enabled_for(me, other, db_path=DB):
+        return jsonify({"status": "off"}), 200
+    row, applicant, recipient, open_ = _exchange_render(me, other)
+    if not row:
+        return jsonify({"status": "none"}), 200
+    from ledger import offer_messages_from
+    names = _explanation_names(applicant, recipient)
+    name_of = {applicant: names["viewer"], recipient: names["target"]}
+    if open_:
+        _xs.mark_exchange_read(row["id"], me, db_path=DB)
+    offers = offer_messages_from(applicant, recipient, ("pending",) if open_ else ("established",), db_path=DB)
+    mine = _xs.exchange_count(row["id"], me, db_path=DB)
+    return jsonify({
+        "status": "open" if open_ else "closed",
+        "offer_messages": [{"name": name_of[applicant], "text": o["message"], "at": (o["at"] or "")[:10]} for o in offers],
+        "items": [{"mine": x["from"] == me, "name": name_of.get(x["from"], UNNAMED_LABEL), "text": x["text"],
+                   "at": (x["at"] or "")[:10]} for x in _xs.exchange_items(row["id"], db_path=DB)],
+        "can_post": bool(open_ and mine < _xs.EXCHANGE_PER_PERSON),
+        "remaining": max(0, _xs.EXCHANGE_PER_PERSON - mine) if open_ else 0,
+        "limit": _xs.EXCHANGE_PER_PERSON, "max_chars": _xs.EXCHANGE_MAX}), 200
+
+
+@app.post("/api/explanations/exchange")
+@login_required
+def explanation_exchange_post():
+    """やり取りに 1 通書く（申請中の当事者だけ・1 通 400 字・1 つの申請で 1 人 10 通まで）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    me = require_self(body.get("me"))
+    other = _other_id(body)
+    if not _xs.enabled_for(me, other, db_path=DB):
+        return jsonify({"error": "説明が出ていない相手です"}), 404
+    row, applicant, recipient, open_ = _exchange_render(me, other)
+    if not row or not open_:
+        return jsonify({"error": "exchange_closed", "message": EXCHANGE_CLOSED_MESSAGE}), 409
+    try:
+        text = _xs.clean_exchange(body.get("text"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not text:
+        return jsonify({"error": "空です"}), 400
+    if _xs.exchange_count(row["id"], me, db_path=DB) >= _xs.EXCHANGE_PER_PERSON:
+        return jsonify({"error": f"この申請で書けるのは {_xs.EXCHANGE_PER_PERSON} 通までです"}), 400
+    _xs.add_exchange(row["id"], me, other, text, db_path=DB)
+    return jsonify({"saved": True,
+                    "remaining": _xs.EXCHANGE_PER_PERSON - _xs.exchange_count(row["id"], me, db_path=DB)}), 201
+
+
+@app.get("/api/explanations/exchange_unread")
+@login_required
+def explanation_exchange_unread():
+    """新しいやり取りが届いている相手（申請中だけ。件数は出さない）。マイページの「申請済み」の行の印に使う（本人だけ）。"""
+    me = require_self(request.args.get("me"))
+    _mark_noindex()
+    return jsonify({"from": sorted(_xs.unread_exchange_senders(me, db_path=DB))}), 200
+
+
 @app.get("/api/explanations/declined_notes")
 @login_required
 def explanation_declined_notes_route():
@@ -3144,8 +3236,9 @@ def my_received_offers():
     names = _resolve_names(ids, fallback=UNNAMED_LABEL)          # 「表示名（@ハンドル）」
     ones = {i: _one_liner_of(i) for i in ids}                    # 受信箱のカードの見出し（指示書63 段階1 §4-2）
     _mark_noindex()
+    unread = _xs.unread_exchange_senders(me, db_path=DB)          # 新しいやり取りの印（指示書74 §1-1。件数は出さない）
     return jsonify([{**o, "from_name": names.get(o["from"], UNNAMED_LABEL),
-                     "from_one_liner": ones.get(o["from"], "")} for o in offers]), 200
+                     "from_one_liner": ones.get(o["from"], ""), "new_exchange": o["from"] in unread} for o in offers]), 200
 
 
 def _one_liner_of(sid):

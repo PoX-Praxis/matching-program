@@ -372,6 +372,17 @@ _SQLITE_DDL = [
         text         TEXT NOT NULL,
         created_at   TEXT NOT NULL
     )""",
+    # 承認までのやり取り（指示書74 §3）。申請に添えた表示（explanation_renders の行）ごと。
+    # 見送り・取り下げで消す。承認されたら、承認時の説明と一緒に残す。台帳・pair_digest・render_digest には入れない
+    """CREATE TABLE IF NOT EXISTS explanation_exchanges (
+        id           TEXT PRIMARY KEY,
+        render_id    TEXT NOT NULL,
+        from_subject TEXT NOT NULL,
+        to_subject   TEXT NOT NULL,
+        text         TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        read_at      TEXT
+    )""",
 ]
 
 # ── Postgres 用 DDL（pgvector 拡張 + seeker_embeddings を追加）────
@@ -742,6 +753,17 @@ _PG_DDL = [
         kind         TEXT NOT NULL,
         text         TEXT NOT NULL,
         created_at   TEXT NOT NULL
+    )""",
+    # 承認までのやり取り（指示書74 §3）。申請に添えた表示（explanation_renders の行）ごと。
+    # 見送り・取り下げで消す。承認されたら、承認時の説明と一緒に残す。台帳・pair_digest・render_digest には入れない
+    """CREATE TABLE IF NOT EXISTS explanation_exchanges (
+        id           TEXT PRIMARY KEY,
+        render_id    TEXT NOT NULL,
+        from_subject TEXT NOT NULL,
+        to_subject   TEXT NOT NULL,
+        text         TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        read_at      TEXT
     )""",
 ]
 

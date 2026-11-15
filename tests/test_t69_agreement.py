@@ -169,7 +169,7 @@ def test_t429_explanation_consent(xs):
     ev = [e["payload"] for e in le.get_events(type_="terms.accepted", actor="me", db_path=appmod.DB)]
     assert len(ev) == 2 and ev[0]["document"] == "explanation"                 # 過去の記録として残る
     p = ev[1]
-    assert "document" not in p and p["terms_version"] == "2026-11"
+    assert "document" not in p and p["terms_version"] == appmod.TERMS_VERSION == "2026-11b"   # 報告74 の確認 4
     priv = open(os.path.join(ROOT, "templates", "privacy.html"), encoding="utf-8").read()
     assert p["terms_hash"] == hashlib.sha256(priv.encode("utf-8")).hexdigest()
     assert appmod._explanation_consented("me") is True and appmod._explanation_consented("c_full") is False
@@ -188,6 +188,10 @@ def test_t430_private_switch_recorded(xs):
     row = S.render_by_id(S.approved_render("me", "c_full", db_path=appmod.DB)["id"], db_path=appmod.DB)
     assert row["applicant_private"] == 0 and row["recipient_private"] == 1
     assert "private" not in json.dumps(_agreed()[0]["payload"])
-    for f, key in (("profile.html", "explanation_private"), ("inbox.html", "explanation_private")):
+    # 報告74 の確認 6 (イ): チェックは画面2（プロフィール）と承認画面（受信箱）から外した。列は残す（値を送れば記録する）
+    for f in ("profile.html", "inbox.html"):
         html = open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
-        assert key in html and "この接続の内容を非公開にする" in html and "公開の機能は準備中" in html
+        assert "explanation_private" not in html and "この接続の内容を非公開にする" not in html, f
+    pol = open(os.path.join(ROOT, "templates", "privacy.html"), encoding="utf-8").read()
+    assert "公開の機能ができたときに、接続のページから、どちらか一人でも非公開にできます。" in pol
+    assert "承認のときに、どちらか一人でも非公開にできます" not in pol

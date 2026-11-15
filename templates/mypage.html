@@ -396,7 +396,8 @@ function renderConnections(vessels, myId, declined) {
     if (v.is_connected) {
       badge = `<span class="badge-ok">✅ 接続成立 ${(j.established_at || "").slice(0, 10)}</span>`;
     } else if (iApproved && !theyApproved) {
-      badge = `<span class="badge-wait">⏳ 申請済み（${escHtml(oname)} の承認待ち）</span>`;
+      badge = `<span class="badge-wait">⏳ 申請済み（${escHtml(oname)} の承認待ち）</span>`
+            + `<span class="mp-new-exchange" data-other="${escHtml(other)}" style="display:none;margin-left:8px;font-size:12px;color:#1a3a5c">新しいやり取りがあります</span>`;
       action = `<button class="pv-btn" onclick="withdrawReq('${eo}', this)">取り下げる</button>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
@@ -427,6 +428,17 @@ function renderConnections(vessels, myId, declined) {
     ? `<a class="mp-pending" id="pendingLine" href="/inbox"><span class="n">承認待ち ${waiting.length}件</span>${waiting.map(escHtml).join("、")}<span class="go">受信箱で応える →</span></a>`
     : "";
   el.innerHTML = pending + cards.join("");
+  markNewExchanges(el);
+}
+
+/* 申請済みの相手から、承認までのやり取りに新しい発言が届いていれば印を付ける（指示書74 §3。件数は出さない）。 */
+async function markNewExchanges(el) {
+  try {
+    const r = await fetch("/api/explanations/exchange_unread");
+    if (!r.ok) return;
+    const got = new Set((await r.json()).from || []);
+    el.querySelectorAll(".mp-new-exchange").forEach(s => { if (got.has(s.dataset.other)) s.style.display = ""; });
+  } catch (e) { /* 出さない */ }
 }
 
 async function withdrawReq(otherId, btn) {

@@ -317,7 +317,8 @@ def test_t408_states_directions_and_v4_heading(xs, monkeypatch):
     # 画面の部品: 画面3 の確認のチェックと注記・「内容を確認して申請する」・補足の欄
     inbox = open(os.path.join(ROOT, "templates", "inbox.html"), encoding="utf-8").read()
     prof = open(os.path.join(ROOT, "templates", "profile.html"), encoding="utf-8").read()
-    assert "内容を確認しました（違う点があれば補足してください）" in inbox and "申請の時に読んだ内容です（申請の時点のプロフィールにもとづきます）" in inbox
+    # 指示書74 追補2: 確認のチェックの文を改め、「申請の時に読んだ内容です」の 1 行は消した
+    assert "内容を確認しました（違う点は、やり取りで伝えられます）" in inbox and "申請の時に読んだ内容です" not in inbox
     assert "explanation_confirmed" in inbox and "/api/explanations/declined_notes" in inbox
     assert "内容を確認して申請する" in prof and "explanation_digest" in prof and "/api/explanations/supplement" in prof
 

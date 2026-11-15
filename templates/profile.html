@@ -185,7 +185,7 @@ async function loadExplanation() {
       explainDigest = d.card_digest;
       PoXExplain.wireSupplement($("explainBody"), {
         note: "あなたの文の言い換えについての補足です（400 字まで）。運営だけが読み、相手には届きません。"
-              + "「つながった後に確かめられること」への答えも、ここに書けます。",   // 指示書71 §5
+              + "「文からは分からないこと」や「つながった後に尋ねること」について、ここに書けます。書かなくてもかまいません。",   // 指示書73 §4-5
         onSend: sendSelfSupplement });
     }
     $("explainBox").style.display = "";

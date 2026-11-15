@@ -2,7 +2,7 @@
 
 444 要旨が目的ごとの状態どおり（すべて explained／一部／explained が無い）。出さない目的・逆の向きは入れない
 445 状態の 1 行が §2 の表どおり。数値・割合の文字が出ない
-446 根拠と確かめられることが <details> の中。画面1・2 では閉じ、画面3 では開いている
+446 根拠と分からないことが <details> の中。画面1・2 では閉じ、画面3 では開いている
 447 ⑥ の枠は畳まない（見出し・①・状態の 1 行が最初から見える）
 448 古い文（「文からは分からないこと」「見つかりません」）が出ない。missing_must は確かめられることの節に入り、先に並ぶ
 449 補足の案内に新しい 1 文（画面1・3）
@@ -52,11 +52,10 @@ def test_t444_summary_follows_states():
     card, names = _case("1_complement")                     # 目的1: explained・分からないことが 1 つ（一部）
     assert _summary(X.render(card, "viewer", names)) == "あなたの目的1に、つながる意味があります。"
     card, names = _case("2_resonance")                      # 目的1: not_covered（欠かせない要素が欠ける）／目的2: explained
-    assert _summary(X.render(card, "viewer", names)) == \
-        "あなたの目的2に、つながる意味があります。目的1は、つながった後に確かめられます。"
+    # 指示書73 §4-2: 要旨は、つながる意味がある目的だけ（「分からない」の目的1は入れない）
+    assert _summary(X.render(card, "viewer", names)) == "あなたの目的2に、つながる意味があります。"
     card, names = _case("3_sparse")                         # 見る人の目的は explained が無い（逆の向きにだけ説明がある）
-    s = _summary(X.render(card, "viewer", names))
-    assert s == "あなたの目的1は、つながった後に確かめられます。" and "さんの目的" not in s   # 逆の向き（⑥）は入れない
+    assert _summary(X.render(card, "viewer", names)) is None                   # 要旨を出さない（⑥ の説明は入れない）
     # 出さない目的（pending・要素も必須も無い）は要旨にも出さない
     card, names = _case("2_resonance")
     hidden = copy.deepcopy(card["purposes"][0])
@@ -76,10 +75,10 @@ def test_t445_state_lines():
     assert _states(X.render(card, "viewer", names))[0] == X.STATE_TEXT["all"]           # explained だけ
     assert _summary(X.render(card, "viewer", names)) == "あなたの目的1に、つながる意味があります。"
     card, names = _case("2_resonance")
-    assert _states(X.render(card, "viewer", names))[0] == X.STATE_TEXT["check"]         # explained でない
+    assert _states(X.render(card, "viewer", names))[0] == X.STATE_TEXT["unknown"]       # explained でない（指示書73 §4-1）
     assert X.STATE_TEXT == {"all": "この目的の要素のすべてに、つながる意味があります。",
                             "part": "この目的の要素の一部に、つながる意味があります。",
-                            "check": "この目的は、つながった後に確かめられます。"}
+                            "unknown": "この目的については、公開の文からは分かりません。"}
     for c in ("1_complement", "2_resonance", "3_sparse", "4_stale_supplemented", "5_same_target_other_viewer"):
         card, names = _case(c)
         h = X.render(card, "viewer", names) or ""
@@ -113,13 +112,14 @@ def test_t447_reverse_frame_not_folded():
     assert '<h4 class="ex-ph">' in head and 'class="ex-meaning"' in head and 'class="ex-state"' in head
 
 
-# ── 448（§9-5）古い文が出ない。missing_must は確かめられることの節に、欠かせない要素が先 ────────────────────────
+# ── 448（§9-5）古い文が出ない。missing_must は分からないことの節に、欠かせない要素が先（指示書73 §4-3 で見出しと文を改めた）────────────────────────
 def test_t448_check_section_replaces_unknown():
     for c in ("1_complement", "2_resonance", "3_sparse", "4_stale_supplemented", "5_same_target_other_viewer"):
         card, names = _case(c)
         h = X.render(card, "viewer", names) or ""
-        assert "文からは分からないこと" not in h and "見つかりません" not in h, c
+        assert "見つかりません" not in h and "確かめられ" not in h, c
     assert not hasattr(X, "NOT_COVERED_TEXT") and not hasattr(X, "UNKNOWN_TEXT")
+    assert not hasattr(X, "CHECK_TEXT") and not hasattr(X, "SUMMARY_CHECK")
     # 欠けている欠かせない要素と、分からないこと（あれば嬉しい要素）が同じ目的にある
     card, names = _case("2_resonance")
     p = card["purposes"][0]
@@ -127,12 +127,11 @@ def test_t448_check_section_replaces_unknown():
     card["citations"].append(nice)
     p["unknown"] = [{"need_ref": nice["ref"], "need_quote": "店の帳簿"}]
     h = X.render(card, "viewer", names)
-    sec = h[h.index("── つながった後に確かめられること ──"):]
+    sec = h[h.index("── 文からは分からないこと ──"):]
     items = re.findall(r"<li>(.*?)</li>", sec[:sec.index("</ul>")])
     assert len(items) == len(p["missing_must"]) + 1
     assert all(x.startswith("欠かせない要素：「") for x in items[:-1])                       # 欠かせない要素を先に
-    assert items[-1] == (f"「店の帳簿」について、{names['target']} さんの経験は公開の文からは分かりません。"
-                         "つながった後に確かめられます。")
+    assert items[-1] == f"「店の帳簿」について、{names['target']} さんの経験は公開の文からは分かりません。"
     # 同じ要素が分からないことにも欠けている要素にもあるときは 1 回だけ（欠かせない要素として、分からないことの句で）
     p["unknown"] = [{"need_ref": p["missing_must"][0], "need_quote": "売上と在庫"}]
     h = X.render(card, "viewer", names)
@@ -141,7 +140,7 @@ def test_t448_check_section_replaces_unknown():
 
 # ── 449（§9-6）補足の案内 ───────────────────────────────────────────────────────────────
 def test_t449_supplement_note():
-    line = "「つながった後に確かめられること」への答えも、ここに書けます。"
+    line = "「文からは分からないこと」や「つながった後に尋ねること」について、ここに書けます。書かなくてもかまいません。"   # 指示書73 §4-5
     for f in ("profile.html", "inbox.html"):
         assert line in open(os.path.join(ROOT, "templates", f), encoding="utf-8").read(), f
 

@@ -421,63 +421,110 @@ def personalize(symbolic_html, reader, names):
     return symbolic_html.replace(V, v).replace(T, t)
 
 
-def open_basis(html_text):
-    """指示書74 より前に保存した申請の画面3（前の形）: 根拠・分からないこと・問いを、最初から開いた状態にする（v0.5 §3。
-    v0.8 で取りやめたが、前に保存した表示は前の形のまま出す）。文字列の置き換えだけで、再生成しない。v0.4 で保存した表示（畳む枠が無い）は、そのまま返す。"""
-    if html_text is None:
-        return None
-    return html_text.replace('<details class="ex-basis">', '<details class="ex-basis" open>')
+_DIV_RE = re.compile(r"<div\b|</div>")
+_STATUS_RE = re.compile(r'^<div [^>]*data-status="([^"]*)"')
+_REV_NUM_RE = re.compile(r'<h4 class="ex-ph">■ ⟦T⟧の目的([0-9]+)「')
 
 
-_MAIN_RE = re.compile(re.escape(MAIN_OPEN) + r"(.*?)" + re.escape(MAIN_CLOSE), re.S)
-_REV_RE = re.compile(r"<!--ex:rev:([ps])-->(.*?)" + re.escape(REV_CLOSE), re.S)
-_REVH_RE = re.compile(r'<div class="ex-sub ex-revh">.*?</div>', re.S)
-_REV_STATE_RE = re.compile(r'<div class="ex-purpose ex-rev" data-ref="[^"]*" data-status="[^"]*" '
-                           r'data-state="(all|part|unknown)" data-number="(\d+)">')
+def _top_nodes(inner):
+    """section の中身を、いちばん外側の要素（div・p・button・注記）の切れ端に分ける。分けられなければ ValueError。
+    利用者の文はすべてエスケープしてあるので、切れ端の中に生の「<」は無い（タグの数え方が崩れない）。"""
+    nodes, i = [], 0
+    while i < len(inner):
+        if inner.startswith("<!--", i):
+            j = inner.index("-->", i) + 3
+        elif inner.startswith("<div", i):
+            depth, j = 0, None
+            for m in _DIV_RE.finditer(inner, i):
+                depth += 1 if m.group(0) == "<div" else -1
+                if depth == 0:
+                    j = m.end()
+                    break
+            if j is None:
+                raise ValueError("div が閉じていない")
+        else:
+            m = re.match(r"<(p|button)\b", inner[i:])
+            if not m:
+                raise ValueError("知らない要素")
+            j = inner.index(f"</{m.group(1)}>", i) + len(m.group(1)) + 3
+        nodes.append(inner[i:j])
+        i = j
+    return nodes
+
+
+def _node_rank(node):
+    """保存した目的の枠の並びの段（v0.8 §16-2。どの版の形でも読める印だけを見る）:
+    data-status が explained で、欠かせない要素の欠け（「欠かせない要素：「」の行。v0.5 以降）が無い → 0／
+    explained で欠けがある（open と同じ）→ 1／それ以外 → 2。v0.4 の形は explained の目的に欠けの行を出さないので、0 になる。"""
+    m = _STATUS_RE.match(node)
+    if not m or m.group(1) != "explained":
+        return 2
+    return 1 if MUST_PREFIX + "「" in node else 0
 
 
 def incoming_layout(symbolic_html):
-    """画面3（申請を受けた人の詳細の画面）の並び（v0.8 §16-4）。申請者が申請の時に読んだ表示（保存した記号のままの HTML）を、
-    印（MAIN_OPEN・REV_OPEN）で切り分けて、受けた人の目的の側（逆の向き）を先に、申請者の目的の側（本体）を後に並べ直す。
+    """画面3（申請を受けた人の詳細の画面）の並び（v0.8 §16-4・指示書74 追補1）。申請者が申請の時に読んだ表示（保存した記号のままの
+    HTML）を、いちばん外側の要素ごとに切り分けて並べ直す。v0.4・v0.5・v0.7・v0.8 のどの形でも同じやり方。
 
-    - 文は保存した HTML の切れ端をそのまま使う（作り直さない・モデルを呼ばない）。根拠は閉じたまま
-    - 足すのは、決まった型の見出し（どちらの側か）と、受けた人の側の要旨（保存した目的の状態と番号から、要旨の型で組む）だけ
-    - ⑥ の見出し（「── ⟦T⟧から見た⟦V⟧ ──」）は、側の見出しに置き換える
-    - 印の無い表示（指示書74 より前に保存したもの）は None（呼ぶ側が前の形のまま出す）"""
-    if symbolic_html is None:
+    - 受けた人の目的の側（逆の向き）を先に、申請者の目的の側（本体）を後に。それぞれの中で目的を状態の順に（同じ段の中は保存した順＝
+      プロフィールの順）
+    - 文は保存した HTML の切れ端をそのまま使う（作り直さない・モデルを呼ばない）。根拠は保存したまま（閉じた形）
+    - 足すのは、決まった型の見出し（どちらの側か）と、受けた人の側の要旨（保存した目的の状態と見出しの番号から、要旨の型で組む。
+      組めなければ出さない）だけ。⑥ の見出し（「── ⟦T⟧から見た⟦V⟧ ──」）は、側の見出しに置き換える
+    - 知らない形で切り分けられなければ None（呼ぶ側が、保存した形のまま出す）"""
+    if not symbolic_html or not symbolic_html.startswith("<section ") or not symbolic_html.endswith("</section>"):
         return None
-    m = _MAIN_RE.search(symbolic_html)
-    if not m:
+    head_end = symbolic_html.index(">") + 1
+    try:
+        nodes = _top_nodes(symbolic_html[head_end:-len("</section>")])
+    except ValueError:
         return None
-    r = _REV_RE.search(symbolic_html, m.end())
-    head_end = symbolic_html.index(">") + 1                     # <section ...>
+    pre, main, rev, tail, kind = [], [], [], [], "p"
+    for n in nodes:
+        if n.startswith("<!--"):
+            continue                                            # v0.8 の印（画面には出ない）
+        if n.startswith('<p class="ex-summary"') or n.startswith('<p class="ex-stale"'):
+            if main or rev or tail:
+                return None
+            pre.append(n)
+        elif n.startswith('<div class="ex-purpose ex-rev"'):
+            rev.append(n)
+        elif n.startswith('<div class="ex-purpose"'):
+            if rev:
+                return None
+            main.append(n)
+        elif n.startswith('<div class="ex-sub ex-revh">'):
+            kind = "s" if "が求めている相手 ──" in n else "p"
+        elif n.startswith(('<p class="ex-supp"', '<p class="ex-foot"', "<button")):
+            tail.append(n)
+        else:
+            return None                                         # 知らない要素（並べ直さない）
+        if tail and not n.startswith(('<p class="ex-supp"', '<p class="ex-foot"', "<button")):
+            return None                                         # 注記の後に目的が来る形は知らない
+    if not main and not rev:
+        return None
+    main.sort(key=_node_rank)                                   # 安定な並べ替え（同じ段の中は保存した順）
+    rev.sort(key=_node_rank)
     opening = symbolic_html[:head_end].replace("<section ", '<section data-layout="incoming" ', 1)
-    tail = symbolic_html[(r.end() if r else m.end()):]          # 補足・注記・「補足する」・</section>
     parts = [opening]
-    if r:
-        kind, rev = r.group(1), _REVH_RE.sub("", r.group(2), count=1)
-        parts.append(f'<div class="ex-side ex-side-rev"><div class="ex-side-h">'
-                     f'{SIDE_HEAD_REV[kind].format(t=T, v=V)}</div>')
-        if kind == "p":
-            nums = [n for st, n in _REV_STATE_RE.findall(rev) if st in ("all", "part")]
-            if nums:
-                parts.append(f'<p class="ex-summary">{T}の{SUMMARY_MEANING.format(list="・".join(f"目的{n}" for n in nums))}</p>')
-        parts.append(rev + "</div>")
-    if m.group(1).strip():
+    if rev:
+        parts.append(f'<div class="ex-side ex-side-rev"><div class="ex-side-h">{SIDE_HEAD_REV[kind].format(t=T, v=V)}</div>')
+        nums = [m.group(1) for m in (_REV_NUM_RE.search(n) for n in rev if _node_rank(n) < 2) if m] if kind == "p" else []
+        if nums:
+            parts.append(f'<p class="ex-summary">{T}の{SUMMARY_MEANING.format(list="・".join(f"目的{n}" for n in nums))}</p>')
+        parts.append("".join(rev) + "</div>")
+    if main or pre:
         parts.append(f'<div class="ex-side ex-side-main"><div class="ex-side-h">{SIDE_HEAD_MAIN.format(t=T, v=V)}</div>'
-                     + m.group(1) + "</div>")
-    parts.append(tail)
-    return "".join(parts)
+                     + "".join(pre + main) + "</div>")
+    return "".join(parts + tail) + "</section>"
 
 
 def incoming_html(symbolic_html, names):
     """画面3 に出す HTML（受けた人が実際に見る表示。承認のときは、これをその人の表示として残す）。
-    印のある表示は incoming_layout で並べ直し、根拠は閉じたまま（v0.8 §16-3）。
-    印の無い表示（指示書74 より前に保存した申請）は、前の形のまま（名前の置き換えと、根拠を開く印だけ）。"""
+    incoming_layout で並べ直す。根拠は保存したまま閉じた形（v0.8 §16-3。指示書74 追補1 で前に保存した申請にも当てる）。
+    並べ直せない形は、保存した形のまま（名前の置き換えだけ。根拠は開かない）。"""
     lay = incoming_layout(symbolic_html)
-    if lay is None:
-        return open_basis(personalize(symbolic_html, "recipient", names))
-    return personalize(lay, "recipient", names)
+    return personalize(symbolic_html if lay is None else lay, "recipient", names)
 
 
 def render(card, reader, names):

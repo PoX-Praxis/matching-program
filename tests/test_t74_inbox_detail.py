@@ -1,4 +1,5 @@
 """指示書74 順1 — 受信箱の一覧と詳細（承認）画面・目的の並び（仕様 v0.8 §16）。テスト 463〜469（§8 の 1〜7）。
+指示書74 追補1 — 前に保存された申請（v0.4・v0.5・v0.7 の形）にも、並びと開閉を当てる。468 を改め、470 を足した。
 
 カードは tests/fixtures/explanation_v0_4.json の架空の人のもの。足す文も架空（KAORU・PA の文は使わない）。
 
@@ -7,7 +8,8 @@
 465（§8-3）どちらの側の根拠も閉じている。見出しが「根拠」
 466（§8-4）目的が §2 の順に並ぶ（画面1・画面3・逆の向き・要旨・一覧の短い形）。番号は変わらない
 467（§8-5）組み直した表示の文が、保存した表示の文と一致する。pair_digest が変わらない
-468（§8-6）この指示書より前に保存された申請が、前の形のまま出る
+468（§8-6・追補1）この指示書より前に保存された申請も、根拠を閉じ、受けた人の側を先に、目的を状態の順に出す
+470（追補1）前の形（v0.4・v0.5・v0.7）でも、組み直しの前後で文が一字も変わらない
 469（§8-7）画面3 に「あなた」が残らない。承認した人の表示のハッシュは、詳細で見た表示のハッシュ
 """
 import copy
@@ -177,21 +179,61 @@ def test_t467_rebuild_keeps_every_text(xs):
     assert done["pair_digest"] == hmac.new(KEY.encode(), canonicalize(a1), hashlib.sha256).hexdigest()
 
 
-# ── 468（§8-6）前に保存した申請は前の形のまま ───────────────────────────────────────────────
-def test_t468_saved_before_74_keeps_old_form(xs):
+# ── 468（§8-6・追補1）前に保存した申請も、閉じた形・新しい並びで出す ─────────────────────────────────
+FORMS = os.path.join(ROOT, "tests", "fixtures", "explanation_saved_forms.json")
+
+
+def _forms():
+    with open(FORMS, encoding="utf-8") as f:
+        return json.load(f)["forms"]                                  # 前の版のレンダラで描いた、保存した表示の見本（架空の人）
+
+
+def test_t468_saved_before_74_gets_new_order_and_closed(xs):
     from ledger import approve
-    from test_t71_explanation_v05 import OLD_HTML
-    from test_t73_explanation_v07 import V05_HTML
-    card, _ = _case("1_complement")
-    v07 = X.render_symbolic(card).replace(X.MAIN_OPEN, "").replace(X.MAIN_CLOSE, "")   # 印の無い形（v0.7 まで）
-    v07 = re.sub(r"<!--/?ex:rev(:[ps])?-->", "", v07)
-    for saved in (OLD_HTML, V05_HTML, v07):
-        assert X.incoming_layout(saved) is None
+    forms = _forms()
+    assert set(forms) == {"v0.4", "v0.5", "v0.7"}
+    for v, saved in ((v, forms[v]["mixed"]) for v in forms):
         S.save_offer_render("me", "c_full", saved, X.personalize(saved, "viewer", NAMES), "d" * 64, db_path=appmod.DB)
         approve("me", "c_full", db_path=appmod.DB)
         inc = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()
-        assert inc["status"] == "ok"
-        assert inc["html"] == X.open_basis(X.personalize(saved, "recipient", NAMES))   # 前の形（並べ直さない）
+        assert inc["status"] == "ok" and inc["html"] == X.incoming_html(saved, NAMES), v
+        h = inc["html"]
+        assert "ex-basis\" open" not in h, v                                          # 根拠は閉じる（v0.4 は畳む枠が無い）
+        assert h.index('class="ex-side ex-side-rev"') < h.index('class="ex-side ex-side-main"'), v   # 受けた人の側が先
+        heads = _heads(h)
+        assert heads[:2] == ["ハル さんの目的2", "ハル さんの目的1"], v                 # explained → not_covered
+        if v == "v0.4":                                                               # v0.4 は open を見分けられない（explained と同じ段）
+            assert heads[2:] == ["アオイ さんの目的1", "アオイ さんの目的2", "アオイ さんの目的3"]
+        else:
+            assert heads[2:] == ["アオイ さんの目的2", "アオイ さんの目的1", "アオイ さんの目的3"], v
+        assert re.findall(r'<p class="ex-summary">(.*?)</p>', h)[0] == "ハル さんの目的2に、つながる意味があります。"
+        assert "あなた" not in h and re.search(r"⟦[VT]⟧", h) is None
+    # 指示書71・73 のテストで使っている手書きの前の形（v0.4・v0.5 に似せたもの）も、切り分けられる
+    from test_t71_explanation_v05 import OLD_HTML
+    from test_t73_explanation_v07 import V05_HTML
+    for saved in (OLD_HTML, V05_HTML):
+        lay = X.incoming_layout(saved)
+        assert lay is not None and "ex-side-main" in lay and "open" not in lay
+    # 知らない形は、保存した形のまま（名前の置き換えだけ。根拠は開かない）
+    odd = '<section class="ex-card" data-status="explained"><table><tr><td>x</td></tr></table></section>'
+    assert X.incoming_layout(odd) is None and X.incoming_html(odd, NAMES) == odd
+
+
+# ── 470（追補1）前の形でも、組み直しで文は一字も変わらない ──────────────────────────────────────
+def test_t470_legacy_rebuild_keeps_every_text():
+    allowed_added = {X.SIDE_HEAD_REV["p"].format(t=X.T, v=X.V), X.SIDE_HEAD_REV["s"].format(t=X.T, v=X.V),
+                     X.SIDE_HEAD_MAIN.format(t=X.T, v=X.V)}
+    for v, forms in _forms().items():
+        for k, sym in forms.items():
+            lay = X.incoming_layout(sym)
+            assert lay is not None, (v, k)
+            added, removed = _texts(lay) - _texts(sym), _texts(sym) - _texts(lay)
+            for t in added:
+                assert t in allowed_added or re.fullmatch(r"⟦T⟧の目的[0-9]+(・目的[0-9]+)*に、つながる意味があります。", t), (v, k, t)
+            assert set(removed) <= {f"── {X.T}から見た{X.V} ──", f"── {X.T}が求めている相手 ──"}, (v, k, removed)
+            for frag in re.findall(r'<div class="ex-purpose[^"]*" data-ref="[^"]*"', sym):
+                assert lay.count(frag) == sym.count(frag), (v, k)
+            assert lay.count("<details") == sym.count("<details") and "open>" not in lay   # 開閉は保存した形（閉じた形）
 
 
 # ── 469（§8-7）画面3 に「あなた」が残らない・承認した人の表示のハッシュ ──────────────────────────────

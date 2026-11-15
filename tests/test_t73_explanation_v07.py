@@ -263,7 +263,8 @@ def test_t460_saved_displays_are_not_redrawn(xs):
         approve("me", "c_full", db_path=appmod.DB)
         inc = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()
         assert inc["status"] == "ok"
-        assert inc["html"] == X.open_basis(X.personalize(saved, "recipient", NAMES))   # 名前と開く印だけ
+        # 描き直さない（文は保存したまま）。並びと開閉だけは指示書74 追補1 で前の形にも当てる
+        assert inc["html"] == X.incoming_html(saved, NAMES)
         assert "確かめられ" in inc["html"] or "見つかりません" in inc["html"]          # 古い文のまま
 
 

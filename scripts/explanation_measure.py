@@ -26,6 +26,37 @@ import explanation as X  # noqa: E402
 import explanation_gen as G  # noqa: E402
 
 DATA = os.path.join(ROOT, "scripts", "probe_data")
+BENCH = os.path.join(ROOT, "data", "explanation_bench", "synthetic_v1.json")   # 架空の 60 組（指示書72）
+
+
+def open_count(direction):
+    """向きの中で、状態が open（根拠はあるが、欠かせない要素に欠けがある）の目的の数（指示書73 §3。出した数とは別に書く）。"""
+    return sum(1 for p in direction["purposes"] if p["status"] == "open")
+
+
+def bench_person(person, only_need=None):
+    """架空の人（基準テストの人）から N の側を作る。only_need を渡すと、その必要 1 つだけ（指示書72 の形）。"""
+    needs = [{"text": n["text"], "type": "", "must": bool(n["必須"])} for n in person["needs"]
+             if only_need is None or n["ref"] == only_need]
+    return {"subject": "n", "purposes": [{"purpose_id": "p1", "title": person["purpose"], "means": "",
+                                          "kind": person["種類"], "needs": needs}]}
+
+
+def bench_counts(backend, form="one", bench=None):
+    """架空の 60 組で、出した数と open の数（指示書73 §3）。
+    form="one": 1 つの必要 × 1 つの相手の文（指示書72 の形。open は起きないはず）／"whole": その人の必要像すべて × 1 つの相手の文。"""
+    if bench is None:
+        with open(BENCH, encoding="utf-8") as f:
+            bench = json.load(f)
+    people = {p["id"]: p for p in bench["people"]}
+    out = {"n": 0, "shown": 0, "open": 0}
+    for pr in bench["pairs"]:
+        n = bench_person(people[pr["person"]], pr["need_ref"] if form == "one" else None)
+        res = G.generate_direction(n, one_sentence_person(pr["other"]), backend)
+        out["n"] += 1
+        out["shown"] += int(X.showable(X.check(X.assemble(res["direction"], None, True))[0]))
+        out["open"] += open_count(res["direction"])
+    return out
 
 
 def n_person_from_kaoru(doc):
@@ -83,6 +114,7 @@ def run_one(n, o, backend, drops, stage_drops):
         for why in (m.group(1).split("・") if m else [pr]):
             drops[why] += 1
         stage_drops["段1" if "組" in pr else "段2" if "①" in pr else "全体"] += 1
+    # 「出した」＝ どちらかの目的が explained か open になった（指示書73 §3。showable がそう決める）
     shown = X.showable(X.check(X.assemble(res["direction"], None, True))[0])
     leak = leak_violations(res["direction"], trace[0]["stage2_payload"]) if trace else 0
     return res, shown, leak
@@ -128,7 +160,12 @@ def to_markdown(res):
                      ("upper_neg", "上層の「応えない」4 人で出した"), ("hn_shown", "hard negative で出した"),
                      ("c_shown", "C 群で出した")):
         v = res.get(k)
-        L.append(f"- {label}: " + ("データが無い" if v is None else f"{v['shown']}/{v['n']}"))
+        L.append(f"- {label}: " + ("データが無い" if v is None else f"{v['shown']}/{v['n']}（うち open の目的 {v.get('open', 0)}）"))
+    for k, label in (("bench_one_need", "架空の 60 組（1 つの必要 × 1 つの相手の文）で出した"),
+                     ("bench_whole", "架空の 60 組（その人の必要像すべて × 1 つの相手の文）で出した")):
+        v = res.get(k)
+        if v:
+            L.append(f"- {label}: {v['shown']}/{v['n']}（うち open の目的 {v['open']}）")
     L += ["", "確かめで落ちた数（理由ごと）:", ""]
     L += [f"- {k}: {v}" for k, v in sorted(res["drops"].items(), key=lambda x: -x[1])] or ["- なし"]
     L += ["", "段ごと: " + "・".join(f"{k} {v}" for k, v in res["stage_drops"].items()),
@@ -173,13 +210,14 @@ def main(argv=None, backend=None):
     res = {"backend": backend.name, "model": backend.model, "revision": backend.revision}
 
     def count(texts):
-        shown = 0
+        shown = opened = 0
         for t in texts:
             r, s, lk = run_one(n, one_sentence_person(t), backend, drops, stage_drops)
             shown += int(s)
+            opened += open_count(r["direction"])
             leak["runs"] += 1
             leak["violations"] += lk
-        return {"shown": shown, "n": len(texts)}
+        return {"shown": shown, "n": len(texts), "open": opened}
 
     res["hn_shown"] = count(lim([x["text"] for x in el["HN"]["a"]] + list(el["HN"]["b"]))) if n["purposes"] else None
     res["c_shown"] = count(lim([x["text"] for x in el["C"]])) if n["purposes"] else None
@@ -192,11 +230,12 @@ def main(argv=None, backend=None):
         res["labeled_neg"] = res["labeled_pos"] = None
     up = read(args.upper_neg)
     if up and n["purposes"]:
-        shown = 0
+        shown = opened = 0
         for person in lim(up.get("persons") or []):
-            _, s, _ = run_one(n, {"subject": "o", **person}, backend, drops, stage_drops)
+            r, s, _ = run_one(n, {"subject": "o", **person}, backend, drops, stage_drops)
             shown += int(s)
-        res["upper_neg"] = {"shown": shown, "n": len(lim(up.get("persons") or []))}
+            opened += open_count(r["direction"])
+        res["upper_neg"] = {"shown": shown, "n": len(lim(up.get("persons") or [])), "open": opened}
     else:
         res["upper_neg"] = None
     for t in lim([x["text"] for x in el["C"]])[:3] if n["purposes"] else []:     # 決定性（同じ入力を 2 回）
@@ -204,13 +243,16 @@ def main(argv=None, backend=None):
         b = G.generate_direction(n, one_sentence_person(t), backend)["output_digest"]
         det["runs"] += 1
         det["same"] += int(a == b)
+    if os.path.exists(BENCH):                     # 架空の 60 組（指示書72 の形と、人のまるごとの形）。open の数を分けて書く
+        res["bench_one_need"] = bench_counts(backend, "one")
+        res["bench_whole"] = bench_counts(backend, "whole")
     ex = read(args.exemplar)
     if ex and ex.get("directions"):
         res["exemplar"] = {}
         for i, d in enumerate(ex["directions"]):
             en, eo = exemplar_persons(d)
             r = G.generate_direction(en, eo, backend)
-            res["exemplar"][f"向き{i + 1}"] = compare_exemplar(d, r["direction"])
+            res["exemplar"][f"向き{i + 1}"] = {**compare_exemplar(d, r["direction"]), "open": open_count(r["direction"])}
     else:
         res["exemplar"] = None
     res.update(drops=dict(drops), stage_drops=dict(stage_drops), leak=leak, determinism=det,

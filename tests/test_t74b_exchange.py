@@ -9,6 +9,8 @@
 477 新しいやり取りの印（受信箱の一覧・マイページ）。読むと消える。件数は出さない
 478 承認の後の表示は、見る人の側を先に（確認 7）。文は変わらない
 479 ポリシー 2026-11b（6-2 の差し替え・非公開の時期）・申し出の文はやり取りの先頭・非公開のチェックは画面から外した
+480（追補2）承認画面の「申請の時に読んだ内容です」を消し、二つの側を別々の枠に。注記は枠の外に 1 回（新旧の申請・承認の後）
+481（追補2）確認のチェックの文・更新のお知らせの文・やり取りの日付（「11月15日」）
 """
 import json
 import os
@@ -64,7 +66,7 @@ def test_t471_both_parties_post_and_see(xs, monkeypatch):
         assert [x["text"] for x in items] == ["店の帳簿は、紙で付けています。", "帳簿の形式を教えてもらえますか。"]
         assert [x["name"] for x in items] == ["アオイ", "ハル"]                         # 呼び方はユーザー名
         assert [x["mine"] for x in items] == ([True, False] if sid == "me" else [False, True])
-        assert all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", x["at"]) for x in items)         # 日付を出す
+        assert all(re.fullmatch(r"\d{1,2}月\d{1,2}日", x["at"]) for x in items)          # 日付は「11月15日」の形（追補2）
     # 当事者でない人（c_z）: 説明が出ていない組なので off。説明を全員に出しても、二人の間の申請は見えない
     assert _get("c_z", "me")["status"] == "off" and _post("c_z", "me", "x").status_code == 404
     monkeypatch.setenv("POX_EXPLANATION", "on")
@@ -230,3 +232,55 @@ def test_t479_policy_offer_message_and_private_switch(xs):
     for f in ("profile.html", "inbox.html"):
         assert "ex-private" not in open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
     assert S.pending_render("me", "c_full", db_path=appmod.DB)["applicant_private"] == 0
+
+
+# ── 480（追補2）承認画面の 1 行を消し、二つの側を別々の枠に。注記は枠の外に 1 回 ─────────────────────────────
+def test_t480_detail_sides_in_separate_boxes(xs):
+    inbox = open(os.path.join(ROOT, "templates", "inbox.html"), encoding="utf-8").read()
+    assert "申請の時に読んだ内容です" not in inbox and "ex-cap" not in inbox
+    assert _offer().status_code == 200
+    from test_t74_inbox_detail import _forms
+    shown = [_cli("c_full").get("/api/explanations/incoming?with=me").get_json()["html"]]   # 新しく保存した申請
+    shown += [X.incoming_html(f["mixed"], NAMES) for f in _forms().values()]               # 前に保存した申請（追補1 の形）
+    _approve()
+    shown += [_card("me", "c_full")["html"], _card("c_full", "me")["html"]]                # 承認の後の表示（二人とも）
+    for h in shown:
+        assert 'data-layout="' in h
+        head_end = h.index(">") + 1
+        nodes = X._top_nodes(h[head_end:-len("</section>")])
+        sides = [n for n in nodes if n.startswith('<div class="ex-side ')]
+        assert len(sides) == 2                                                                 # 側ごとに別々の枠
+        assert all(s.count('<div class="ex-side-h">') == 1 and s.index('<div class="ex-side-h">') < 40 for s in sides)
+        foots = [n for n in nodes if n.startswith('<p class="ex-foot">')]
+        assert len(foots) == 1 and h.count('class="ex-foot"') == 1                             # 注記は枠の外に 1 回
+        assert nodes.index(foots[0]) > max(nodes.index(s) for s in sides)                     # 枠の下
+    css = open(os.path.join(ROOT, "templates", "_explanation.html"), encoding="utf-8").read()
+    assert ".ex-side + .ex-side" not in css                                                    # 側の間の点線の区切りはやめた（画面1 の ⑥ の線はそのまま）
+    rev = re.search(r"\.ex-side-rev > \.ex-side-h \{ background: (#[0-9a-f]+)", css).group(1)
+    main = re.search(r"\.ex-side-main > \.ex-side-h \{ background: (#[0-9a-f]+)", css).group(1)
+    assert rev != main                                                                         # 帯の色を変える（見出しの文も出す）
+    assert ".ex-card[data-layout] { border: none" in css                                       # 画面1（data-layout が無い）は変えない
+    v = _card("me", "c_z") if False else None                                                  # noqa: F841（画面1 は data-layout を持たない）
+    from test_t68_screens import _cases
+    assert 'data-layout' not in (X.render(_cases()["1_complement"]["card"], "viewer", NAMES) or "")
+
+
+# ── 481（追補2）確認のチェック・お知らせ・日付 ───────────────────────────────────────────────
+def test_t481_check_label_notice_and_dates(xs):
+    inbox = open(os.path.join(ROOT, "templates", "inbox.html"), encoding="utf-8").read()
+    assert "内容を確認しました（違う点は、やり取りで伝えられます）" in inbox and "違う点があれば補足してください" not in inbox
+    pu = open(os.path.join(ROOT, "templates", "policy_update.html"), encoding="utf-8").read()
+    for line in ("プライバシーポリシーの「6-2. 接続の説明（AI による説明）について」を改めました（版 2026-11b）。",
+                 "変わったのは 2 点です。",
+                 "<li>申請から承認までの「やり取り」を保存します。承認されたときは残り、見送り・取り下げのときは消えます。</li>",
+                 "<li>接続の内容を非公開にできる時期を、公開の機能ができたときに、接続のページから、に改めました。</li>"):
+        assert line in pu, line[:20]
+    assert appmod.TERMS_VERSION == "2026-11b"                                                  # 版とポリシーの本文は変えない
+    d = _card("me", "c_full")
+    assert _cli("me").post("/approve", json={"to_id": "c_full", "channel": "profile", "message": "はじめまして",
+                                             "explanation_digest": d["card_digest"]}).status_code == 200
+    assert _post("me", "c_full", "日付の確かめ").status_code == 201
+    got = _get("c_full", "me")
+    for x in got["offer_messages"] + got["items"]:
+        assert re.fullmatch(r"\d{1,2}月\d{1,2}日", x["at"]), x["at"]
+    assert appmod._month_day("2026-11-05T09:00:00+00:00") == "11月5日" and appmod._month_day(None) == ""

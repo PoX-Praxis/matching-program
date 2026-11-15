@@ -41,7 +41,17 @@
   .ex-deleted { color: #888; }
   .ex-cap { font-size: 12.5px; color: #555; margin: 6px 0 2px; }
   /* v0.8（指示書74）: 画面3 の詳細は、受けた人の目的の側 → 申請者の目的の側 */
-  .ex-side + .ex-side { margin-top: 18px; padding-top: 10px; border-top: 1px dashed #dfe3e8; }
+  /* 指示書74 追補2: 二つの側（受けた人の目的の側・申請者の目的の側）は別々の枠。枠の先頭に見出しの帯（側ごとに色を変える。
+     見出しの文も出すので、色だけで見分けさせない）。注記は枠の外の下に 1 回。外側のカードの枠は消す。縦に並ぶ（狭い幅でも同じ）。
+     画面3 の詳細と、承認の後の表示（data-layout のあるカード）だけに当てる。画面1 は変えない */
+  .ex-card[data-layout] { border: none; padding: 0; margin: 8px 0; }
+  .ex-card[data-layout] > .ex-side { border: 1px solid #cfd6de; border-radius: 8px; padding: 0 14px 10px; margin: 0 0 16px;
+                                     overflow: hidden; }
+  .ex-card[data-layout] > .ex-side > .ex-side-h { margin: 0 -14px 10px; padding: 8px 14px; font-size: 13.5px; font-weight: 700;
+                                                  border-bottom: 1px solid #cfd6de; }
+  .ex-card[data-layout] > .ex-side-rev > .ex-side-h { background: #e6eef7; color: #163453; }
+  .ex-card[data-layout] > .ex-side-main > .ex-side-h { background: #f4ecdc; color: #4a3710; }
+  .ex-card[data-layout] > .ex-foot { margin: 4px 2px 2px; }
   .ex-side-h { font-size: 13px; font-weight: 700; color: #1a3a5c; margin: 2px 0 8px; }
   .ex-supp-box { margin: 6px 0; }
   /* 承認までのやり取り（指示書74 §3）: これまでの発言の並びと、書く欄 */
@@ -119,6 +129,7 @@ window.PoXExplain = (function () {
     } catch (e) { root.style.display = "none"; return false; }
     if (d.status !== "open" && d.status !== "closed") { root.innerHTML = ""; root.style.display = "none"; return false; }
     const open = d.status === "open";
+    // 日付は、ほかの場所と同じ「11月15日」の形（指示書74 追補2。サーバーが整えて返す）
     const li = (cls, who, at, text) => `<li class="ex-x-item${cls}"><div class="ex-x-who">${esc(who)} さん・${esc(at)}</div>`
                                      + `<div class="ex-x-text">${esc(text)}</div></li>`;
     const msgs = (d.offer_messages || []).map(o => li(" ex-x-offer", `${o.name}`, `${o.at}（申請の文）`, o.text))

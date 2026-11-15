@@ -3094,6 +3094,15 @@ def _exchange_render(me, other):
     return None, None, None, False
 
 
+def _month_day(at):
+    """「11月15日」（受信箱の届いた日と同じ形。指示書74 追補2）。読めなければ空。"""
+    try:
+        _, mo, d = str(at or "")[:10].split("-")
+        return f"{int(mo)}月{int(d)}日"
+    except ValueError:
+        return ""
+
+
 @app.get("/api/explanations/exchange")
 @login_required
 def explanation_exchange_get():
@@ -3118,9 +3127,9 @@ def explanation_exchange_get():
     mine = _xs.exchange_count(row["id"], me, db_path=DB)
     return jsonify({
         "status": "open" if open_ else "closed",
-        "offer_messages": [{"name": name_of[applicant], "text": o["message"], "at": (o["at"] or "")[:10]} for o in offers],
+        "offer_messages": [{"name": name_of[applicant], "text": o["message"], "at": _month_day(o["at"])} for o in offers],
         "items": [{"mine": x["from"] == me, "name": name_of.get(x["from"], UNNAMED_LABEL), "text": x["text"],
-                   "at": (x["at"] or "")[:10]} for x in _xs.exchange_items(row["id"], db_path=DB)],
+                   "at": _month_day(x["at"])} for x in _xs.exchange_items(row["id"], db_path=DB)],
         "can_post": bool(open_ and mine < _xs.EXCHANGE_PER_PERSON),
         "remaining": max(0, _xs.EXCHANGE_PER_PERSON - mine) if open_ else 0,
         "limit": _xs.EXCHANGE_PER_PERSON, "max_chars": _xs.EXCHANGE_MAX}), 200

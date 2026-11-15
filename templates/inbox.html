@@ -171,7 +171,7 @@ function renderDetail(offers, from) {
       <div class="ib-exchange" style="display:none"></div>
       <div class="ib-reason" data-other="${oid}"><p class="ap-none">根拠を読み込んでいます</p></div>
       <label class="ex-check" style="display:none"><input type="checkbox" class="ex-confirm" onchange="syncApprove(this)">
-        <span>内容を確認しました（違う点があれば補足してください）</span></label>
+        <span>内容を確認しました（違う点は、やり取りで伝えられます）</span></label>
       <div class="ib-actions">
         <button class="ib-approve" onclick="doApprove('${oid}', this)">承認する</button>
         <button class="ib-decline" onclick="askDecline(this)">見送る</button>
@@ -203,7 +203,7 @@ async function loadIncomingExplanation(card, other) {
     const d = await r.json();
     if (d.status !== "ok") return false;
     const box = card.querySelector(".ib-explain");
-    box.innerHTML = `<p class="ex-cap">${escHtml(d.applicant_name)} さんが申請の時に読んだ内容です（申請の時点のプロフィールにもとづきます）</p>${d.html}`;
+    box.innerHTML = d.html;                             // 説明の上の注記の 1 行は消した（指示書74 追補2）
     box.querySelectorAll(".ex-supp-btn").forEach(b => { b.style.display = "none"; });   // 補足は、やり取りに置き換えた（指示書74 §3）
     box.style.display = "";
     card.querySelector(".ib-reason").style.display = "none";

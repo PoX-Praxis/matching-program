@@ -75,7 +75,8 @@ def test_t445_state_lines():
     assert _states(X.render(card, "viewer", names))[0] == X.STATE_TEXT["all"]           # explained だけ
     assert _summary(X.render(card, "viewer", names)) == "あなたの目的1に、つながる意味があります。"
     card, names = _case("2_resonance")
-    assert _states(X.render(card, "viewer", names))[0] == X.STATE_TEXT["unknown"]       # explained でない（指示書73 §4-1）
+    h = X.render(card, "viewer", names)                     # 目的1 は explained でない（指示書73 §4-1）
+    assert _states(h[h.index('data-ref="viewer.purpose.p1"'):])[0] == X.STATE_TEXT["unknown"]   # 並びは状態の順（指示書74 §2）
     assert X.STATE_TEXT == {"all": "この目的の要素のすべてに、つながる意味があります。",
                             "part": "この目的の要素の一部に、つながる意味があります。",
                             "unknown": "この目的については、公開の文からは分かりません。"}
@@ -86,7 +87,7 @@ def test_t445_state_lines():
             assert not re.search(r"[%％割]|[0-9０-９]+\s*(点|件|人中)", line), line            # 数値・割合を出さない
 
 
-# ── 446（§9-3）根拠は畳む。画面1・2 は閉じ、画面3 は開く ───────────────────────────────────────
+# ── 446（§9-3）根拠は畳む。画面1・2 は閉じる。画面3 も閉じる（指示書74 §1-3 で「画面3 は開く」を取りやめた）──────
 def test_t446_basis_folded_and_open_on_screen3(xs):
     d = _card("me", "c_full")                                                         # 画面1（申請の前は画面2 と同じ表示）
     h = d["html"]
@@ -96,9 +97,11 @@ def test_t446_basis_folded_and_open_on_screen3(xs):
         assert "ex-els" not in head and "ex-unk" not in head                          # 根拠と確かめられることは中に
     assert _offer().status_code == 200
     inc = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()         # 画面3
-    assert inc["html"].count('<details class="ex-basis" open>') == h.count('<details class="ex-basis">') > 0
+    assert inc["html"].count('<details class="ex-basis">') == h.count('<details class="ex-basis">') > 0
+    assert '<details class="ex-basis" open>' not in inc["html"]
     src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
-    assert src.count("X_explanation.open_basis(") == 2                               # 画面3 の表示と、承認した人の表示の保存
+    assert src.count("X_explanation.incoming_html(") == 2                            # 画面3 の表示と、承認した人の表示の保存
+    assert "X_explanation.open_basis(" not in src
 
 
 # ── 447（§9-4）⑥ の枠は畳まない ──────────────────────────────────────────────────────────
@@ -177,7 +180,8 @@ def test_t452_names_in_summary_and_states(xs):
     assert _offer().status_code == 200
     h = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()["html"]
     assert "あなた" not in h and re.search(r"⟦[VT]⟧", h) is None
-    assert _summary(h).startswith("アオイ さんの目的")
+    sums = re.findall(r'<p class="ex-summary">(.*?)</p>', h)                         # 画面3 は側ごとに要旨（指示書74 §1-2）
+    assert sums[0].startswith("ハル さんの目的") and sums[1].startswith("アオイ さんの目的")
     assert all("⟦" not in s and "あなた" not in s for s in _states(h))
     v = _card("me", "c_full")["html"]
     assert _summary(v).startswith("あなたの目的")

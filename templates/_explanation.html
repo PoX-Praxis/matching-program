@@ -40,6 +40,9 @@
   .ex-supp-btn:hover { text-decoration: underline; }
   .ex-deleted { color: #888; }
   .ex-cap { font-size: 12.5px; color: #555; margin: 6px 0 2px; }
+  /* v0.8（指示書74）: 画面3 の詳細は、受けた人の目的の側 → 申請者の目的の側 */
+  .ex-side + .ex-side { margin-top: 18px; padding-top: 10px; border-top: 1px dashed #dfe3e8; }
+  .ex-side-h { font-size: 13px; font-weight: 700; color: #1a3a5c; margin: 2px 0 8px; }
   .ex-supp-box { margin: 6px 0; }
   .ex-supp-box textarea { width: 100%; box-sizing: border-box; font-size: 13px; }
   .ex-supp-box .ex-supp-note { font-size: 12px; color: #666; margin: 2px 0; }
@@ -68,6 +71,10 @@ window.PoXExplain = (function () {
       <textarea maxlength="${SUPP_MAX}" rows="3"></textarea>
       ${opts.onSend ? '<button type="button" class="ex-supp-send">補足を送る</button> <span class="ex-supp-msg"></span>' : ""}`;
     root.appendChild(box);
+    if (opts.open) {                       // 最初から開いた状態（受信箱の詳細の画面。指示書74）。「補足する ›」は出さない
+      box.style.display = "";
+      btn.style.display = "none";
+    }
     btn.addEventListener("click", () => {
       box.style.display = box.style.display === "none" ? "" : "none";
       if (box.style.display === "") box.querySelector("textarea").focus();

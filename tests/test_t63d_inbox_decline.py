@@ -195,7 +195,7 @@ def test_t303_single_approval_place():
     assert 'onclick="doApprove(' in inbox and 'onclick="askDecline(this)"' in inbox
     assert "見送ると相手に伝わります。元に戻せません" in inbox
     cards = inbox[inbox.index("function renderApprovals("):inbox.index("function renderMessages(")]
-    assert "に申し出が届きました" in cards and "badge" not in cards and "<table" not in cards   # 状態は見出し行の文
+    assert "さんから申請が届きました" in cards and "badge" not in cards and "<table" not in cards   # 状態は見出し行の文（指示書74）
     assert "PoXReason.approvalHtml" in inbox
     my = TPL("mypage.html")
     assert "doApprove" not in my and "承認待ち ${waiting.length}件" in my and 'href="/inbox"' in my

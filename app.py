@@ -2520,9 +2520,9 @@ def post_approve():
     if xs_approve and after == "connected":
         pend, supp = xs_approve
         names = _explanation_names(pend["from_subject"], pend["to_subject"])
-        # 承認した人が画面3 で見た表示（根拠を開いた形。指示書71 §3）を、その人の表示として残す
-        _xs.approve_render(pend["id"], X_explanation.open_basis(
-                               X_explanation.personalize(pend["symbolic_html"], "recipient", names)),
+        # 承認した人が画面3 で見た表示（指示書74 §1-4: 受けた人の目的の側を先に組み直し、根拠は閉じた形。
+        # 指示書74 より前に保存した申請は前の形）を、その人の表示として残す。やり取り・補足の欄は含めない
+        _xs.approve_render(pend["id"], X_explanation.incoming_html(pend["symbolic_html"], names),
                            supplement=supp, db_path=DB, private=body.get("explanation_private") is True)
         _record_explanation_agreement(pend["id"])
     return jsonify(result), 200
@@ -3043,10 +3043,9 @@ def explanation_incoming_route():
     if not row:
         return jsonify({"status": "none"}), 200
     names = _explanation_names(other, me)
-    # 承認には内容の確認が必須なので、根拠を最初から開いて出す（指示書71 §3。置き換えだけで再生成しない。
-    # v0.4 で保存した表示は畳む枠が無いので、そのまま）
-    return jsonify({"status": "ok",
-                    "html": X_explanation.open_basis(X_explanation.personalize(row["symbolic_html"], "recipient", names)),
+    # 指示書74 §1-2〜§1-4: 保存した表示を切り分けて、受けた人の目的の側を先に並べ直す（文は保存したまま・再生成しない）。
+    # 根拠は閉じて出す。指示書74 より前に保存した申請は、前の形（根拠を開いた形）のまま
+    return jsonify({"status": "ok", "html": X_explanation.incoming_html(row["symbolic_html"], names),
                     "applicant_name": names["viewer"]}), 200
 
 

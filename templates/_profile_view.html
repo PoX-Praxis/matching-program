@@ -12,112 +12,109 @@
      .mypage / .l-prose = var(--prose) が決める → 両ビュー 720px で一致）。
      ══════════════════════════════════════════════════════════════════════ -->
 <style>
-  /* ---------- 配色トークン（コンポーネント内で完結） ---------- */
+  /* ---------- 配色は _base.html の色の名前を使う（指示書75） ---------- */
   .pv{
-    --ink:#14161a; --ink2:#454b54; --label:#6b7280; --rule:#e6e8ec;
-    --navy:#1f3a5f; --pivot:#9a6b2f; --pivot-bg:#fbf5ec;
-    --need-bg:#f5f8fa; --step-bg:#eef4ef; --step-ink:#2f5d3f;
-    color:var(--ink);
+    color:var(--text);
     font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
   }
 
   /* ---------- ヘッダ（表示名＋ID） ---------- */
   .pv .pv-title{font-size:22px;font-weight:700;letter-spacing:.01em;margin:20px 0 2px}
-  .pv .pv-handle{font-size:11.5px;color:#8a9099;letter-spacing:.06em;margin:0 0 12px;
+  .pv .pv-handle{font-size:11.5px;color:var(--text-muted);letter-spacing:.06em;margin:0 0 12px;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 
   /* ---------- 表示名エディタ（owner のみ・編集UI＝差1） ---------- */
-  .pv .pv-dn{margin:0 0 24px;padding:12px 14px;background:#fafafa;border:1px solid #eee;border-radius:6px}
-  .pv .pv-dn-label{display:block;font-size:12px;color:#667;margin-bottom:6px}
+  .pv .pv-dn{margin:0 0 24px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px}
+  .pv .pv-dn-label{display:block;font-size:12px;color:var(--text-sub);margin-bottom:6px}
   .pv .pv-dn-row{display:flex;gap:8px;flex-wrap:wrap}
-  .pv .pv-dn-row input{flex:1;min-width:0;height:var(--ctrl-h);box-sizing:border-box;padding:0 12px;border:1px solid #ccc;border-radius:var(--radius);font-size:14px}
-  .pv .pv-dn-row button{height:var(--ctrl-h);padding:0 18px;background:#1a3a5c;color:#fff;border:none;border-radius:var(--radius);font-size:14px;cursor:pointer}
+  .pv .pv-dn-row input{flex:1;min-width:0;height:var(--ctrl-h);box-sizing:border-box;padding:0 12px;border:1px solid var(--line-strong);border-radius:var(--radius);font-size:14px}
+  .pv .pv-dn-row button{height:var(--ctrl-h);padding:0 18px;background:var(--accent);color:var(--on-accent);border:none;border-radius:var(--radius);font-size:14px;cursor:pointer}
   .pv .pv-dn-row button:disabled{opacity:.5;cursor:default}
-  .pv .pv-dn-note{display:block;font-size:12px;color:#888;margin-top:6px;min-height:1em}
+  .pv .pv-dn-note{display:block;font-size:12px;color:var(--text-muted);margin-top:6px;min-height:1em}
 
   /* ---------- 読み方 注記（固定・一度だけ・§3-5／§3-1で公開ビューにも復活） ---------- */
   .pv .pv-prov{
-    display:flex;gap:10px;font-size:12px;line-height:1.85;color:#5b616a;
-    background:#f6f7f9;border-radius:5px;padding:12px 14px;margin:0 0 26px;
+    display:flex;gap:10px;font-size:12px;line-height:1.85;color:var(--text-sub);
+    background:var(--surface-2);border-radius:5px;padding:12px 14px;margin:0 0 26px;
   }
-  .pv .pv-prov .k{flex:none;font-weight:700;color:var(--navy);letter-spacing:.04em}
+  .pv .pv-prov .k{flex:none;font-weight:700;color:var(--link);letter-spacing:.04em}
 
   /* ---------- 背景（冒頭・小／§3-1で公開ビューにも見出しを復活） ---------- */
-  .pv .pv-cap{font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#9aa0a8;margin:0 0 6px}
-  .pv .pv-lead{font-size:13.5px;line-height:1.95;color:var(--ink2);margin:0 0 8px}
+  .pv .pv-cap{font-size:10.5px;font-weight:700;letter-spacing:.14em;color:var(--text-muted);margin:0 0 6px}
+  .pv .pv-lead{font-size:13.5px;line-height:1.95;color:var(--text-sub);margin:0 0 8px}
 
   /* ---------- 大見出し（意志／現状／足りないもの…） ---------- */
   /* 見出しは §5 の規格（20px bold ＋ 英字小ラベル）に合わせる。ProfileView は
      セクション境界の区切り線（border-top）を維持しつつ、字量は共通規格に一致させる。 */
   .pv .pv-h{
     display:flex;align-items:baseline;gap:9px;
-    font-size:20px;font-weight:700;line-height:1.5;letter-spacing:.02em;color:var(--navy);
-    margin:32px 0 12px;padding-top:20px;border-top:1px solid var(--rule);
+    font-size:20px;font-weight:700;line-height:1.5;letter-spacing:.02em;color:var(--link);
+    margin:32px 0 12px;padding-top:20px;border-top:1px solid var(--line);
   }
-  .pv .pv-h .en{font-size:12px;font-weight:600;letter-spacing:.08em;color:#9aa0a8;margin-left:0}
-  .pv .pv-blkcap{font-size:12px;color:#8a9099;line-height:1.7;margin:0 0 20px}
+  .pv .pv-h .en{font-size:12px;font-weight:600;letter-spacing:.08em;color:var(--text-muted);margin-left:0}
+  .pv .pv-blkcap{font-size:12px;color:var(--text-muted);line-height:1.7;margin:0 0 20px}
 
   /* ---------- 小見出し＝ラベル ---------- */
-  .pv .pv-lb{font-size:11.5px;font-weight:700;letter-spacing:.1em;color:var(--label);margin:24px 0 6px}
+  .pv .pv-lb{font-size:11.5px;font-weight:700;letter-spacing:.1em;color:var(--text-sub);margin:24px 0 6px}
   .pv .pv-item:first-of-type > .pv-lb{margin-top:0}
-  .pv .pv-lb .by{font-weight:400;letter-spacing:0;color:#a7adb5;margin-left:6px}
+  .pv .pv-lb .by{font-weight:400;letter-spacing:0;color:var(--text-muted);margin-left:6px}
 
   /* ---------- 本文 ---------- */
-  .pv .pv-body{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--ink)}
-  .pv .pv-freetext{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--ink);white-space:pre-wrap}
+  .pv .pv-body{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--text)}
+  .pv .pv-freetext{font-size:15.5px;line-height:1.95;letter-spacing:.01em;margin:0;color:var(--text);white-space:pre-wrap}
 
   /* ---------- 持っているもの（箇条書き化） ---------- */
   .pv .pv-holds{list-style:none;margin:0;padding:0}
-  .pv .pv-holds li{font-size:15.5px;line-height:1.75;padding:9px 0 9px 20px;position:relative;border-bottom:1px solid #f0f2f4}
+  .pv .pv-holds li{font-size:15.5px;line-height:1.75;padding:9px 0 9px 20px;position:relative;border-bottom:1px solid var(--line)}
   .pv .pv-holds li:last-child{border-bottom:0}
-  .pv .pv-holds li::before{content:"";position:absolute;left:2px;top:16px;width:5px;height:5px;border-radius:50%;background:#b9c0c8}
+  .pv .pv-holds li::before{content:"";position:absolute;left:2px;top:16px;width:5px;height:5px;border-radius:50%;background:var(--line-strong)}
 
   /* ---------- 背骨（現状の項目を「同列の材料」として束ねる） ---------- */
   .pv .pv-spine{position:relative;padding-left:22px;margin-top:4px}
-  .pv .pv-spine::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:#dfe3e8}
+  .pv .pv-spine::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:var(--surface-2)}
   .pv .pv-spine .pv-item{position:relative}
-  .pv .pv-spine .pv-item::before{content:"";position:absolute;left:-21px;margin-top:9px;width:7px;height:7px;border-radius:50%;background:#c6ccd3}
+  .pv .pv-spine .pv-item::before{content:"";position:absolute;left:-21px;margin-top:9px;width:7px;height:7px;border-radius:50%;background:var(--line-strong)}
 
   /* ---------- 転回点（縛られているもの） ---------- */
-  .pv .pv-pivot{margin:26px 0 6px;padding:18px 18px 16px;background:var(--pivot-bg);border-radius:6px;border-left:3px solid var(--pivot)}
-  .pv .pv-pivot .pv-lb{color:var(--pivot);margin:0 0 8px}
-  .pv .pv-turn{display:block;margin-top:12px;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--pivot)}
-  .pv .pv-down{text-align:center;color:#c6ccd3;font-size:15px;line-height:1;margin:14px 0 0}
+  .pv .pv-pivot{margin:26px 0 6px;padding:18px 18px 16px;background:var(--warn-bg);border-radius:6px;border-left:3px solid var(--warn-text)}
+  .pv .pv-pivot .pv-lb{color:var(--warn-text);margin:0 0 8px}
+  .pv .pv-turn{display:block;margin-top:12px;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--warn-text)}
+  .pv .pv-down{text-align:center;color:var(--text-muted);font-size:15px;line-height:1;margin:14px 0 0}
 
   /* ---------- 次の一歩 ---------- */
   .pv .pv-step{margin:0 0 10px}
-  .pv .pv-goal{font-size:13px;line-height:1.7;color:var(--ink2);padding-left:12px;border-left:2px solid #d9dde2}
-  .pv .pv-need{font-size:14.5px;line-height:1.8;color:var(--step-ink);background:var(--step-bg);padding:10px 13px;margin-top:6px;border-radius:3px}
+  .pv .pv-goal{font-size:13px;line-height:1.7;color:var(--text-sub);padding-left:12px;border-left:2px solid var(--line-strong)}
+  .pv .pv-need{font-size:14.5px;line-height:1.8;color:var(--ok-text);background:var(--ok-bg);padding:10px 13px;margin-top:6px;border-radius:3px}
 
   /* ---------- 本人より（owner: textarea／public: 読み取り専用） ---------- */
-  .pv textarea{width:100%;min-height:88px;box-sizing:border-box;border:1px solid #d5d8dd;border-radius:5px;padding:12px;font:inherit;font-size:14.5px;line-height:1.8;background:#fcfcfd}
-  .pv .pv-tiny{font-size:11.5px;color:#8a9099;line-height:1.8;margin:8px 0 0}
-  .pv .pv-btn{display:inline-flex;align-items:center;justify-content:center;min-height:var(--ctrl-h);border:1px solid #cfd3d9;border-radius:var(--radius);background:#fff;font-size:13px;padding:0 16px;margin-top:12px;color:var(--ink2);cursor:pointer;text-decoration:none}
-  .pv .pv-btn:focus-visible,.pv textarea:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+  .pv textarea{width:100%;min-height:88px;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:5px;padding:12px;font:inherit;font-size:14.5px;line-height:1.8;background:var(--surface)}
+  .pv .pv-tiny{font-size:11.5px;color:var(--text-muted);line-height:1.8;margin:8px 0 0}
+  .pv .pv-btn{display:inline-flex;align-items:center;justify-content:center;min-height:var(--ctrl-h);border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--surface);font-size:13px;padding:0 16px;margin-top:12px;color:var(--text-sub);cursor:pointer;text-decoration:none}
+  .pv .pv-btn:focus-visible,.pv textarea:focus-visible{outline:2px solid var(--link);outline-offset:2px}
 
   /* ---------- 必要としている相手（必要像。本文=公開／根拠=本人のみ＝差2） ---------- */
-  .pv .pv-needblock{background:var(--need-bg);border-radius:6px;padding:20px 18px;margin-top:22px}
+  .pv .pv-needblock{background:var(--surface-2);border-radius:6px;padding:20px 18px;margin-top:22px}
   .pv .pv-needblock .pv-h{margin:0 0 2px;padding-top:0;border-top:0}
   .pv .pv-needblock .pv-body{font-size:15px}
-  .pv .pv-evi{font-size:13.5px;line-height:1.95;color:var(--ink2);border-left:2px solid #c8d2da;padding-left:12px;margin:0}
+  .pv .pv-evi{font-size:13.5px;line-height:1.95;color:var(--text-sub);border-left:2px solid var(--line-strong);padding-left:12px;margin:0}
 
   /* ---------- v5（指示書63 段階1 PR-C）: 一行紹介・目的ごとの必要像（欠かせない要素の印） ---------- */
-  .pv .pv-oneliner{font-size:14.5px;line-height:1.8;color:var(--ink2);margin:0 0 16px}
+  .pv .pv-oneliner{font-size:14.5px;line-height:1.8;color:var(--text-sub);margin:0 0 16px}
   .pv .pv-needs{list-style:none;margin:6px 0 0;padding:0}
-  .pv .pv-needs li{font-size:15px;line-height:1.85;padding:8px 0;border-bottom:1px solid #e3e8ec}
+  .pv .pv-needs li{font-size:15px;line-height:1.85;padding:8px 0;border-bottom:1px solid var(--line)}
   .pv .pv-needs li:last-child{border-bottom:0}
-  .pv .pv-must{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--navy);
-    border:1px solid #b9c6d6;border-radius:3px;padding:0 6px;margin-right:8px;line-height:1.7;vertical-align:1px}
+  .pv .pv-must{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--link);
+    border:1px solid var(--line-strong);border-radius:3px;padding:0 6px;margin-right:8px;line-height:1.7;vertical-align:1px}
   .pv .pv-needblock .pv-lb:first-child{margin-top:0}
 
   /* ---------- v3 後方互換（旧スキーマのプロフィールのみ） ---------- */
   .pv .pv-triangle{display:grid;grid-template-columns:1fr;gap:12px;margin:16px 0}
-  .pv .pv-tri{background:#f7f9fc;border-radius:6px;padding:14px 16px}
-  .pv .pv-tri-label{font-size:11px;font-weight:bold;color:#1a56bb;display:block;margin-bottom:6px}
-  .pv .pv-tri-text{font-size:13px;line-height:1.65;margin:0;color:#333}
+  .pv .pv-tri{background:var(--surface-2);border-radius:6px;padding:14px 16px}
+  .pv .pv-tri-label{font-size:11px;font-weight:bold;color:var(--link);display:block;margin-bottom:6px}
+  .pv .pv-tri-text{font-size:13px;line-height:1.65;margin:0;color:var(--text)}
   .pv .pv-phase{display:inline-flex;align-items:center;gap:6px;margin-bottom:16px}
-  .pv .pv-phase-tag{background:#e8f0fe;color:#1a56bb;border-radius:3px;padding:2px 8px;font-size:12px}
-  .pv .pv-phase-unconf{background:#fff3cd;color:#856404;border-radius:3px;padding:2px 6px;font-size:11px}
+  .pv .pv-phase-tag{background:var(--mark-bg);color:var(--link);border-radius:3px;padding:2px 8px;font-size:12px}
+  .pv .pv-phase-unconf{background:var(--warn-bg);color:var(--warn-text);border-radius:3px;padding:2px 6px;font-size:11px}
 </style>
 <script>
 /* ══ PoXProfileView — ProfileView 共通描画（指示書37 段階2）═══════════════
@@ -147,7 +144,7 @@ window.PoXProfileView = (function(){
     if (pv.handle) return "";
     return '<div class="pv-dn" id="handleBox">'
       + '<label for="handleInput" class="pv-dn-label">ハンドル（@の後ろ・英小文字・数字・_ の 3〜30 字）</label>'
-      + '<p class="pv-dn-note" style="color:#8a4a00">ハンドルは<b>後から変えられません</b>。実名を入れると、ずっとその名前で表示されます。'
+      + '<p class="pv-dn-note" style="color:var(--warn-text)">ハンドルは<b>後から変えられません</b>。実名を入れると、ずっとその名前で表示されます。'
       +   'プロフィールの URL（/u/ハンドル）にもなります。</p>'
       + '<div class="pv-dn-row">'
       +   '<input id="handleInput" type="text" maxlength="31" placeholder="例: alice_2025" autocomplete="off">'

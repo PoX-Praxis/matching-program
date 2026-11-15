@@ -4,29 +4,29 @@
 <style>
   /* h1 は共通規格（_base.html §5）に委譲。カード内 h3・モーダル h2 は各スコープを維持。 */
   .community-card {
-    border: 1px solid #ddd; border-radius: var(--radius); padding: 20px; margin: 12px 0;
+    border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 20px; margin: 12px 0;
     display: flex; justify-content: space-between; align-items: flex-start;
   }
   .community-card h3 { margin: 0 0 4px; font-size: 1rem; }
-  .community-card p { margin: 0; font-size: 13px; color: #555; }
-  .card-meta { font-size: 12px; color: #888; margin-top: 6px; }
+  .community-card p { margin: 0; font-size: 13px; color: var(--text-sub); }
+  .card-meta { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
   .btn { display: inline-flex; align-items: center; justify-content: center; height: var(--ctrl-h); padding: 0 18px; cursor: pointer; border: none; border-radius: var(--radius); font-size: 14px; }
-  .btn-primary { background: #1a3a5c; color: white; }
-  .btn-outline { background: white; color: #1a3a5c; border: 1px solid #1a3a5c; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); }
+  .btn-outline { background: var(--surface); color: var(--link); border: 1px solid var(--accent); }
   /* モーダル */
   .modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0;
-                   background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; }
+                   background:var(--overlay); z-index:100; align-items:center; justify-content:center; }
   .modal-overlay.open { display:flex; }
-  .modal { background:white; border-radius:8px; padding:24px; width:400px; max-width:90vw; }
+  .modal { background:var(--surface); border-radius:8px; padding:24px; width:400px; max-width:90vw; }
   .modal h2 { margin:0 0 16px; font-size:1.1rem; }
   label { display:block; font-size:13px; font-weight:bold; margin-top:12px; }
   input[type=text], textarea {
     width:100%; box-sizing:border-box; padding:6px 10px; font-size:13px;
-    border:1px solid #ccc; border-radius:4px; margin-top:4px;
+    border:1px solid var(--line-strong); border-radius:4px; margin-top:4px;
   }
   textarea { height:80px; }
   .modal-actions { margin-top:20px; display:flex; gap:8px; justify-content:flex-end; }
-  #notice { font-size:13px; margin-top:6px; color:#c00; }
+  #notice { font-size:13px; margin-top:6px; color:var(--error-text); }
 </style>
 {% endblock %}
 {% block content %}
@@ -36,9 +36,9 @@
   <button class="btn btn-primary" onclick="openModal()">+ 新規作成</button>
 </div>
 <!-- 未ログイン時の注記（指示書37 §4）。ボタンは活性のまま・押下でログイン導線へ。 -->
-<p id="loginNote" style="display:none;font-size:13px;color:#888;margin:4px 0 0">コミュニティの作成にはログインが必要です。</p>
+<p id="loginNote" style="display:none;font-size:13px;color:var(--text-muted);margin:4px 0 0">コミュニティの作成にはログインが必要です。</p>
 
-<div id="list"><p style="color:#888">読み込み中です</p></div>
+<div id="list"><p style="color:var(--text-muted)">読み込み中です</p></div>
 <div id="notice"></div>
 
 <!-- 作成モーダル -->
@@ -64,13 +64,13 @@ async function loadCommunities() {
   const data = await res.json();
   const el = document.getElementById("list");
   if (!data.length) {
-    el.innerHTML = '<p style="color:#aaa">まだコミュニティはありません。最初に作成しましょう！</p>'; return;
+    el.innerHTML = '<p style="color:var(--text-muted)">まだコミュニティはありません。最初に作成しましょう！</p>'; return;
   }
   el.innerHTML = data.map(c => {
     const href = `/community/${encodeURIComponent(c.id)}`;
     return `<div class="community-card">
       <div style="flex:1">
-        <h3><a href="${href}" style="text-decoration:none;color:#1a3a5c">${escHtml(c.name)}</a></h3>
+        <h3><a href="${href}" style="text-decoration:none;color:var(--link)">${escHtml(c.name)}</a></h3>
         <p class="clamp-2">${escHtml(c.description || "")}</p>
         <div class="card-meta">メンバー: ${c.member_count}人 &nbsp; 作成者: ${escHtml(c.founder)}</div>
       </div>

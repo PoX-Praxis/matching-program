@@ -4,6 +4,7 @@
 （さかのぼらない）。受信箱では、申し出た本人が相手に向けて開示したものとして閾値によらず出す。判定は変えない。
 """
 import hashlib
+import re
 import json
 import os
 import sys
@@ -32,7 +33,8 @@ C_OK_OFFER = "まだ形になっていない仕組みを試作として形にす
 U_V5_OFFER = "仕組みを試作として形にする立場で関われる。"
 
 # 改定前の privacy.html（main c435d8f）の sha256。§1-1 の 3 か所と最終更新の日付以外を変えていないことの確かめに使う。
-PRIVACY_BEFORE_SHA256 = "5205815cb9052e2259f13b1b0f4c11d5a5ea17468c67c590b7e0a2e6ed6a42ce"
+# 指示書75 で色を名前（var(--…)）に置き換えたので、<style> の中（色）を除いた本文で比べる（文言の確かめは変わらない）
+PRIVACY_BEFORE_SHA256 = "2e6059555953b51ae050c4335742e95fe46f047844cf3b9cf1c1e56d1a69c72c"
 POLICY_EDITS = [
     ("最終更新：2026年9月", "最終更新：2026年10月"),
     ("あなたが選んだ AI が生成する情報</strong>：必要像。",
@@ -61,6 +63,7 @@ def test_t310_policy_three_places_only():
     before = now
     for old, new in POLICY_EDITS:
         before = before.replace(new, old)
+    before = re.sub(r"<style>.*?</style>", "", before, count=1, flags=re.S)             # 色（CSS）は指示書75 で名前に
     assert hashlib.sha256(before.encode("utf-8")).hexdigest() == PRIVACY_BEFORE_SHA256   # ほかは 1 字も変わらない
 
 

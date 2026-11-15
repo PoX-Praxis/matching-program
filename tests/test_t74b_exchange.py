@@ -256,9 +256,11 @@ def test_t480_detail_sides_in_separate_boxes(xs):
         assert nodes.index(foots[0]) > max(nodes.index(s) for s in sides)                     # 枠の下
     css = open(os.path.join(ROOT, "templates", "_explanation.html"), encoding="utf-8").read()
     assert ".ex-side + .ex-side" not in css                                                    # 側の間の点線の区切りはやめた（画面1 の ⑥ の線はそのまま）
-    rev = re.search(r"\.ex-side-rev > \.ex-side-h \{ background: (#[0-9a-f]+)", css).group(1)
-    main = re.search(r"\.ex-side-main > \.ex-side-h \{ background: (#[0-9a-f]+)", css).group(1)
-    assert rev != main                                                                         # 帯の色を変える（見出しの文も出す）
+    rev = re.search(r"\.ex-side-rev > \.ex-side-h \{ background: var\((--[a-z-]+)\)", css).group(1)
+    main = re.search(r"\.ex-side-main > \.ex-side-h \{ background: var\((--[a-z-]+)\)", css).group(1)
+    theme = open(os.path.join(ROOT, "templates", "_theme.html"), encoding="utf-8").read()     # 色の名前（指示書75）
+    val = lambda n: re.search(re.escape(n) + r":\s*([^;]+);", theme).group(1)                 # noqa: E731
+    assert rev != main and val(rev) != val(main)                                               # 帯の色を変える（見出しの文も出す）
     assert ".ex-card[data-layout] { border: none" in css                                       # 画面1（data-layout が無い）は変えない
     v = _card("me", "c_z") if False else None                                                  # noqa: F841（画面1 は data-layout を持たない）
     from test_t68_screens import _cases

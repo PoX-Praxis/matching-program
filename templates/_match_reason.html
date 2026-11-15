@@ -4,32 +4,32 @@
     - 申し出の文は、受けた本人にだけサーバーが返す（GET /api/my/offers）。 -#}
 <style>
   .mr-axis { font-size: 12px; font-weight: bold; }
-  .mr-axis.will { color: #1a56bb; } .mr-axis.fill { color: #1a6a3a; } .mr-axis.mutual { color: #7a4a1a; }
-  .mr-line { font-size: 13px; color: #333; line-height: 1.6; margin-top: 2px; }
-  .mr-line .mr-k { font-size: 12px; color: #555; }
-  .mr-line .mr-arrow { color: #8a96a8; padding-left: 1em; line-height: 1.2; }
+  .mr-axis.will { color: var(--link); } .mr-axis.fill { color: var(--ok-text); } .mr-axis.mutual { color: var(--warn-text); }
+  .mr-line { font-size: 13px; color: var(--text); line-height: 1.6; margin-top: 2px; }
+  .mr-line .mr-k { font-size: 12px; color: var(--text-sub); }
+  .mr-line .mr-arrow { color: var(--text-muted); padding-left: 1em; line-height: 1.2; }
   .mr-line + .mr-line { margin-top: 8px; }
-  .mr-takes { display: block; font-size: 11.5px; color: #7a4a1a; }
-  .mr-note { font-size: 11.5px; color: #888; margin-top: 4px; }
-  .mr-more { display: inline; font-size: 12px; color: #555; }
-  .mr-more > summary { display: inline; cursor: pointer; color: #1a3a5c; margin-left: 4px; white-space: nowrap; }
+  .mr-takes { display: block; font-size: 11.5px; color: var(--warn-text); }
+  .mr-note { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+  .mr-more { display: inline; font-size: 12px; color: var(--text-sub); }
+  .mr-more > summary { display: inline; cursor: pointer; color: var(--link); margin-left: 4px; white-space: nowrap; }
   .mr-more[open] { display: block; white-space: pre-wrap; padding-left: 1em; }
-  .mr-offer { font-size: 12.5px; color: #444; margin-top: 4px; white-space: pre-wrap;
-              border-left: 3px solid #d5dae1; padding-left: 8px; }
-  .mr-offer .k { display: block; font-size: 11px; color: #888; }
+  .mr-offer { font-size: 12.5px; color: var(--text); margin-top: 4px; white-space: pre-wrap;
+              border-left: 3px solid var(--line-strong); padding-left: 8px; }
+  .mr-offer .k { display: block; font-size: 11px; color: var(--text-muted); }
   /* 受信箱のカード（指示書63 段階1 §4-2）: 方向ごとの節。矢印・表組み・バッジを使わず、ラベルで対を示す。 */
   .ap-sec { margin-top: 12px; }
-  .ap-sec-h { font-size: 13px; font-weight: 700; color: #1f3a5f; margin-bottom: 4px; }
-  .ap-row { font-size: 13.5px; color: #333; line-height: 1.7; padding-left: 1em; }
-  .ap-row .ap-k { font-size: 12px; color: #555; }
-  .ap-must { display: inline-block; font-size: 11px; font-weight: 700; color: #1f3a5f; border: 1px solid #b9c6d6;
+  .ap-sec-h { font-size: 13px; font-weight: 700; color: var(--link); margin-bottom: 4px; }
+  .ap-row { font-size: 13.5px; color: var(--text); line-height: 1.7; padding-left: 1em; }
+  .ap-row .ap-k { font-size: 12px; color: var(--text-sub); }
+  .ap-must { display: inline-block; font-size: 11px; font-weight: 700; color: var(--link); border: 1px solid var(--line-strong);
              border-radius: 3px; padding: 0 5px; margin-left: 6px; line-height: 1.6; }
-  .ap-sub { font-size: 12px; color: #666; }
-  .ap-note { font-size: 11.5px; color: #888; padding-left: 1em; }
-  .ap-basis { font-size: 11.5px; color: #888; margin-top: 10px; }
-  .ap-none { font-size: 13px; color: #666; margin: 8px 0 0; }
+  .ap-sub { font-size: 12px; color: var(--text-sub); }
+  .ap-note { font-size: 11.5px; color: var(--text-muted); padding-left: 1em; }
+  .ap-basis { font-size: 11.5px; color: var(--text-muted); margin-top: 10px; }
+  .ap-none { font-size: 13px; color: var(--text-sub); margin: 8px 0 0; }
   .mr-compose textarea { width: 100%; box-sizing: border-box; font-size: 13px; margin-top: 4px; }
-  .mr-compose label { font-size: 12px; color: #555; }
+  .mr-compose label { font-size: 12px; color: var(--text-sub); }
 </style>
 <script>
 window.PoXReason = (function () {

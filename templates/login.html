@@ -4,24 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ログイン — PoX</title>
+{% include "_theme.html" %}
 <style>
-  body{margin:0;color:#14161a;
+  body{margin:0;color:var(--text);
        font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif}
   .lg{max-width:460px;margin:0 auto;padding:8px 20px 60px}
-  .lg h1{font-size:20px;font-weight:700;margin:36px 0 6px;color:#1f3a5f}
-  .lg p{font-size:14px;line-height:1.9;color:#454b54;margin:0 0 18px}
-  .lg label{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;color:#6b7280;margin:0 0 6px}
-  .lg input[type=email]{width:100%;box-sizing:border-box;border:1px solid #cfd3d9;border-radius:5px;
+  .lg h1{font-size:20px;font-weight:700;margin:36px 0 6px;color:var(--link)}
+  .lg p{font-size:14px;line-height:1.9;color:var(--text-sub);margin:0 0 18px}
+  .lg label{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--text-sub);margin:0 0 6px}
+  .lg input[type=email]{width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:5px;
        padding:12px;font:inherit;font-size:15px}
-  .lg button{margin-top:14px;border:1px solid #1f3a5f;background:#1f3a5f;color:#fff;
+  .lg button{margin-top:14px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);
        border-radius:6px;font-size:15px;font-weight:700;padding:12px 22px;cursor:pointer}
-  .lg .err{background:#fbe9ea;color:#8c2f34;font-size:13px;line-height:1.7;
+  .lg .err{background:var(--error-bg);color:var(--error-text);font-size:13px;line-height:1.7;
        padding:11px 13px;border-radius:4px;margin:0 0 18px}
   .lg .msg{font-size:14px;line-height:1.8;margin-top:16px}
-  .lg .msg.ok{color:#1a6a3a}
-  .lg .dev{font-size:12px;word-break:break-all;background:#eef2ff;border-radius:5px;
+  .lg .msg.ok{color:var(--ok-text)}
+  .lg .dev{font-size:12px;word-break:break-all;background:var(--mark-bg);border-radius:5px;
        padding:10px 12px;margin-top:10px}
-  .lg .note{font-size:12px;color:#8a9099;line-height:1.8;margin-top:24px}
+  .lg .note{font-size:12px;color:var(--text-muted);line-height:1.8;margin-top:24px}
 </style>
 </head>
 <body>

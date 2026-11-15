@@ -2,10 +2,10 @@
 {% block title %}マイページ — PoX{% endblock %}
 {% block head %}
 <style>
-  body { color: #14161a; }
-  a.back { font-size: 13px; color: #555; text-decoration: none; display:inline-block; margin:16px 0 0 18px; }
+  body { color: var(--text); }
+  a.back { font-size: 13px; color: var(--text-sub); text-decoration: none; display:inline-block; margin:16px 0 0 18px; }
   a.back:hover { text-decoration: underline; }
-  #loading { color: #888; margin: 40px 18px; }
+  #loading { color: var(--text-muted); margin: 40px 18px; }
 
   /* ══════════════════════════════════════════════════════════════
      マイページ固有セクション（ProfileView 本体はコンポーネント側）。
@@ -13,56 +13,54 @@
      幅は .mypage が var(--prose)=720px を与える（公開ビューの .l-prose と一致）。
      ══════════════════════════════════════════════════════════════ */
   .mypage{
-    --ink:#14161a; --ink2:#454b54; --label:#6b7280; --rule:#e6e8ec;
-    --navy:#1f3a5f; --step-ink:#2f5d3f;
     max-width:var(--prose);
     margin-inline:auto;
     padding:24px var(--pad) 64px;   /* 公開ビュー(.l-prose)と縦paddingを一致（段階7） */
-    color:var(--ink);
+    color:var(--text);
     font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
   }
 
   .mypage .mp-err{
-    background:#fbe9ea;color:#8c2f34;font-size:13px;line-height:1.7;
+    background:var(--error-bg);color:var(--error-text);font-size:13px;line-height:1.7;
     padding:11px 13px;border-radius:4px;margin:0 0 20px;
   }
 
   /* ---------- 接続（カード） ---------- */
-  .mypage .mp-card{border:1px solid var(--rule);border-radius:6px;padding:14px;margin-bottom:10px}
+  .mypage .mp-card{border:1px solid var(--line);border-radius:6px;padding:14px;margin-bottom:10px}
   .mypage .mp-card .row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:3px 0}
-  .mypage .mp-card .row .k{color:var(--label);font-size:11.5px;font-weight:700;letter-spacing:.06em;flex:none}
+  .mypage .mp-card .row .k{color:var(--text-sub);font-size:11.5px;font-weight:700;letter-spacing:.06em;flex:none}
 
   /* 軌跡の描画は _trajectory.html（版ごとのツリー・指示書50 v3） */
-  .mypage .mp-empty{font-size:13.5px;line-height:1.8;color:#8a9099;padding:18px 0}
+  .mypage .mp-empty{font-size:13.5px;line-height:1.8;color:var(--text-muted);padding:18px 0}
 
   /* ---------- 照合の準備状態（指示書08・枠のみ） ---------- */
   .mypage .v4status{padding:10px 14px;border-radius:6px;font-size:13px;margin:0 0 20px}
-  .mypage .v4status.ok   {background:#e7f5ec;color:#1a6a3a}
-  .mypage .v4status.info {background:#eef2ff;color:#33417a}
-  .mypage .v4status.warn {background:#fff3cd;color:#856404}
-  .mypage .v4status.err  {background:#f8d7da;color:#721c24}
+  .mypage .v4status.ok   {background:var(--ok-bg);color:var(--ok-text)}
+  .mypage .v4status.info {background:var(--mark-bg);color:var(--mark-text)}
+  .mypage .v4status.warn {background:var(--warn-bg);color:var(--warn-text)}
+  .mypage .v4status.err  {background:var(--error-bg);color:var(--error-text)}
   /* 欠かせない要素の切り替え（指示書65-B 追補 §1・65B-7） */
   .mypage .mu-purpose{margin:0 0 16px}
-  .mypage .mu-ptitle{font-size:13.5px;font-weight:700;color:var(--navy);margin:0 0 6px}
-  .mypage .mu-need{padding:8px 0;border-top:1px solid #eef0f3;font-size:13.5px;line-height:1.6}
+  .mypage .mu-ptitle{font-size:13.5px;font-weight:700;color:var(--link);margin:0 0 6px}
+  .mypage .mu-need{padding:8px 0;border-top:1px solid var(--line);font-size:13.5px;line-height:1.6}
   .mypage .mu-must,.mypage .mu-opt{display:inline-block;font-size:11px;font-weight:700;border-radius:3px;padding:0 5px;margin-right:6px}
-  .mypage .mu-must{color:#1f3a5f;border:1px solid #b9c6d6}
-  .mypage .mu-opt{color:#666;border:1px solid #ddd}
-  .mypage .v4status .restructure{margin-left:8px;font-weight:700;color:var(--navy);white-space:nowrap;text-decoration:none}
+  .mypage .mu-must{color:var(--link);border:1px solid var(--line-strong)}
+  .mypage .mu-opt{color:var(--text-sub);border:1px solid var(--line-strong)}
+  .mypage .v4status .restructure{margin-left:8px;font-weight:700;color:var(--link);white-space:nowrap;text-decoration:none}
 
   /* ---------- 接続状態バッジ ---------- */
-  .mypage .badge-ok     {background:#d4edda;color:#155724;border-radius:3px;padding:2px 8px;font-size:12px}
-  .mypage .badge-wait   {background:#fff3cd;color:#856404;border-radius:3px;padding:2px 8px;font-size:12px}
+  .mypage .badge-ok     {background:var(--ok-bg);color:var(--ok-text);border-radius:3px;padding:2px 8px;font-size:12px}
+  .mypage .badge-wait   {background:var(--warn-bg);color:var(--warn-text);border-radius:3px;padding:2px 8px;font-size:12px}
   /* 承認待ちは 1 行だけ（承認は受信箱だけ。指示書63 段階1 §4-3） */
-  .mypage .mp-pending{display:block;border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:12px 14px;
-    margin-bottom:10px;font-size:14px;color:#5a4410;text-decoration:none}
+  .mypage .mp-pending{display:block;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px;padding:12px 14px;
+    margin-bottom:10px;font-size:14px;color:var(--warn-text);text-decoration:none}
   .mypage .mp-pending .n{font-weight:700;margin-right:10px}
-  .mypage .mp-pending .go{display:block;text-align:right;margin-top:4px;font-size:12.5px;color:#1f3a5f}
-  .mypage .mp-declined{font-size:13px;color:#454b54}
+  .mypage .mp-pending .go{display:block;text-align:right;margin-top:4px;font-size:12.5px;color:var(--link)}
+  .mypage .mp-declined{font-size:13px;color:var(--text-sub)}
   .mypage #notice{margin:0 0 10px;font-size:13px}
-  .mypage .ok  { color:#1a8a1a; font-weight:bold; }
-  .mypage .err { color:#c00; }
-  .mypage .muted { color:#8a9099; font-size:12.5px; }
+  .mypage .ok  { color:var(--ok-text); font-weight:bold; }
+  .mypage .err { color:var(--error-text); }
+  .mypage .muted { color:var(--text-muted); font-size:12.5px; }
 </style>
 {% include "_profile_view.html" %}
 {% include "_trajectory.html" %}
@@ -181,7 +179,7 @@ async function init() {
     if (profileRes.status === 401) { PoX.loginRedirect(); return; }
     if (!profileRes.ok) {
       document.getElementById("loading").innerHTML =
-        `<span style="color:#c00">プロフィールが見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
+        `<span style="color:var(--error-text)">プロフィールが見つかりません。<a href="/">トップ</a>に戻って登録してください。</span>`;
       return;
     }
     const pv = await profileRes.json();
@@ -223,7 +221,7 @@ async function init() {
     loadTimeline(myId, myId);  // 軌跡（本人ビュー）
   } catch (e) {
     document.getElementById("loading").innerHTML =
-      `<span style="color:#c00">読み込みに失敗しました（${escHtml(String(e && e.message || e))}）。`
+      `<span style="color:var(--error-text)">読み込みに失敗しました（${escHtml(String(e && e.message || e))}）。`
       + `<a href="#" onclick="location.reload();return false">再読み込み</a></span>`;
   }
 }
@@ -397,7 +395,7 @@ function renderConnections(vessels, myId, declined) {
       badge = `<span class="badge-ok">✅ 接続成立 ${(j.established_at || "").slice(0, 10)}</span>`;
     } else if (iApproved && !theyApproved) {
       badge = `<span class="badge-wait">⏳ 申請済み（${escHtml(oname)} の承認待ち）</span>`
-            + `<span class="mp-new-exchange" data-other="${escHtml(other)}" style="display:none;margin-left:8px;font-size:12px;color:#1a3a5c">新しいやり取りがあります</span>`;
+            + `<span class="mp-new-exchange" data-other="${escHtml(other)}" style="display:none;margin-left:8px;font-size:12px;color:var(--link)">新しいやり取りがあります</span>`;
       action = `<button class="pv-btn" onclick="withdrawReq('${eo}', this)">取り下げる</button>`;
     } else {
       badge = `<span class="badge-wait">⏳ 処理中</span>`;
@@ -406,7 +404,7 @@ function renderConnections(vessels, myId, declined) {
     const dmHref = `/conversation?me=${encodeURIComponent(myId)}&with=${encodeURIComponent(other)}`;
     const otherCell = other !== "-"
       ? `<a href="/profile/${encodeURIComponent(other)}">${escHtml(oname)}</a>
-         ${v.is_connected && !j.closed_at ? `<a href="${dmHref}" style="margin-left:10px;font-size:12px;color:#1f3a5f">DM →</a>` : ""}`
+         ${v.is_connected && !j.closed_at ? `<a href="${dmHref}" style="margin-left:10px;font-size:12px;color:var(--link)">DM →</a>` : ""}`
       : "-";
 
     cards.push(`<div class="mp-card">

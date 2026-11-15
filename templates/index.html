@@ -4,23 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PoX 照合</title>
+{% include "_theme.html" %}
 <style>
-  body { font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #222; }
+  body { font-family: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: var(--text); }
   h1  { font-size: 1.4rem; margin-bottom: 16px; }
-  h2  { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 36px; }
+  h2  { font-size: 1.05rem; border-bottom: 1px solid var(--line-strong); padding-bottom: 4px; margin-top: 36px; }
   textarea { width: 100%; height: 180px; font-family: monospace; font-size: 12px; box-sizing: border-box; }
   button    { padding: 6px 18px; cursor: pointer; margin-top: 6px; }
   button.sm { padding: 3px 10px; font-size: 12px; margin: 0; }
   table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 13px; }
-  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
-  th { background: #f5f5f5; white-space: nowrap; }
+  th, td { border: 1px solid var(--line-strong); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--surface-2); white-space: nowrap; }
   td.center { text-align: center; }
-  .reason { font-size: 11px; color: #555; }
-  .ok  { color: #1a8a1a; font-weight: bold; }
-  .err { color: #c00; }
-  #myIdBar { background: #eef2ff; padding: 10px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; }
-  .badge-ok   { background: #d4edda; color: #155724; border-radius: 3px; padding: 2px 8px; font-size: 11px; }
-  .badge-wait { background: #fff3cd; color: #856404; border-radius: 3px; padding: 2px 8px; font-size: 11px; }
+  .reason { font-size: 11px; color: var(--text-sub); }
+  .ok  { color: var(--ok-text); font-weight: bold; }
+  .err { color: var(--error-text); }
+  #myIdBar { background: var(--mark-bg); padding: 10px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; }
+  .badge-ok   { background: var(--ok-bg); color: var(--ok-text); border-radius: 3px; padding: 2px 8px; font-size: 11px; }
+  .badge-wait { background: var(--warn-bg); color: var(--warn-text); border-radius: 3px; padding: 2px 8px; font-size: 11px; }
   #postMsg, #approveMsg { min-height: 1.2em; margin-top: 6px; }
 </style>
 </head>
@@ -35,7 +36,7 @@
     <option value="">-- 選択してください --</option>
   </select>
   <button onclick="openMyPage()" style="margin-left:10px;padding:4px 14px;font-size:13px">マイページ →</button>
-  <span style="color:#888;margin-left:10px;font-size:12px">（承認ボタンを使う前に選択してください）</span>
+  <span style="color:var(--text-muted);margin-left:10px;font-size:12px">（承認ボタンを使う前に選択してください）</span>
 </div>
 
 <!-- ── 1. 登録 ── -->
@@ -43,7 +44,7 @@
 <p style="margin:4px 0 10px;font-size:14px;">
   はじめての方は自分の語りを AI に渡して、プロフィールを構造化して登録できます。
 </p>
-<a href="/register" style="display:inline-block;padding:8px 22px;background:#1a3a5c;color:white;border-radius:4px;text-decoration:none;font-size:14px">プロフィールを登録する →</a>
+<a href="/register" style="display:inline-block;padding:8px 22px;background:var(--accent);color:var(--on-accent);border-radius:4px;text-decoration:none;font-size:14px">プロフィールを登録する →</a>
 
 <!-- ── 2. 一覧 ── -->
 <h2>2. 登録済み seeker 一覧</h2>
@@ -55,7 +56,7 @@
 
 <!-- ── 3. 照合結果 ── -->
 <h2>3. 照合結果</h2>
-<div id="matchResult" style="color:#888;font-size:13px;">（一覧から「照合実行」を押すと表示されます）</div>
+<div id="matchResult" style="color:var(--text-muted);font-size:13px;">（一覧から「照合実行」を押すと表示されます）</div>
 <div id="approveMsg"></div>
 
 <!-- ── 4. 台帳 ── -->
@@ -154,7 +155,7 @@ async function loadSeekers() {
           <option value="balanced">バランス（両方）</option>
         </select>
         <button class="sm" onclick="runMatch('${sid}')">照合実行</button>
-        <button class="sm" onclick="runMatchV4('${sid}')" style="background:#2a7a4a">照合</button>
+        <button class="sm" onclick="runMatchV4('${sid}')" style="background:var(--ok-text)">照合</button>
       </td>
     </tr>`;
   }).join("");
@@ -165,7 +166,7 @@ async function runMatch(seekerId) {
   const el   = document.getElementById("matchResult");
   const want = document.getElementById("want_" + seekerId).value;
   document.getElementById("approveMsg").textContent = "";
-  el.innerHTML = "<span style='color:#888'>計算中...</span>";
+  el.innerHTML = "<span style='color:var(--text-muted)'>計算中...</span>";
 
   const res  = await fetch("/match", {
     method: "POST", headers: {"Content-Type": "application/json"},
@@ -201,7 +202,7 @@ async function runMatch(seekerId) {
   }).join("");
 
   const demoBanner = data.demo_mode
-    ? `<div style="background:#fff3cd;color:#856404;padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0">
+    ? `<div style="background:var(--warn-bg);color:var(--warn-text);padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0">
          ⚠️ デモモード（ANTHROPIC_API_KEY 未設定）。スコアは固定ロジックの仮値です。実LLM判定にはキーを設定してください。
        </div>` : "";
 
@@ -223,7 +224,7 @@ async function runMatch(seekerId) {
 async function runMatchV4(seekerId) {
   const el = document.getElementById("matchResult");
   document.getElementById("approveMsg").textContent = "";
-  el.innerHTML = "<span style='color:#888'>照合中…（初回はプロフィールのベクトル化で時間がかかります）</span>";
+  el.innerHTML = "<span style='color:var(--text-muted)'>照合中…（初回はプロフィールのベクトル化で時間がかかります）</span>";
 
   let data;
   try {
@@ -268,7 +269,7 @@ async function runMatchV4(seekerId) {
     </tr>`;
   }).join("");
 
-  const banner = `<div style="background:#e7f5ec;color:#1a6a3a;padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0">
+  const banner = `<div style="background:var(--ok-bg);color:var(--ok-text);padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0">
     🧪 照合（意味ベクトル・実験）。プール ${data.pool_size ?? "-"} 人。a=共鳴 / b=補完（必要像↔現状）/ c=意志相補。律速軸＝最も足を引っぱった経路。
   </div>`;
 
@@ -278,7 +279,7 @@ async function runMatchV4(seekerId) {
         <tr><th>順</th><th>候補 id</th><th>総合</th><th>律速軸</th><th>a</th><th>b</th><th>c</th><th>承認</th></tr>
       </thead>
       <tbody>${rows}</tbody>
-    </table>` : "<p style='color:#888;font-size:13px'>v4 候補がまだいません（この人以外に v4 ベクトル化済みの登録が必要です）。</p>");
+    </table>` : "<p style='color:var(--text-muted);font-size:13px'>v4 候補がまだいません（この人以外に v4 ベクトル化済みの登録が必要です）。</p>");
 }
 
 /* ── 承認 ── */

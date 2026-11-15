@@ -3,21 +3,21 @@
 {% block head %}
 <style>
   /* h1/h2 は共通規格（_base.html §5）に委譲。下線見出しは廃止。 */
-  a { color: #1a3a5c; }
-  .sub { font-size: 13px; color: #666; margin: 4px 0 14px; }
+  a { color: var(--link); }
+  .sub { font-size: 13px; color: var(--text-sub); margin: 4px 0 14px; }
 
   .toolbar { display: flex; align-items: center; gap: 10px; margin: 10px 0 14px; flex-wrap: wrap; }
-  .toolbar label { font-size: 12px; color: #555; }
-  #nameFilter { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
+  .toolbar label { font-size: 12px; color: var(--text-sub); }
+  #nameFilter { font-size: 13px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 4px; }
 
   /* 登録者一覧（指示書70 §4-5）: 表示名（@ハンドル）と、目的の見出し（向かう先）だけ。v4 の人は一行紹介だけ */
-  .dir-row { padding: 10px 4px; box-sizing: border-box; border-bottom: 1px solid #eee; font-size: 13px; }
+  .dir-row { padding: 10px 4px; box-sizing: border-box; border-bottom: 1px solid var(--line); font-size: 13px; }
   .dir-row .dname { text-decoration: none; font-weight: bold; }
-  .dir-row .dir-purposes { list-style: none; margin: 4px 0 0; padding: 0; color: #333; line-height: 1.7; }
-  .dir-row .dir-purposes li::before { content: "■ "; color: #8a96a6; font-size: 11px; }
-  .dir-row .one { color: #333; margin-top: 4px; }
-  .inbox-note { font-size: 12.5px; color: #555; margin: 6px 0 0; }
-  .muted { color: #888; font-size: 13px; }
+  .dir-row .dir-purposes { list-style: none; margin: 4px 0 0; padding: 0; color: var(--text); line-height: 1.7; }
+  .dir-row .dir-purposes li::before { content: "■ "; color: var(--text-muted); font-size: 11px; }
+  .dir-row .one { color: var(--text); margin-top: 4px; }
+  .inbox-note { font-size: 12.5px; color: var(--text-sub); margin: 6px 0 0; }
+  .muted { color: var(--text-muted); font-size: 13px; }
 </style>
 {% include "_explanation.html" %}
 {% endblock %}

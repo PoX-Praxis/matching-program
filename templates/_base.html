@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}PoX{% endblock %}</title>
+{% include "_theme.html" %}
 <style>
   /* ── 共通レイアウト基盤（指示書37 段階1）──────────────────────────────────
      幅はページ側で指定させず、ここ（レイアウト）で強制する。コンテナは2種のみ:
@@ -16,7 +17,6 @@
     --lh: 1.9;
     --radius: 6px;      /* 角丸（§6 部品トークン） */
     --ctrl-h: 40px;     /* ボタン・入力欄の高さ（§6） */
-    --ring: #1f3a5f;    /* フォーカスリング1色（§6） */
   }
   /* フォーカスリングは全画面で1色に統一（§6・段階7）。 */
   :focus-visible{ outline:2px solid var(--ring); outline-offset:2px; }
@@ -25,7 +25,7 @@
   html, body{ max-width:100%; overflow-x:hidden; }
   body{
     font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
-    margin:0; color:#222; line-height:1.7;
+    margin:0; color:var(--text); background:var(--bg); line-height:1.7;
   }
   img{ max-width:100%; height:auto; }
   .l-prose{ width:min(100% - 2*var(--pad), var(--prose)); margin-inline:auto; padding:24px var(--pad) 64px; box-sizing:border-box; }
@@ -39,7 +39,7 @@
   .l-prose h2, .l-wide h2{ font-size:20px; font-weight:700; line-height:1.5; letter-spacing:.02em; margin:32px 0 12px; padding:0; border:0; }
   .l-prose h3, .l-wide h3{ font-size:15px; font-weight:700; line-height:1.6; margin:20px 0 8px; }
   /* 英字小ラベル（見出しに併記する小キャップス）。全画面共通。 */
-  .en{ font-size:12px; font-weight:600; letter-spacing:.08em; color:#9aa0a8; margin-left:8px; }
+  .en{ font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--text-muted); margin-left:8px; }
 </style>
 {% block head %}{% endblock %}
 </head>

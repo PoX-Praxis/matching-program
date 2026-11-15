@@ -10,18 +10,10 @@
   body{margin:0}
 
   .about{
-    --ink:#14161a;
-    --ink2:#454b54;
-    --sub:#1f3a5f;
-    --label:#6b7280;
-    --rule:#e6e8ec;
-    --accent:#1f3a5f;
-    --accent-bg:#f5f8fa;
-
     max-width:var(--prose);
     margin-inline:auto;
     padding:8px var(--pad) 72px;
-    color:var(--ink);
+    color:var(--text);
     font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
     line-height:1.9;
   }
@@ -30,9 +22,9 @@
   .about .ab-hero{padding:40px 0 8px}
   .about .ab-lede{
     font-size:26px;font-weight:700;line-height:1.5;letter-spacing:.01em;
-    margin:0 0 24px;color:var(--ink);
+    margin:0 0 24px;color:var(--text);
   }
-  .about .ab-hero p{font-size:15.5px;line-height:1.95;color:var(--ink2);margin:0 0 16px}
+  .about .ab-hero p{font-size:15.5px;line-height:1.95;color:var(--text-sub);margin:0 0 16px}
 
   /* ---------- CTA ---------- */
   .about .ab-cta{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 8px}
@@ -41,14 +33,14 @@
     font-size:15px;font-weight:700;letter-spacing:.04em;
     padding:13px 26px;border-radius:6px;cursor:pointer;
   }
-  .about .ab-btn.primary{background:var(--accent);color:#fff;border:1px solid var(--accent)}
-  .about .ab-btn.ghost{background:#fff;color:var(--accent);border:1px solid #c3ccd6}
+  .about .ab-btn.primary{background:var(--accent);color:var(--on-accent);border:1px solid var(--accent)}
+  .about .ab-btn.ghost{background:var(--surface);color:var(--accent);border:1px solid var(--line-strong)}
   .about .ab-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
   /* ---------- セクション（大見出し） ---------- */
-  .about .ab-sec{margin:52px 0 0;padding-top:30px;border-top:1px solid var(--rule)}
+  .about .ab-sec{margin:52px 0 0;padding-top:30px;border-top:1px solid var(--line)}
   .about .ab-h{
-    font-size:19px;font-weight:700;letter-spacing:.02em;color:var(--sub);
+    font-size:19px;font-weight:700;letter-spacing:.02em;color:var(--link);
     line-height:1.6;margin:0 0 22px;
   }
 
@@ -56,46 +48,46 @@
   .about .ab-item{margin:0 0 26px}
   .about .ab-item:last-child{margin-bottom:0}
   .about .ab-subh{
-    font-size:16px;font-weight:700;line-height:1.7;color:var(--ink);margin:0 0 6px;
+    font-size:16px;font-weight:700;line-height:1.7;color:var(--text);margin:0 0 6px;
   }
-  .about .ab-body{font-size:15px;line-height:1.95;color:var(--ink2);margin:0}
+  .about .ab-body{font-size:15px;line-height:1.95;color:var(--text-sub);margin:0}
 
   /* 見出しなしの締め段落 */
   .about .ab-close{
-    font-size:15.5px;font-weight:600;line-height:1.95;color:var(--ink);
+    font-size:15.5px;font-weight:600;line-height:1.95;color:var(--text);
     margin:30px 0 0;padding-left:14px;border-left:3px solid var(--accent);
   }
 
   /* ---------- 箇条書き（1｜誰のためのものか） ---------- */
   .about .ab-list{list-style:none;margin:0;padding:0}
   .about .ab-list li{
-    font-size:15.5px;line-height:1.8;color:var(--ink2);
-    padding:11px 0 11px 22px;position:relative;border-bottom:1px solid #f0f2f4;
+    font-size:15.5px;line-height:1.8;color:var(--text-sub);
+    padding:11px 0 11px 22px;position:relative;border-bottom:1px solid var(--line);
   }
   .about .ab-list li:last-child{border-bottom:0}
   .about .ab-list li::before{
     content:"";position:absolute;left:3px;top:19px;
-    width:6px;height:6px;border-radius:50%;background:#b9c0c8;
+    width:6px;height:6px;border-radius:50%;background:var(--line-strong);
   }
 
   /* ---------- 使い方の番号ステップ ---------- */
   .about .ab-step{margin:0 0 22px}
   .about .ab-step:last-of-type{margin-bottom:0}
-  .about .ab-step .n{font-size:16px;font-weight:700;color:var(--ink);margin:0 0 5px}
+  .about .ab-step .n{font-size:16px;font-weight:700;color:var(--text);margin:0 0 5px}
   .about .ab-step .ab-body{font-size:15px}
   .about .ab-note{
-    font-size:13.5px;line-height:1.9;color:#6b7280;
-    background:var(--accent-bg);border-radius:6px;padding:14px 16px;margin:26px 0 0;
+    font-size:13.5px;line-height:1.9;color:var(--text-sub);
+    background:var(--surface-2);border-radius:6px;padding:14px 16px;margin:26px 0 0;
   }
 
   /* ---------- 情報開示・なぜ作ったか ---------- */
-  .about .ab-plain{font-size:15px;line-height:1.95;color:var(--ink2);margin:0 0 14px}
+  .about .ab-plain{font-size:15px;line-height:1.95;color:var(--text-sub);margin:0 0 14px}
   .about .ab-plain:last-child{margin-bottom:0}
   .about .ab-plain a{color:var(--accent);font-weight:600}
 
   /* ---------- 末尾ブロック ---------- */
-  .about .ab-final{margin-top:52px;padding-top:30px;border-top:1px solid var(--rule)}
-  .about .ab-final .ab-plain{color:#6b7280;font-size:14px;margin-top:20px}
+  .about .ab-final{margin-top:52px;padding-top:30px;border-top:1px solid var(--line)}
+  .about .ab-final .ab-plain{color:var(--text-sub);font-size:14px;margin-top:20px}
 </style>
 {% endblock %}
 {% block content %}

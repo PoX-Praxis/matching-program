@@ -4,29 +4,29 @@
     - 時間は等間隔にしない（版で刻み、日付を添える・§3-2）。
     - 因果の矢印・「なぜ」の欄を作らない。 -#}
 <style>
-  .tj-count { font-size:12.5px; color:#555; margin:4px 0 12px; }
-  .tj-ver { border-left:2px solid #d5dae1; padding:6px 0 10px 14px; margin:0 0 12px; }
-  .tj-ver:target { background:#fffbe6; }
-  .tj-vh { font-size:13px; font-weight:bold; color:#1f3a5f; }
-  .tj-vh .d { font-weight:normal; color:#888; margin-left:8px; font-size:12px; }
-  .tj-vh .src { font-weight:normal; color:#888; margin-left:6px; font-size:11.5px; }
+  .tj-count { font-size:12.5px; color:var(--text-sub); margin:4px 0 12px; }
+  .tj-ver { border-left:2px solid var(--line-strong); padding:6px 0 10px 14px; margin:0 0 12px; }
+  .tj-ver:target { background:var(--warn-bg); }
+  .tj-vh { font-size:13px; font-weight:bold; color:var(--link); }
+  .tj-vh .d { font-weight:normal; color:var(--text-muted); margin-left:8px; font-size:12px; }
+  .tj-vh .src { font-weight:normal; color:var(--text-muted); margin-left:6px; font-size:11.5px; }
   .tj-body { font-size:13px; line-height:1.7; margin:6px 0; }
-  .tj-body .k { color:#666; font-size:12px; margin-right:4px; }
-  .tj-body .tj-must { font-size:11px; font-weight:700; color:#1f3a5f; border:1px solid #b9c6d6; border-radius:3px; padding:0 5px; margin-right:6px; }
-  .tj-muted { color:#888; font-size:12.5px; }
+  .tj-body .k { color:var(--text-sub); font-size:12px; margin-right:4px; }
+  .tj-body .tj-must { font-size:11px; font-weight:700; color:var(--link); border:1px solid var(--line-strong); border-radius:3px; padding:0 5px; margin-right:6px; }
+  .tj-muted { color:var(--text-muted); font-size:12.5px; }
   .tj-br { list-style:none; margin:6px 0 0; padding:0; }
   .tj-br li { font-size:12.5px; padding:3px 0 3px 12px; position:relative; }
-  .tj-br li::before { content:"├"; position:absolute; left:0; color:#bbb; }
+  .tj-br li::before { content:"├"; position:absolute; left:0; color:var(--text-muted); }
   .tj-br li:last-child::before { content:"└"; }
   .tj-tag { display:inline-block; font-size:11px; font-weight:bold; border-radius:3px; padding:0 6px; margin-right:6px; }
-  .tj-connection, .tj-connection_ended { background:#e8f4ec; color:#1a6a3a; }
-  .tj-joined_project { background:#eef2ff; color:#33417a; }
-  .tj-joined_community { background:#f3eefb; color:#5a3a82; }
-  .tj-completed { background:#fdf3e7; color:#8a5a1a; }
-  .tj-declared { background:#eef4f7; color:#2a5a6e; }
-  .tj-br .d { color:#888; margin-left:6px; font-size:11.5px; }
-  .tj-redacted { color:#8a5a1a; font-size:11.5px; margin-left:6px; }
-  .tj-note { font-size:12px; color:#888; margin-top:10px; }
+  .tj-connection, .tj-connection_ended { background:var(--ok-bg); color:var(--ok-text); }
+  .tj-joined_project { background:var(--mark-bg); color:var(--mark-text); }
+  .tj-joined_community { background:var(--mark-bg); color:var(--mark-text); }
+  .tj-completed { background:var(--warn-bg); color:var(--warn-text); }
+  .tj-declared { background:var(--surface-2); color:var(--link); }
+  .tj-br .d { color:var(--text-muted); margin-left:6px; font-size:11.5px; }
+  .tj-redacted { color:var(--warn-text); font-size:11.5px; margin-left:6px; }
+  .tj-note { font-size:12px; color:var(--text-muted); margin-top:10px; }
 </style>
 <script>
 window.PoXTrajectory = (function(){
@@ -75,7 +75,7 @@ window.PoXTrajectory = (function(){
 
   function toggle(v, opts){
     if (!opts.owner || !opts.onToggle) return "";
-    return `<div><label style="font-size:11.5px;color:#666">
+    return `<div><label style="font-size:11.5px;color:var(--text-sub)">
       <input type="checkbox" ${v.vulnerable_hidden ? "checked" : ""} onchange="PoXTrajectory._toggle('${esc(v.snapshot_id)}', this.checked, this)">
       この時点の内容を第三者に見せない</label></div>`;
   }

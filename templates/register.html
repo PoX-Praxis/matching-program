@@ -3,50 +3,50 @@
 {% block head %}
 <style>
   /* h1/h2 は共通規格（_base.html §5）に委譲。STEP はステップ側の小見出しで担保。 */
-  .step-kicker { font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #9aa0a8; margin: 32px 0 2px; }
+  .step-kicker { font-size: 12px; font-weight: 700; letter-spacing: .1em; color: var(--text-muted); margin: 32px 0 2px; }
   h2 + p, .step-kicker + h2 { margin-top: 0; }
   p  { line-height: 1.7; font-size: 14px; }
   .why-box {
-    background: #f0f4ff; border-left: 4px solid #1a3a5c;
+    background: var(--mark-bg); border-left: 4px solid var(--accent);
     padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 20px 0;
     font-size: 14px; line-height: 1.7;
   }
   .choice { margin: 14px 0 6px; }
   .choice-label { font-weight: bold; font-size: 14px; }
-  .choice-sub { font-size: 12px; color: #777; margin-left: 4px; }
-  details.writein { margin-top: 14px; border: 1px solid #e0e0e0; border-radius: 6px; }
-  details.writein > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: #555; }
-  details.writein > summary:hover { background: #f7f7f7; border-radius: 6px; }
+  .choice-sub { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
+  details.writein { margin-top: 14px; border: 1px solid var(--line); border-radius: 6px; }
+  details.writein > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: var(--text-sub); }
+  details.writein > summary:hover { background: var(--surface-2); border-radius: 6px; }
   .writein-inner { padding: 0 14px 14px; }
   .prompt-wrap {
-    position: relative; background: #f8f9fa; border: 1px solid #ddd;
+    position: relative; background: var(--surface-2); border: 1px solid var(--line-strong);
     border-radius: 6px; padding: 16px; margin-top: 10px;
   }
   .prompt-wrap pre {
     margin: 0; font-size: 11.5px; white-space: pre-wrap; line-height: 1.6;
-    font-family: 'Courier New', monospace; color: #333; max-height: 320px; overflow-y: auto;
+    font-family: 'Courier New', monospace; color: var(--text); max-height: 320px; overflow-y: auto;
   }
   .copy-btn {
     position: absolute; top: 10px; right: 10px;
     padding: 4px 14px; font-size: 12px; cursor: pointer;
-    background: #1a3a5c; color: white; border: none; border-radius: 4px;
+    background: var(--accent); color: var(--on-accent); border: none; border-radius: 4px;
   }
-  .copy-btn:hover { background: #2a5a8c; }
+  .copy-btn:hover { background: var(--accent-hover); }
   textarea {
     width: 100%; height: 220px; font-family: monospace; font-size: 12px;
-    box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; padding: 8px;
+    box-sizing: border-box; border: 1px solid var(--line-strong); border-radius: 4px; padding: 8px;
   }
   .submit-btn {
     display: inline-flex; align-items: center; justify-content: center;
     min-height: var(--ctrl-h); padding: 0 28px; font-size: 14px; cursor: pointer;
-    background: #1a3a5c; color: white; border: none; border-radius: var(--radius); margin-top: 8px;
+    background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--radius); margin-top: 8px;
   }
-  .submit-btn:hover { background: #2a5a8c; }
+  .submit-btn:hover { background: var(--accent-hover); }
   #msg { min-height: 1.4em; margin-top: 8px; font-size: 13px; }
-  .ok  { color: #1a8a1a; font-weight: bold; }
-  .err { color: #c00; }
-  .copy-note { font-size:12px; color:#1a8a1a; height:1.2em; margin-top:4px; }
-  #existingNotice { font-size:13px; color:#856404; background:#fff3cd; padding:8px 12px; border-radius:4px; margin-top:10px; display:none; }
+  .ok  { color: var(--ok-text); font-weight: bold; }
+  .err { color: var(--error-text); }
+  .copy-note { font-size:12px; color:var(--ok-text); height:1.2em; margin-top:4px; }
+  #existingNotice { font-size:13px; color:var(--warn-text); background:var(--warn-bg); padding:8px 12px; border-radius:4px; margin-top:10px; display:none; }
 </style>
 {% endblock %}
 {% block content %}
@@ -60,7 +60,7 @@
   これを自分の言葉で正確に言語化するのは難しいため、まずあなたの普段使う AI（ChatGPT・Claude など）に
   あなた自身をインタビューしてもらい、構造化された JSON を生成してもらいます。
   その JSON をそのまま下の欄に貼り付けるだけで登録完了です。<br>
-  <a href="/about" style="font-size:13px;color:#1a3a5c">PoX の仕組みをもっと知る →</a>
+  <a href="/about" style="font-size:13px;color:var(--link)">PoX の仕組みをもっと知る →</a>
 </div>
 
 <div id="existingNotice"></div>
@@ -84,7 +84,7 @@
 <details class="writein">
   <summary>○ 自分で書いて作る（簡易・任意）</summary>
   <div class="writein-inner">
-    <p style="font-size:13px;color:#666;margin:8px 0">インタビューなしで、まとめて書いた記述から JSON を作ります。
+    <p style="font-size:13px;color:var(--text-sub);margin:8px 0">インタビューなしで、まとめて書いた記述から JSON を作ります。
       末尾の『■ 本人の語り』に自分の記述を貼ってから AI に送ってください。</p>
     <div class="prompt-wrap">
       <button class="copy-btn" onclick="copyPrompt('promptB','copyMsg2')">コピー</button>
@@ -100,8 +100,8 @@
 <p>AI が最後に出力した JSON を、<code>{</code> から <code>}</code> までそのまま貼り付けてください。
 <code>```</code> や前置きが付いていても自動で取り除きます。</p>
 
-<p id="copyNote" style="font-size:13px;color:#1f3a5f;margin:6px 0">AI が出したコードブロックの<b>右上のコピーボタン</b>でコピーして、そのまま貼ってください。画面に表示された文字を選択してコピーすると、記号が欠けることがあります。</p>
-<p id="handleNote" style="font-size:13px;color:#8a4a00;margin:6px 0">ハンドルは後から変更できません。実名ではなく、公開されて構わない名前を選んでください。</p>
+<p id="copyNote" style="font-size:13px;color:var(--link);margin:6px 0">AI が出したコードブロックの<b>右上のコピーボタン</b>でコピーして、そのまま貼ってください。画面に表示された文字を選択してコピーすると、記号が欠けることがあります。</p>
+<p id="handleNote" style="font-size:13px;color:var(--warn-text);margin:6px 0">ハンドルは後から変更できません。実名ではなく、公開されて構わない名前を選んでください。</p>
 <textarea id="seekerJson" placeholder='{
   "id": "alice_2025",
   "schema_version": "v5",
@@ -110,7 +110,7 @@
   "現状": { "持っているもの": "...", "できること_型": "...", "縛られているもの": "...", "未分類": "" },
   "supporting_material": { "一行紹介": "...", "要約文": "...", "生テキスト": [ "..." ] }
 }'></textarea>
-<p style="font-size:12px;color:#777;margin:6px 0 0">v4 の JSON も今までどおり登録できます。</p>
+<p style="font-size:12px;color:var(--text-muted);margin:6px 0 0">v4 の JSON も今までどおり登録できます。</p>
 <!-- 登録時の同意は 1 つにまとめる（指示書70 §4-1・§4-3。接続の説明＝ポリシー 6-2 を含む。説明だけの別の欄は置かない） -->
 <div id="consentRow" style="margin:14px 0;font-size:13px;line-height:1.6">
   <label><input type="checkbox" id="policyAgree">
@@ -203,9 +203,9 @@ function repairNoticeHtml(draft) {
     `必要像 ${(c["必要像"] || []).map(fmt).join("・") || "—"}`,
     `与え像 ${fmt(c["与え像"])}`, `関心 ${fmt(c["関心"])}`, `生テキスト ${fmt(c["生テキスト"])}`,
   ].join(" ／ ");
-  return `<div id="repairNotice" style="border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:10px 12px;margin:0 0 10px;font-size:13px">
+  return `<div id="repairNotice" style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px;padding:10px 12px;margin:0 0 10px;font-size:13px">
     形式を自動で補正しました：${r.map(esc).join("、")}。内容に変わりがないか確認してください。
-    <div style="font-size:12px;color:#555;margin-top:4px">読み取った数: ${esc(counts)}</div></div>`;
+    <div style="font-size:12px;color:var(--text-sub);margin-top:4px">読み取った数: ${esc(counts)}</div></div>`;
 }
 
 /* 下書きの内容を確認してから確定する（意志・現状・必要像・数値を表示）。 */
@@ -221,17 +221,17 @@ function renderV5Preview(draft) {
   const p = draft.payload || {};
   const existing = draft.existing_purposes || [];
   const mapping = draft.purpose_mapping || {};
-  let h = `<div class="draft-preview" style="text-align:left;border:1px solid #cfd3d9;border-radius:8px;padding:14px 16px;margin-top:8px">`;
+  let h = `<div class="draft-preview" style="text-align:left;border:1px solid var(--line-strong);border-radius:8px;padding:14px 16px;margin-top:8px">`;
   h += `<p style="font-weight:700;margin:0 0 8px">下書きを作成しました（${draft.attempt_n}回目・v5）。内容を確認して確定してください。</p>`;
   h += repairNoticeHtml(draft);
   (p.purposes || []).forEach((pu, i) => {
     const hint = pu.purpose_id || `p${i + 1}`;
-    h += `<div style="border-top:1px solid #eee;padding-top:8px;margin-top:8px">`;
-    h += `<p style="margin:4px 0"><b>目的 ${i + 1}</b>: ${esc(pu["向かう先"] || "")}<br><span style="font-size:12px;color:#666">手段: ${esc(pu["手段"] || "")}</span></p>`;
+    h += `<div style="border-top:1px solid var(--line);padding-top:8px;margin-top:8px">`;
+    h += `<p style="margin:4px 0"><b>目的 ${i + 1}</b>: ${esc(pu["向かう先"] || "")}<br><span style="font-size:12px;color:var(--text-sub)">手段: ${esc(pu["手段"] || "")}</span></p>`;
     // 目的の種類（rev5 A は対話の中で本人が選び済み。ここは読み取りの表示だけ。指示書70 §4-1）
-    if (pu["種類"]) h += `<p style="margin:2px 0;font-size:12px;color:#555">目的の種類: ${esc(pu["種類"])}</p>`;
+    if (pu["種類"]) h += `<p style="margin:2px 0;font-size:12px;color:var(--text-sub)">目的の種類: ${esc(pu["種類"])}</p>`;
     h += `<ul style="margin:4px 0 6px">` + (pu["必要像"] || []).map(x =>
-      `<li>${x["必須"] ? '<b style="font-size:11px;color:#1f3a5f;border:1px solid #b9c6d6;border-radius:3px;padding:0 5px;margin-right:6px">欠かせない要素</b>' : ""}${esc(x["文"])}</li>`).join("") + `</ul>`;
+      `<li>${x["必須"] ? '<b style="font-size:11px;color:var(--link);border:1px solid var(--line-strong);border-radius:3px;padding:0 5px;margin-right:6px">欠かせない要素</b>' : ""}${esc(x["文"])}</li>`).join("") + `</ul>`;
     if (existing.length) {
       // 再構造化: 前の目的との対応を本人が確かめる（取れなければ新しい目的として追加。古い目的は残る）
       const opts = existing.map(e => `<option value="${esc(e.purpose_id)}" ${mapping[hint] === e.purpose_id ? "selected" : ""}>前の目的: ${esc(e.label || e.purpose_id)}</option>`).join("");
@@ -244,17 +244,17 @@ function renderV5Preview(draft) {
   const offers = p["与え像"] || [];
   h += `<p style="margin:10px 0 4px"><b>力になれること</b></p>`;
   if (offers.length) {
-    h += `<p id="offerNote" style="font-size:12px;color:#555;margin:2px 0 4px">AI があなたの語りから読み取った『力になれること』です。この形で提供したくない文は外してください。文を足すことはできません。</p>`;
+    h += `<p id="offerNote" style="font-size:12px;color:var(--text-sub);margin:2px 0 4px">AI があなたの語りから読み取った『力になれること』です。この形で提供したくない文は外してください。文を足すことはできません。</p>`;
     h += `<ul style="margin:4px 0 8px;list-style:none;padding-left:0">` + offers.map((x, i) =>
       `<li><label><input type="checkbox" class="offerKeep" data-i="${i}" checked> ${esc(x["文"])}</label></li>`).join("") + `</ul>`;
   }
-  h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">すべて外した場合（または「力になれること」が無い場合）は、現状で照合します。</p>`;
+  h += `<p style="font-size:12px;color:var(--text-sub);margin:2px 0 8px">すべて外した場合（または「力になれること」が無い場合）は、現状で照合します。</p>`;
   // 「縛られているもの」を接続の説明に使ってよいか（rev5 A の答え。読み取りの表示だけ。指示書70 §4-1）
   const use = (p["説明への使用"] || {})["縛られているもの"];
   if (use === true || use === false) {
-    h += `<p style="font-size:12px;color:#555;margin:6px 0">現状の「縛られているもの」を接続の説明に: ${use ? "使う" : "使わない"}（AI との対話での答え）</p>`;
+    h += `<p style="font-size:12px;color:var(--text-sub);margin:6px 0">現状の「縛られているもの」を接続の説明に: ${use ? "使う" : "使わない"}（AI との対話での答え）</p>`;
   }
-  h += `<p style="font-size:12px;color:#666;margin:6px 0">対応を選ばなかった前の目的は「取り下げ」になり、記録としては残ります。</p>`;
+  h += `<p style="font-size:12px;color:var(--text-sub);margin:6px 0">対応を選ばなかった前の目的は「取り下げ」になり、記録としては残ります。</p>`;
   el.className = "";
   el.innerHTML = h + handleBoxHtml(draft) + confirmButtonHtml(draft) + `</div>`;
 }
@@ -264,12 +264,12 @@ function renderV5Preview(draft) {
 const HANDLE_TAKEN = "このハンドルは既に使われています";
 function handleBoxHtml(draft) {
   if (!draft.needs_handle) return "";
-  return `<div style="border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:10px 12px;margin:10px 0">
+  return `<div style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px;padding:10px 12px;margin:10px 0">
       <label for="handleInput" style="font-weight:700;font-size:13px">ハンドル（@の後ろ・英小文字・数字・_ の 3〜30 字）</label><br>
       <span style="font-size:13px">@</span><input id="handleInput" type="text" maxlength="31" autocomplete="off"
         value="${esc(draft.handle_suggestion || "")}" oninput="checkHandleSoon(this.value)" style="font-size:14px;padding:4px 8px;margin:6px 0">
-      <p id="handleTakenNote" style="font-size:12px;color:#c00;margin:2px 0 0">${draft.handle_taken ? HANDLE_TAKEN : ""}</p>
-      <p style="font-size:12px;color:#8a4a00;margin:4px 0 0">ハンドルは<b>後から変えられません</b>。</p></div>`;
+      <p id="handleTakenNote" style="font-size:12px;color:var(--error-text);margin:2px 0 0">${draft.handle_taken ? HANDLE_TAKEN : ""}</p>
+      <p style="font-size:12px;color:var(--warn-text);margin:4px 0 0">ハンドルは<b>後から変えられません</b>。</p></div>`;
 }
 let handleTimer = null;
 function checkHandleSoon(value) {
@@ -290,7 +290,7 @@ function checkHandleSoon(value) {
 
 function confirmButtonHtml(draft) {
   return `<div style="margin-top:10px"><button type="button" onclick="confirmDraft('${esc(draft.draft_id)}', this)"
-      style="background:#1f3a5f;color:#fff;border:none;border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer">確定する</button></div>`;
+      style="background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer">確定する</button></div>`;
 }
 
 function renderDraftPreview(draft) {
@@ -304,10 +304,10 @@ function renderDraftPreview(draft) {
   const nec = p.necessity || {};
   const attempt = draft.attempt_n;
 
-  let h = `<div class="draft-preview" style="text-align:left;border:1px solid #cfd3d9;border-radius:8px;padding:14px 16px;margin-top:8px">`;
+  let h = `<div class="draft-preview" style="text-align:left;border:1px solid var(--line-strong);border-radius:8px;padding:14px 16px;margin-top:8px">`;
   h += `<p style="font-weight:700;margin:0 0 8px">下書きを作成しました（${attempt}回目）。内容を確認して確定してください。</p>`;
   h += repairNoticeHtml(draft);
-  h += `<p style="font-size:12px;color:#666;margin:0 0 12px">確定するまで台帳に記録されず、第三者にも公開されません。</p>`;
+  h += `<p style="font-size:12px;color:var(--text-sub);margin:0 0 12px">確定するまで台帳に記録されず、第三者にも公開されません。</p>`;
   if (will) h += `<p style="margin:6px 0"><b>意志</b><br>${esc(will)}</p>`;
   const slots = [["持っているもの","持っているもの"],["できること_型","できること（型）"],["縛られているもの","縛られているもの"],["未分類","未分類"]];
   let stateHtml = slots.map(([k,label]) => (state[k] && state[k] !== "未取得") ? `<li><b>${label}</b>: ${esc(state[k])}</li>` : "").join("");
@@ -316,35 +316,35 @@ function renderDraftPreview(draft) {
     h += `<p style="margin:6px 0"><b>必要像（システム生成の仮説）</b><br>${esc(nec.necessity_text)}</p>`;
     const nums = ["gate_s","gate_u","p_sharpness","alpha","beta"].filter(k => nec[k] !== undefined)
       .map(k => `${k}=${nec[k]}`).join(" / ");
-    if (nums) h += `<p style="font-size:12px;color:#666;margin:2px 0 8px">数値素材: ${esc(nums)}</p>`;
+    if (nums) h += `<p style="font-size:12px;color:var(--text-sub);margin:2px 0 8px">数値素材: ${esc(nums)}</p>`;
   }
   // 拒否理由（§3-3）: 種別で区別して表示。fact_error は再生成、discomfort は不確実性へ反映。
   const rej = draft.rejections || [];
   if (rej.length) {
     const fe = rej.filter(r => r.kind === "fact_error").length;
     const dc = rej.filter(r => r.kind === "discomfort").length;
-    h += `<div style="border:1px solid #f0c9c9;background:#fbeeee;border-radius:6px;padding:10px 12px;margin:8px 0">`;
+    h += `<div style="border:1px solid var(--error-text);background:var(--error-bg);border-radius:6px;padding:10px 12px;margin:8px 0">`;
     h += `<p style="font-weight:700;margin:0 0 6px;font-size:13px">これまでの指摘（${rej.length}件）</p>`;
     if (fe) h += `<p style="font-size:12px;margin:2px 0"><b>事実誤認</b> ${fe}件 — 言っていないことが書かれている等。<b>①の会話に戻って訂正し、貼り直してください</b>（回数が記録されます）。</p>`;
     if (dc) h += `<p style="font-size:12px;margin:2px 0"><b>違和感</b> ${dc}件 — 語りは正しいが合意したくない。<b>必要像は仮説として維持され、不確実性の値（gate_u）に反映されます</b>（書き換えではありません）。</p>`;
     const notes = rej.filter(r => r.note).map(r => `・[${r.kind === "fact_error" ? "事実誤認" : "違和感"}] ${esc(r.note)}`).join("<br>");
-    if (notes) h += `<p style="font-size:12px;color:#555;margin:6px 0 0">${notes}</p>`;
+    if (notes) h += `<p style="font-size:12px;color:var(--text-sub);margin:6px 0 0">${notes}</p>`;
     h += `</div>`;
   }
   // ハンドル（指示書55-2 PR-D）: 登録時に確定（必須）。**後から変えられない**ことを確定の前に見せる。
   if (draft.needs_handle) {
-    h += `<div style="border:1px solid #e6cf9c;background:#fff8e8;border-radius:6px;padding:10px 12px;margin:10px 0">
+    h += `<div style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px;padding:10px 12px;margin:10px 0">
       <label for="handleInput" style="font-weight:700;font-size:13px">ハンドル（@の後ろ・英小文字・数字・_ の 3〜30 字）</label><br>
       <span style="font-size:13px">@</span><input id="handleInput" type="text" maxlength="31" autocomplete="off"
         value="${esc(draft.handle_suggestion || "")}" style="font-size:14px;padding:4px 8px;margin:6px 0">
-      <p style="font-size:12px;color:#8a4a00;margin:4px 0 0">ハンドルは<b>後から変えられません</b>。実名を入れると、ずっとその名前で表示されます。
+      <p style="font-size:12px;color:var(--warn-text);margin:4px 0 0">ハンドルは<b>後から変えられません</b>。実名を入れると、ずっとその名前で表示されます。
         表示は「表示名（@ハンドル）」、プロフィールの URL は /u/ハンドル になります。表示名はあとから自由に変えられます。</p>
     </div>`;
   }
   h += `<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
     <button type="button" onclick="confirmDraft('${esc(draft.draft_id)}', this)"
-      style="background:#1f3a5f;color:#fff;border:none;border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer">確定する</button>
-    <span style="font-size:12px;color:#888;align-self:center">修正するには、①をやり直して JSON を貼り直してください（回数が記録されます）。</span>
+      style="background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer">確定する</button>
+    <span style="font-size:12px;color:var(--text-muted);align-self:center">修正するには、①をやり直して JSON を貼り直してください（回数が記録されます）。</span>
   </div></div>`;
   el.className = "";
   el.innerHTML = h;
@@ -390,12 +390,12 @@ async function confirmDraft(draftId, btn) {
     el.className = "ok";
     // 内容に変更が無いと台帳・履歴に追加されない（指示書35 §3）。黙って何も起きないのを防ぐ。
     const changeNote = data.unchanged
-      ? `<br><span style="font-size:12px;color:#a15c00">内容に変更がないため、履歴には追加されませんでした。</span>`
+      ? `<br><span style="font-size:12px;color:var(--warn-text)">内容に変更がないため、履歴には追加されませんでした。</span>`
       : "";
     el.innerHTML = `✅ 確定しました！${data.handle ? ` ハンドル: <strong>@${esc(data.handle)}</strong>` : ""}
       &nbsp; <a href="/mypage?id=${encodeURIComponent(data.id)}">マイページを開く →</a>
       &nbsp; <a href="/connect">つながる →</a>${changeNote}
-      <br><span style="font-size:12px;color:#666">照合用のベクトル化はこの後バックグラウンドで進みます（マイページで状態を確認できます）。</span>`;
+      <br><span style="font-size:12px;color:var(--text-sub)">照合用のベクトル化はこの後バックグラウンドで進みます（マイページで状態を確認できます）。</span>`;
   } else {
     el.className = "err";
     el.textContent = "エラー: " + (data.error || JSON.stringify(data));

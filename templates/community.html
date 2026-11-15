@@ -2,39 +2,39 @@
 {% block title %}コミュニティ — PoX{% endblock %}
 {% block head %}
 <style>
-  a { color:#1a3a5c; }
-  .muted { color:#8a9099; font-size:13px; }
+  a { color:var(--link); }
+  .muted { color:var(--text-muted); font-size:13px; }
   .row-between { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-  .meta { font-size:12px; color:#888; }
-  .card { border:1px solid #e6e8ec; border-radius:6px; padding:14px; margin:10px 0; }
+  .meta { font-size:12px; color:var(--text-muted); }
+  .card { border:1px solid var(--line); border-radius:6px; padding:14px; margin:10px 0; }
   .btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 16px;
-         border-radius:6px; border:1px solid #1a3a5c; background:#1a3a5c; color:#fff; font-size:13px;
+         border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:var(--on-accent); font-size:13px;
          cursor:pointer; text-decoration:none; }
-  .btn.ghost { background:#fff; color:#1a3a5c; }
+  .btn.ghost { background:var(--surface); color:var(--link); }
   .btn.sm { height:32px; padding:0 12px; font-size:12px; }
   .btn:disabled { opacity:.5; cursor:default; }
-  input[type=text], textarea { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ccc;
+  input[type=text], textarea { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid var(--line-strong);
     border-radius:6px; font-size:13px; font-family:inherit; }
   textarea { min-height:60px; resize:vertical; }
   .kind-tag { font-size:11px; font-weight:700; border-radius:3px; padding:2px 8px; letter-spacing:.04em; }
-  .k-proposal{ background:#eef2ff; color:#33417a; } .k-project{ background:#eaf4ea; color:#1a6a3a; }
-  .k-admission{ background:#fff3cd; color:#856404; } .k-chat{ background:#f0f0f0; color:#555; }
-  .status { font-size:11px; border-radius:3px; padding:2px 8px; background:#eef2ff; color:#33417a; }
-  .status.done { background:#d4edda; color:#155724; }
-  .sec-title { font-size:12px; letter-spacing:.08em; color:#8a9099; margin:22px 0 6px; border-top:1px solid #eee; padding-top:12px; }
-  .origin-line { font-size:12px; color:#555; margin-top:4px; }
-  details.fold > summary { cursor:pointer; font-size:12px; letter-spacing:.06em; color:#5b616a; padding:8px 0; }
+  .k-proposal{ background:var(--mark-bg); color:var(--mark-text); } .k-project{ background:var(--ok-bg); color:var(--ok-text); }
+  .k-admission{ background:var(--warn-bg); color:var(--warn-text); } .k-chat{ background:var(--surface-2); color:var(--text-sub); }
+  .status { font-size:11px; border-radius:3px; padding:2px 8px; background:var(--mark-bg); color:var(--mark-text); }
+  .status.done { background:var(--ok-bg); color:var(--ok-text); }
+  .sec-title { font-size:12px; letter-spacing:.08em; color:var(--text-muted); margin:22px 0 6px; border-top:1px solid var(--line); padding-top:12px; }
+  .origin-line { font-size:12px; color:var(--text-sub); margin-top:4px; }
+  details.fold > summary { cursor:pointer; font-size:12px; letter-spacing:.06em; color:var(--text-sub); padding:8px 0; }
   /* F-2: 折りたたみマーカーは <summary> 既定の三角のみに統一（本文に ▼ を書かない）。 */
-  .public-note { font-size:12px; line-height:1.7; color:#6b7280; background:#f6f7f9; border-radius:5px; padding:10px 12px; margin:8px 0; }
+  .public-note { font-size:12px; line-height:1.7; color:var(--text-sub); background:var(--surface-2); border-radius:5px; padding:10px 12px; margin:8px 0; }
   /* 設計されたダイアログ（window.prompt を使わない・§2-2/§6）*/
-  .modal-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100; align-items:center; justify-content:center; }
+  .modal-ov { display:none; position:fixed; inset:0; background:var(--overlay); z-index:100; align-items:center; justify-content:center; }
   .modal-ov.open { display:flex; }
-  .modal { background:#fff; border-radius:8px; padding:20px; width:440px; max-width:92vw; }
+  .modal { background:var(--surface); border-radius:8px; padding:20px; width:440px; max-width:92vw; }
   .modal h3 { margin:0 0 12px; font-size:1.05rem; }
-  .modal label { display:block; font-size:12px; color:#667; margin:10px 0 4px; }
+  .modal label { display:block; font-size:12px; color:var(--text-sub); margin:10px 0 4px; }
   .modal-actions { margin-top:16px; display:flex; gap:8px; justify-content:flex-end; }
   #notice { margin-top:10px; font-size:13px; }
-  .err { color:#c00; } .ok { color:#1a8a1a; font-weight:bold; }
+  .err { color:var(--error-text); } .ok { color:var(--ok-text); font-weight:bold; }
 </style>
 {% endblock %}
 {% block content %}
@@ -47,7 +47,7 @@
     <h1 id="cName" style="margin:0"></h1>
     <button id="editBtn" class="btn ghost sm" style="display:none" onclick="openEdit()">編集</button>
   </div>
-  <p id="cDesc" style="color:#555;margin:4px 0"></p>
+  <p id="cDesc" style="color:var(--text-sub);margin:4px 0"></p>
   <p class="meta">メンバー <span id="memberCount">0</span>人 ・ 作成者: <span id="cFounder"></span></p>
 
   <div id="joinSection" style="margin:14px 0"></div>
@@ -88,7 +88,7 @@
   <h3>プロジェクトを立ち上げる</h3>
   <p class="meta">プロジェクト名は提議の内容から決まり、変更できません（S-1）。</p>
   <label>プロジェクト名</label>
-  <input id="lmName" type="text" readonly style="background:#f6f7f9">
+  <input id="lmName" type="text" readonly style="background:var(--surface-2)">
   <div class="modal-actions"><button class="btn ghost" onclick="closeModal('launchModal')">キャンセル</button>
     <button class="btn" onclick="submitLaunch(this)">立ち上げる</button></div>
   <div id="lmErr" class="err" style="font-size:13px;margin-top:8px"></div>

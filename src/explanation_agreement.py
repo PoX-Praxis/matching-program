@@ -45,7 +45,7 @@ def cited_needs(card):
     src = {c["ref"]: c["text"] for c in card.get("citations") or []}
     out = {}
     for p in card.get("purposes") or []:
-        if p.get("status") != "explained":
+        if p.get("status") not in X.SHOWN_STATUSES:
             continue
         pid = p["ref"].split(".", 2)[2]
         refs = {e["need_ref"] for e in p["elements"]}
@@ -54,13 +54,14 @@ def cited_needs(card):
 
 
 def a1_object(card, applicant, recipient, necessity_c4=None, bindings=None):
-    """正準形 a1 の中身: 申請者の向きの explained の目的の組（②③④・関係）。句と、引用元の欄の文は HMAC。① は入れない。
+    """正準形 a1 の中身: 申請者の向きの explained と open の目的の組（②③④・関係。報告73 の確認 1: open も同じ形で入れる。
+    問いと「分からないこと」は入れない）。句と、引用元の欄の文は HMAC。① は入れない。
     bindings: {カードの purpose_id: {"purpose_id": 本人の目的の id, "necessity_c4": その必要像の版の c4}}（引用元の文で結びつけたもの）。
     necessity_c4: {purpose_id: c4}（結びつけが無い目的の予備）。どちらにも無ければ null。"""
     src = {c["ref"]: c["text"] for c in card.get("citations") or []}
     purposes = []
     for p in sorted(card.get("purposes") or [], key=lambda x: x["order"]):
-        if p.get("status") != "explained":
+        if p.get("status") not in X.SHOWN_STATUSES:
             continue
         pid = p["ref"].split(".", 2)[2]
         pairs = []

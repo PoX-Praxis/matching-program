@@ -19,8 +19,9 @@ import re
 import unicodedata
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "schemas",
-                           "explanation_card_v0.4.schema.json")
-SCHEMA_VERSION = "expl-v0.4"
+                           "explanation_card_v0.7.schema.json")
+SCHEMA_VERSION = "expl-v0.7"                          # 指示書73 順3: 目的の status に open を足した（v0.4 のファイルも残す）
+SHOWN_STATUSES = ("explained", "open")                # ① と組を出す目的の状態（指示書73 §1）
 RELATION_RULE_VERSION = "rel-v0.3"
 FORBIDDEN_VERSION = "forbid-v0.4"
 QUOTE_MAX = 40
@@ -72,15 +73,21 @@ HIDDEN_STATUSES = ("pending",)
 
 
 # ── 契約 ─────────────────────────────────────────────────────────────────────────
-def schema():
-    with open(SCHEMA_PATH, encoding="utf-8") as f:
+SCHEMA_FILES = {"expl-v0.4": "explanation_card_v0.4.schema.json", "expl-v0.7": "explanation_card_v0.7.schema.json"}
+
+
+def schema(version=None):
+    """カードのスキーマ。版を渡せば、その版のファイル（前の版のカードは前の版のスキーマで確かめる）。無ければいまの版。"""
+    name = SCHEMA_FILES.get(version or SCHEMA_VERSION, os.path.basename(SCHEMA_PATH))
+    with open(os.path.join(os.path.dirname(SCHEMA_PATH), name), encoding="utf-8") as f:
         return json.load(f)
 
 
 def validate(card):
-    """スキーマに通るか。戻り値: (通ったか, 理由の一覧)。"""
+    """スキーマに通るか（カードの schema_version の版のスキーマで）。戻り値: (通ったか, 理由の一覧)。"""
     from jsonschema import Draft202012Validator
-    errs = sorted(Draft202012Validator(schema()).iter_errors(card), key=lambda e: list(e.path))
+    version = card.get("schema_version") if isinstance(card, dict) else None
+    errs = sorted(Draft202012Validator(schema(version)).iter_errors(card), key=lambda e: list(e.path))
     return (not errs), [f"{'/'.join(str(p) for p in e.path) or '(全体)'}: {e.message}" for e in errs]
 
 
@@ -185,7 +192,9 @@ def check(card, names=()):
             missing = [m for m in p["missing_must"] if _belongs(m, p["ref"])]
             if len(missing) != len(p["missing_must"]):
                 problems.append(f"{tag}: 欠けている要素の一部を出さない（ほかの目的の要素）")
-            if p["status"] == "explained":
+            if p["status"] == "open" and not missing:
+                p["status"] = "explained"                 # 欠けが無い open は explained と同じ（印を合わせるだけ）
+            if p["status"] in SHOWN_STATUSES:             # open も explained と同じに確かめる（指示書73 §2-3）
                 why = []
                 if p["kind"] == "補完" and elements and all(e["relation"] == "R4" for e in elements):
                     why.append("補完の目的で R4 だけ")
@@ -210,12 +219,13 @@ def check(card, names=()):
 
 
 def showable(card):
-    """表示するか（仕様 §4-1・§12-2）: pending は出さない。どちらの向きにも explained が無ければ出さない。deleted は印だけ出す。"""
+    """表示するか（仕様 §4-1・§12-2・§15-8）: pending は出さない。どちらの向きにも explained か open が無ければ出さない。
+    deleted は印だけ出す。"""
     if card["status"] in HIDDEN_STATUSES:
         return False
     if card["status"] == "deleted":
         return True
-    return any(p["status"] == "explained" for p in card["purposes"] + card["reverse_purposes"])
+    return any(p["status"] in SHOWN_STATUSES for p in card["purposes"] + card["reverse_purposes"])
 
 
 # ── 描き方 ─────────────────────────────────────────────────────────────────────────
@@ -249,9 +259,9 @@ def _ref_label(ref):
 
 def _is_open(p):
     """open と同じに扱う目的か（v0.7 §15-1）: 確かめ済みの組があり、欠かせない要素に覆われていないものがある。
-    いまは生成が open を出さないので、「explained で missing_must がある」目的（取り込み分のカード）を open とみなす。
-    check() の後のカードに使う（explained の目的は、組と ① が確かめを通っている）。"""
-    return p["status"] == "explained" and bool(p["elements"]) and bool(p["missing_must"])
+    生成の open（指示書73 順3）と、「explained で missing_must がある」目的（取り込み分のカード）の両方。
+    check() の後のカードに使う（explained・open の目的は、組と ① が確かめを通っている）。"""
+    return p["status"] in SHOWN_STATUSES and bool(p["elements"]) and bool(p["missing_must"])
 
 
 def _purpose_state(p):
@@ -264,7 +274,7 @@ def _purpose_state(p):
     if not p["elements"] and not has_must:
         return None                                     # 欠かせない要素が無く、組も無い目的は出さない（仕様 §4-2）
     facts = bool(p["unknown"] or p["missing_must"])
-    if p["status"] == "explained":
+    if p["status"] in SHOWN_STATUSES:
         return "part" if facts else "all"
     return "unknown" if facts else None
 
@@ -311,7 +321,7 @@ def _ask_target(purposes, src):
 def _rank(p):
     """目的の並びの段（v0.8 §16-2）: 0＝explained（欠かせない要素がすべて覆われた）／1＝open（いまは explained で
     missing_must がある目的を含む）／2＝それ以外（not_covered など）。check() の後のカードに使う。"""
-    if p["status"] == "explained":
+    if p["status"] in SHOWN_STATUSES:
         return 1 if _is_open(p) else 0
     return 2
 
@@ -331,7 +341,7 @@ def _purpose_html(p, n, o, src, reverse, has_purposes=True, ask=None):
     else:
         head = f'<h4 class="ex-ph">■ {n}の目的{p["number"]}「{_e(p["title"])}」について</h4>'
     body, basis = [], []
-    if p["status"] == "explained":
+    if p["status"] in SHOWN_STATUSES:
         marks = f'<sup class="ex-cite">{",".join(str(c + 1) for c in p["meaning"]["cites"])}</sup>'
         body.append(f'<p class="ex-meaning">{_sym(p["meaning"]["text"], n, o)}{marks}</p>')
         rows = []
@@ -457,9 +467,9 @@ def _node_rank(node):
     data-status が explained で、欠かせない要素の欠け（「欠かせない要素：「」の行。v0.5 以降）が無い → 0／
     explained で欠けがある（open と同じ）→ 1／それ以外 → 2。v0.4 の形は explained の目的に欠けの行を出さないので、0 になる。"""
     m = _STATUS_RE.match(node)
-    if not m or m.group(1) != "explained":
+    if not m or m.group(1) not in SHOWN_STATUSES:
         return 2
-    return 1 if MUST_PREFIX + "「" in node else 0
+    return 1 if (m.group(1) == "open" or MUST_PREFIX + "「" in node) else 0
 
 
 def incoming_layout(symbolic_html):
@@ -599,7 +609,7 @@ def assemble(fwd, rev, target_has_purposes=True):
              "target": (fwd or {}).get("as_of", {}).get("offer") or (rev or {}).get("as_of", {}).get("need") or {}}
     purposes = _map_purposes((fwd or {}).get("purposes") or [], fm)
     reverse = _map_purposes((rev or {}).get("purposes") or [], rm)
-    status = "explained" if any(p["status"] == "explained" for p in purposes + reverse) else "not_covered"
+    status = "explained" if any(p["status"] in SHOWN_STATUSES for p in purposes + reverse) else "not_covered"
     card = {"schema_version": SCHEMA_VERSION, "relation_rule_version": RELATION_RULE_VERSION, "status": status,
             "show_reason": None, "as_of": as_of, "generation": base["generation"],
             "target_has_purposes": bool(target_has_purposes), "purposes": purposes, "reverse_purposes": reverse,
@@ -616,8 +626,8 @@ def short_form(card, names=()):
         return None
     def items_of(purposes, n, o, reverse):
         out = []
-        for p in _ordered(purposes):                               # 状態の順（v0.8 §16-2）
-            if p["status"] != "explained":
+        for p in _ordered(purposes):                               # 状態の順（v0.8 §16-2）。open の ① も出す（問いは出さない）
+            if p["status"] not in SHOWN_STATUSES:
                 continue
             first = next((x for x in re.split(r"(?<=。)", p["meaning"]["text"]) if x.strip()), "")
             if reverse and not checked["target_has_purposes"]:

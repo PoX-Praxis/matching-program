@@ -24,10 +24,10 @@ import explanation as X
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPT_DIR = os.path.join(ROOT, "docs", "prompts")
-PROMPT1_FILE, PROMPT2_FILE = "explanation_p1_v0.3.txt", "explanation_p2_v0.3.txt"
-PROMPT1_VERSION, PROMPT2_VERSION = "expl-p1-v0.3", "expl-p2-v0.3"
+PROMPT1_FILE, PROMPT2_FILE = "explanation_p1_v0.4.txt", "explanation_p2_v0.3.txt"   # 段1 は指示書73 で v0.4（決まり 5）
+PROMPT1_VERSION, PROMPT2_VERSION = "expl-p1-v0.4", "expl-p2-v0.3"
 # プロンプトのファイルが唯一の正。sha256 は中身から計算し、ここに固定して食い違いを止める（テストで確かめる）
-PROMPT1_SHA = "92f1a316bf6d155dd489b4ff5c144f22349353b98ac70bfcd8dfa0213a0aa261"
+PROMPT1_SHA = "c222f021707e8ab92f976d328ce7dbb56aa01051ef564863b768e6bda4a7f252"   # v0.3 は 92f1a316…（ファイルは残す）
 PROMPT2_SHA = "19f3bdc7199f7502d6cb1f1c30679976f3a4b8a49a40ec637982cab8d9a3432e"
 P1_N_SLOT = "{N の目的・必要像の文（参照の名前・型・必須つき）。目的の種類（補完／共鳴）}"
 P1_O_SLOT = "{O の与え像・現状（縛られているものを除く）・関心の文（参照の名前つき）}"
@@ -188,10 +188,11 @@ class Backend:
 
 class FixedBackend(Backend):
     """テスト用。決まった入力に決まった出力を返す。responder(stage, payload) を渡せば、それを使う。
-    渡さなければ、規則で句を選ぶ（モデルではない。fixed-rule-v1）。"""
+    渡さなければ、規則で句を選ぶ（モデルではない。fixed-rule-v2: 段1 の決まり 5 v0.4 に合わせ、欠けた欠かせない要素を
+    missing_must に入れる。指示書73 順3）。"""
     name = "fixed"
 
-    def __init__(self, responder=None, model="fixed-rule-v1"):
+    def __init__(self, responder=None, model="fixed-rule-v2"):
         self.responder = responder or rule_responder
         self.model = model
 
@@ -321,8 +322,10 @@ def rule_responder(stage, payload):
                 nq = need["文"][max(0, need["文"].find(common) - 10):][:X.QUOTE_MAX]
                 els.append({"need_ref": need["ref"], "must": need["必須"], "need_quote": nq, "offer_ref": ref,
                             "offer_quote": oq, "relation": rel})
+            # 決まり 5（expl-p1-v0.4）: 組が無かった欠かせない要素は missing_must に。組が 1 つも無いときだけ not_covered
+            got = {e["need_ref"] for e in els}
             out.append({"ref": p["ref"], "status": "explained" if els else "not_covered", "elements": els,
-                        "unknown": [], "missing_must": []})
+                        "unknown": [], "missing_must": [x["ref"] for x in p["必要像"] if x["必須"] and x["ref"] not in got]})
         return {"purposes": out}
     meanings = []
     for p in payload["purposes"]:
@@ -437,10 +440,10 @@ def check_generated(direction, n_side, o_side_refs, bound_allowed):
 
 # ── 二段の生成（指示書69 §1-1）────────────────────────────────────────────────────────
 def stage2_payload(direction):
-    """段2 の入力: 確かめ済みの組の句・ラベル・目的の見出しと種類だけ（原文・参照の本文は渡さない）。"""
+    """段2 の入力: 確かめ済みの組の句・ラベル・目的の見出しと種類だけ（原文・参照の本文は渡さない）。open の目的も渡す。"""
     out = []
     for p in direction["purposes"]:
-        if p["status"] != "explained":
+        if p["status"] not in X.SHOWN_STATUSES:
             continue
         out.append({"purpose_ref": p["ref"], "見出し": p["title"], "種類": p["kind"],
                     "elements": [{"no": i, "need_quote": e["need_quote"], "offer_quote": e["offer_quote"],
@@ -450,17 +453,19 @@ def stage2_payload(direction):
 
 
 def _machine_status(p, musts):
-    """出すかどうかは機械が決める（仕様 §4-1）。欠かせない要素がそろわなければ not_covered。補完で R4 だけなら出さない。
-    モデルが not_covered と言った目的は、説明しない（落とす方向にだけ従う）。"""
+    """目的の状態は機械が決める（仕様 §4-1・§15-8。指示書73 §1）。欠けた欠かせない要素は、入力の「必須」の印と確かめ済みの組から
+    数え直す（モデルの missing_must は使わない）。
+    - 組が 0・モデルが not_covered と言った（落とす方向にだけ従う）・補完で R4 だけ → not_covered
+    - 組があり、欠けた欠かせない要素がある → open（覆われた分だけ ① を出す）
+    - 組があり、欠かせない要素がすべて覆われている → explained
+    not_covered にも欠けた要素を付けたまま返す（「文からは分からないこと」に出る）。"""
     covered = {e["need_ref"] for e in p["elements"]}
     missing = [r for r in p["needs"] if musts.get(r) and r not in covered]
-    if missing:
-        return "not_covered", missing
     if not p["elements"] or p.get("model_status") == "not_covered":
-        return "not_covered", []
+        return "not_covered", missing
     if p["kind"] == "補完" and all(e["relation"] == "R4" for e in p["elements"]):
-        return "not_covered", []
-    return "explained", []
+        return "not_covered", missing
+    return ("open" if missing else "explained"), missing
 
 
 def generate_direction(n_person, o_person, backend, bound_allowed=False, trace=None):
@@ -529,7 +534,7 @@ def generate_direction(n_person, o_person, backend, bound_allowed=False, trace=N
         out2 = parse_json(backend.run(2, fill_prompt2(p2), p2))
         meanings = {m.get("purpose_ref"): m for m in (out2 or {}).get("meanings") or [] if isinstance(m, dict)}
         for p in direction["purposes"]:
-            if p["status"] != "explained":
+            if p["status"] not in X.SHOWN_STATUSES:
                 continue
             m = meanings.get(p["ref"])
             if not m or not isinstance(m.get("cites"), list) or not str(m.get("text") or "").strip():
@@ -542,13 +547,13 @@ def generate_direction(n_person, o_person, backend, bound_allowed=False, trace=N
         problems += probs
     for p in direction["purposes"]:
         p.pop("needs", None), p.pop("model_status", None)
-        if p["status"] != "explained":
+        if p["status"] not in X.SHOWN_STATUSES:
             p["meaning"] = None
     # 確かめ（全体）: 段階1 の check() をそのまま。落ちた目的は出さない
     final, probs = X.check(X.assemble(direction, None, True))
     problems += probs
     direction["purposes"] = [_purpose_to_dir(p) for p in final["purposes"]]
-    if not any(p["status"] == "explained" for p in direction["purposes"]):
+    if not any(p["status"] in X.SHOWN_STATUSES for p in direction["purposes"]):
         meaning_failed = any("① を出さない" in x or "① が無い" in x or "この目的の説明を出さない" in x for x in problems)
         if meaning_failed and show_reason in (None, "quote_failed"):
             show_reason = "meaning_failed"             # 組は確かめを通ったが、① が確かめに落ちた（記録だけ。スキーマの 3 つに足した）

@@ -18,7 +18,9 @@
 import hashlib
 import hmac
 import json
+import re
 import os
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -34,6 +36,8 @@ _KEY_ID_LABEL = b"pox-explanation-key-id"
 FILE_FORMAT = "pox-explanation-directions-v1"
 SUPPLEMENT_MAX = 400
 SUPPLEMENT_KINDS = ("self", "approve", "decline")
+EXCHANGE_MAX = 400                                         # 承認までのやり取り（指示書74 §3）: 1 通の字数
+EXCHANGE_PER_PERSON = 10                                   # 1 つの申請で、1 人が書ける数（報告74 の確認 3）
 
 
 def _now():
@@ -433,6 +437,15 @@ _DDL = [
         text         TEXT NOT NULL,
         created_at   TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS explanation_exchanges (
+        id           TEXT PRIMARY KEY,
+        render_id    TEXT NOT NULL,
+        from_subject TEXT NOT NULL,
+        to_subject   TEXT NOT NULL,
+        text         TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        read_at      TEXT
+    )""",
 ]
 
 
@@ -484,6 +497,9 @@ def save_offer_render(applicant, recipient, symbolic_html, viewer_html, card_dig
     dg, kid = render_digest(viewer_html)
     rid = f"er_{uuid.uuid4().hex[:16]}"
     with _connect(db_path) as con:
+        for (old,) in con.execute("SELECT id FROM explanation_renders WHERE from_subject=%s AND to_subject=%s "
+                                  "AND status='pending'", (applicant, recipient)).fetchall():
+            con.execute("DELETE FROM explanation_exchanges WHERE render_id=%s", (old,))   # 前の申請のやり取りも消す
         con.execute("DELETE FROM explanation_renders WHERE from_subject=%s AND to_subject=%s AND status='pending'",
                     (applicant, recipient))
         con.execute("INSERT INTO explanation_renders (id, from_subject, to_subject, symbolic_html, viewer_html, card_digest, "
@@ -536,12 +552,13 @@ def approved_render(a, b, db_path="pox.db"):
 
 
 def delete_pending(applicant, recipient, db_path="pox.db"):
-    """取り下げ・見送りで、申請に添えた表示を消す（§4）。消した数。"""
+    """取り下げ・見送りで、申請に添えた表示と、承認までのやり取りを消す（§4・指示書74 §3）。消した数。"""
     with _connect(db_path) as con:
         ids = [r[0] for r in con.execute("SELECT id FROM explanation_renders WHERE from_subject=%s AND to_subject=%s "
                                          "AND status='pending'", (applicant, recipient)).fetchall()]
         for rid in ids:
             con.execute("DELETE FROM explanation_supplements WHERE render_id=%s", (rid,))
+            con.execute("DELETE FROM explanation_exchanges WHERE render_id=%s", (rid,))
             con.execute("DELETE FROM explanation_renders WHERE id=%s", (rid,))
     return len(ids)
 
@@ -566,11 +583,64 @@ def take_decline_notes(applicant, db_path="pox.db"):
     return [{"from": r[1], "text": r[2], "at": r[3]} for r in rows]
 
 
+# ── 承認までのやり取り（指示書74 §3）────────────────────────────────────────────────
+# 申請に添えた表示（explanation_renders の行）ごと。申請中だけ書ける。見送り・取り下げで消す（delete_pending）。
+# 承認されたら、承認時の説明と一緒に残す（読むだけ）。本文は台帳・pair_digest・render_digest・ログに入れない
+_EX_ZW = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
+
+
+def clean_exchange(text):
+    """やり取りの 1 通: 前後の空白を除き、制御文字（改行は残す）・ゼロ幅文字を除く（報告74 の確認）。
+    400 字を超えれば ValueError。空なら None。"""
+    t = unicodedata.normalize("NFC", str(text or ""))
+    t = "".join(ch for ch in t if ch == "\n" or unicodedata.category(ch) != "Cc")
+    t = _EX_ZW.sub("", t).strip()
+    if len(t) > EXCHANGE_MAX:
+        raise ValueError(f"1 通は {EXCHANGE_MAX} 字までです")
+    return t or None
+
+
+def add_exchange(render_id, from_subject, to_subject, text, db_path="pox.db"):
+    eid = f"ex_{uuid.uuid4().hex[:16]}"
+    with _connect(db_path) as con:
+        con.execute("INSERT INTO explanation_exchanges (id, render_id, from_subject, to_subject, text, created_at, read_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, NULL)", (eid, render_id, from_subject, to_subject, text, _now()))
+    return eid
+
+
+def exchange_items(render_id, db_path="pox.db"):
+    with _connect(db_path) as con:
+        rows = con.execute("SELECT from_subject, to_subject, text, created_at FROM explanation_exchanges WHERE render_id=%s "
+                           "ORDER BY created_at, id", (render_id,)).fetchall()
+    return [{"from": r[0], "to": r[1], "text": r[2], "at": r[3]} for r in rows]
+
+
+def exchange_count(render_id, from_subject, db_path="pox.db"):
+    with _connect(db_path) as con:
+        return con.execute("SELECT COUNT(*) FROM explanation_exchanges WHERE render_id=%s AND from_subject=%s",
+                           (render_id, from_subject)).fetchone()[0]
+
+
+def mark_exchange_read(render_id, reader, db_path="pox.db"):
+    with _connect(db_path) as con:
+        con.execute("UPDATE explanation_exchanges SET read_at=%s WHERE render_id=%s AND to_subject=%s AND read_at IS NULL",
+                    (_now(), render_id, reader))
+
+
+def unread_exchange_senders(reader, db_path="pox.db"):
+    """reader 宛ての、まだ読んでいない発言がある相手（申請中の申請だけ）。新しいやり取りの印に使う（件数は出さない）。"""
+    with _connect(db_path) as con:
+        rows = con.execute("SELECT DISTINCT x.from_subject FROM explanation_exchanges x JOIN explanation_renders r "
+                           "ON r.id = x.render_id WHERE x.to_subject=%s AND x.read_at IS NULL AND r.status='pending'",
+                           (reader,)).fetchall()
+    return {r[0] for r in rows}
+
+
 def count_rows(db_path="pox.db"):
     """テストと運用の確かめ用: 表ごとの行の数。"""
     with _connect(db_path) as con:
         return {t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-                for t in ("explanation_renders", "explanation_supplements")}
+                for t in ("explanation_renders", "explanation_supplements", "explanation_exchanges")}
 
 
 # ── 合意の記録と削除（指示書69 §4-1・§4-2）──────────────────────────────────────────────
@@ -601,6 +671,8 @@ def subject_rows(subject_id, db_path="pox.db"):
                                              "AND deleted_at IS NULL", (subject_id, subject_id)).fetchall()]
         sup = con.execute("SELECT COUNT(*) FROM explanation_supplements WHERE from_subject=%s OR to_subject=%s",
                           (subject_id, subject_id)).fetchone()[0]
+        sup += con.execute("SELECT COUNT(*) FROM explanation_exchanges WHERE from_subject=%s OR to_subject=%s",
+                           (subject_id, subject_id)).fetchone()[0]
         dirs = con.execute("SELECT COUNT(*) FROM explanation_directions WHERE need_subject=%s OR offer_subject=%s",
                            (subject_id, subject_id)).fetchone()[0]
     return {"renders": renders, "supplements": sup, "directions": dirs}
@@ -615,9 +687,11 @@ def delete_subject_texts(subject_id, db_path="pox.db"):
                            "AND deleted_at IS NULL", (subject_id, subject_id)).fetchall()
         for rid, _ in rows:
             con.execute("DELETE FROM explanation_supplements WHERE render_id=%s", (rid,))
+            con.execute("DELETE FROM explanation_exchanges WHERE render_id=%s", (rid,))   # やり取りも（いまの補足と同じ）
             con.execute("UPDATE explanation_renders SET symbolic_html='', viewer_html='', card_json=NULL, card_as_of=NULL, "
                         "deleted_at=%s WHERE id=%s", (now, rid))
         con.execute("DELETE FROM explanation_supplements WHERE from_subject=%s OR to_subject=%s", (subject_id, subject_id))
+        con.execute("DELETE FROM explanation_exchanges WHERE from_subject=%s OR to_subject=%s", (subject_id, subject_id))
         con.execute("DELETE FROM explanation_directions WHERE need_subject=%s OR offer_subject=%s", (subject_id, subject_id))
     return [h for _, h in rows if h]
 

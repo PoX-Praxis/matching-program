@@ -99,10 +99,11 @@ def test_t463_inbox_list_has_no_explanation_or_one_liner():
 def test_t464_detail_order(xs):
     t = _tpl("inbox.html")
     detail = t[t.index("function renderDetail("):t.index("async function loadIncomingExplanation(")]
-    order = ["さんから申請が届きました", "mdOf(o.at)", 'class="ib-explain"', 'class="ex-check"', 'onclick="doApprove(']
+    order = ["さんから申請が届きました", "mdOf(o.at)", 'class="ib-explain"', 'class="ib-exchange"', 'class="ex-check"',
+             'onclick="doApprove(']
     assert [detail.index(x) for x in order] == sorted(detail.index(x) for x in order)
     load = t[t.index("async function loadIncomingExplanation("):t.index("function syncApprove(")]
-    assert "open: true" in load                                                       # 補足の欄は開いた状態（順1）
+    assert "PoXExplain.loadExchange(" in load                                          # やり取りの箱（順3。開いた状態）
     assert _offer().status_code == 200
     h = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()["html"]  # 説明の部分（サーバーが組み直したもの）
     rev, main = h.index('class="ex-side ex-side-rev"'), h.index('class="ex-side ex-side-main"')

@@ -238,10 +238,13 @@ def test_t458_short_form_and_pair_digest(monkeypatch):
 
 # ── 459（§7-12）補足の案内 ───────────────────────────────────────────────────────────────
 def test_t459_supplement_note():
-    line = "「文からは分からないこと」や「つながった後に尋ねること」について、ここに書けます。書かなくてもかまいません。"
-    for f in ("profile.html", "inbox.html"):                               # 画面1（プロフィール）・画面3（受信箱）
+    # 指示書74 の順3 で、画面3 の案内は「承認までのやり取り」の案内に、画面1 の案内は 1 文目だけにした（指示書74 §7）
+    for f in ("profile.html", "inbox.html", "_explanation.html"):
         src = open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
-        assert line in src and "確かめられること" not in src, f
+        assert "確かめられること" not in src and "「つながった後に尋ねること」について、ここに書けます" not in src, f
+    part = open(os.path.join(ROOT, "templates", "_explanation.html"), encoding="utf-8").read()
+    assert "説明の違う点や、聞きたいことを、ここに書けます。書かなくてもかまいません。<br>" in part
+    assert "承認されたときは、このやり取りが残ります。見送り・取り下げのときは消えます。" in part
 
 
 # ── 460（§7-13）保存済みの表示（v0.4・v0.5）は描き直さない ──────────────────────────────────────

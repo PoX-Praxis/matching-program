@@ -376,6 +376,17 @@ def received_offers(me: str, db_path: str = "pox.db") -> list[dict]:
     return [{"from": r[0], "message": r[1] or "", "at": r[2]} for r in rows]
 
 
+def offer_messages_from(from_id: str, to_id: str, statuses=("pending",), db_path: str = "pox.db") -> list[dict]:
+    """from_id から to_id への申し出の文（指示書74 §3: やり取りの先頭に出す）。当事者の二人だけに返す。"""
+    marks = ",".join(["%s"] * len(statuses))
+    with _connect(db_path) as con:
+        rows = con.execute(
+            f"SELECT offer_message, created_at FROM connection_requests WHERE from_subject=%s AND to_subject=%s "
+            f"AND status IN ({marks}) AND offer_message IS NOT NULL AND offer_message <> '' ORDER BY created_at ASC",
+            (from_id, to_id, *statuses)).fetchall()
+    return [{"message": r[0], "at": r[1]} for r in rows]
+
+
 def offer_messages_between(a: str, b: str, db_path: str = "pox.db") -> list[dict]:
     """成立済みの 2 人の申し出の文（会話の冒頭に残す分）。送った本人が取り消したものは含まない。"""
     with _connect(db_path) as con:

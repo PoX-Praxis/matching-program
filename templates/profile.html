@@ -73,11 +73,6 @@
       <button class="btn btn-connect" id="btnOffer" onclick="doConnect(this)">つながりたいと伝える</button>
       <button class="btn btn-connect" id="btnExplainOffer" style="display:none" onclick="doConnect(this)">内容を確認して申請する</button>
     </div>
-    <!-- 公開の切り替え（指示書69 §4-6。公開の機能は準備中。どちらか一人でも非公開にできる。値を記録しておく） -->
-    <label id="explainPrivateRow" style="display:none;font-size:12.5px;color:#555;margin-top:8px">
-      <input type="checkbox" id="explainPrivate"> この接続の内容を非公開にする
-      <span style="display:block;margin-left:20px">承認された接続の、引用した文の組・関係・日付は、公開することがあります（公開の機能は準備中）。</span>
-    </label>
     <div style="display:none">
       <button class="btn btn-msg" id="btnWithdraw" style="display:none" onclick="doWithdraw(this)">取り下げる</button>
       <button class="btn btn-msg" id="btnDm" style="display:none" onclick="sendMsg()">メッセージを送る</button>
@@ -85,6 +80,8 @@
     <!-- 未ログイン時の注記（指示書37 §4）。ボタンは活性のまま・押下でログイン導線へ。 -->
     <p id="loginNote" style="display:none;font-size:13px;color:#888;margin:8px 0 0">つながる・メッセージにはログインが必要です。</p>
     <div id="notice"></div>
+    <!-- 承認までのやり取り（指示書74 §3）。申請中は書ける。承認の後は、承認時の説明と一緒に読むだけ。 -->
+    <div id="exchangeBox" style="display:none"></div>
   </div>
 
   <h2 class="pv-h" style="margin-top:44px">軌跡<span class="en">TRAJECTORY</span></h2>
@@ -151,7 +148,6 @@ async function refreshConnectState() {
   const withExplain = !!explainDigest && state === "none";
   show("btnOffer", state === "none" && !withExplain);
   show("btnExplainOffer", withExplain);
-  show("explainPrivateRow", withExplain);
   show("offerBox", state === "none");
   if (state === "none") loadMyPurposes();
   show("btnWithdraw", state === "pending_out");
@@ -159,6 +155,8 @@ async function refreshConnectState() {
   show("inboxLink", state === "pending_in");
   const notice = $("notice");
   notice.className = (state === "pending_out" || state === "connected") ? "ok" : "";
+  if ((state === "pending_out" || state === "connected") && explainShown) PoXExplain.loadExchange($("exchangeBox"), profileId);
+  else show("exchangeBox", false);
   notice.textContent = state === "pending_out" ? "申請済みです。相手の承認をお待ちください。"
                      : state === "connected" ? "つながっています。"
                      : state === "declined_out" ? "今回は見送られました。どちらかがプロフィールを作り直すと、もう一度申し出られます。"
@@ -168,9 +166,11 @@ async function refreshConnectState() {
 
 /* 接続の説明（指示書68 画面1）。off なら false（今と同じ欄を出す）。ok・approved なら描いて true。none なら出さずに true。 */
 let explainDigest = null;
+let explainShown = false;                   // 説明（ok・approved）を出したか。やり取りは説明が添えられた申請だけ
 async function loadExplanation() {
   const $ = id => document.getElementById(id);
   explainDigest = null;
+  explainShown = false;
   try {
     const r = await fetch(`/api/explanations/card?with=${encodeURIComponent(profileId)}`);
     if (!r.ok) return false;
@@ -181,11 +181,11 @@ async function loadExplanation() {
       ? `承認の時に二人が見た説明です（${d.approved_at}）${d.stale ? "。いまのプロフィールとは違うところがあります" : ""}`
       : `${d.target_name} さん`;
     $("explainBody").innerHTML = d.html;                  // サーバーのレンダラの出力（エスケープ済み）
+    explainShown = true;
     if (d.status === "ok") {
       explainDigest = d.card_digest;
       PoXExplain.wireSupplement($("explainBody"), {
-        note: "あなたの文の言い換えについての補足です（400 字まで）。運営だけが読み、相手には届きません。"
-              + "「文からは分からないこと」や「つながった後に尋ねること」について、ここに書けます。書かなくてもかまいません。",   // 指示書73 §4-5
+        note: "あなたの文の言い換えについての補足です（400 字まで）。運営だけが読み、相手には届きません。",   // 報告74 の確認 5
         onSend: sendSelfSupplement });
     }
     $("explainBox").style.display = "";
@@ -231,8 +231,7 @@ async function doConnect(btn) {
                              purpose_id: document.getElementById("offerPurpose").value || null,
                              message: (document.getElementById("offerMsg").value || "").trim(),
                              // 画面2: 読んだ説明（カードの版）を添える。説明が新しくなっていれば申請しない（409）
-                             explanation_digest: explainDigest,
-                             explanation_private: !!(explainDigest && document.getElementById("explainPrivate").checked) }),
+                             explanation_digest: explainDigest }),
     });
     if (PoX.handle(aRes, { on403: m => { notice.className = "err"; notice.textContent = m; } })) { if (btn) btn.disabled = false; return; }
     const aData = await aRes.json();

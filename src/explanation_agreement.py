@@ -100,6 +100,9 @@ def record_agreement(render, connection_ref, necessity_c4=None, db_path="pox.db"
         return None                                   # 説明の組が無ければ記録しない
     digest, kid = pair_digest(a1)
     sup = S.approve_supplements(render["id"], db_path=db_path)
+    # supplemented（指示書74 §3・報告74 の確認）: 受けた人の発言が、承認までのやり取りに 1 通以上あるとき true。
+    # 指示書74 より前の承認は、承認に添えた補足（approve）の有無のまま。イベントの形は変えない
+    posted = S.exchange_count(render["id"], render["to_subject"], db_path=db_path) > 0
     payload = {
         "connection_ref": connection_ref,
         "pair_digest": digest, "digest_key_id": kid, "canon_version": CANON_VERSION,
@@ -109,7 +112,7 @@ def record_agreement(render, connection_ref, necessity_c4=None, db_path="pox.db"
                      "render_key_id": render["viewer_key_id"]},
                     {"by": render["to_subject"], "at": render["approved_at"], "render_digest": render["recipient_digest"],
                      "render_key_id": render["recipient_key_id"]}],
-        "supplemented": bool(sup),
+        "supplemented": bool(sup) or posted,
         "generation_digest": generation_digest(card.get("generation")),
     }
     res = le.append_event(render["to_subject"], EVENT_TYPE, payload, db_path=db_path)

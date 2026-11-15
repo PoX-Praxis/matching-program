@@ -144,7 +144,8 @@ def test_t402_decline_supplement_delivered_once_and_render_deleted(xs):
     assert notes == [{"from_name": "ハル", "text": "いまは店の仕事に手が回りません", "at": notes[0]["at"]}]
     assert _cli("me").get("/api/explanations/declined_notes").get_json() == []
     assert _cli("c_full").get("/api/explanations/declined_notes").get_json() == []
-    assert S.count_rows(db_path=appmod.DB) == {"explanation_renders": 0, "explanation_supplements": 0}
+    assert S.count_rows(db_path=appmod.DB) == {"explanation_renders": 0, "explanation_supplements": 0,
+                                               "explanation_exchanges": 0}
 
 
 # ── 403 §7-8: 取り下げで、保存した表示が消える。画面1 の補足は運営だけ（相手に届かない）────────────────────
@@ -204,7 +205,8 @@ def test_t405_off_is_unchanged(xs, monkeypatch):
     assert _cli("me").post("/approve", json={"to_id": "c_full"}).status_code == 200       # 版を添えなくても申請できる
     assert _cli("c_full").post("/approve", json={"to_id": "me"}).status_code == 200       # チェックなしで承認できる
     assert _state("me", "c_full") == "connected"
-    assert S.count_rows(db_path=appmod.DB) == {"explanation_renders": 0, "explanation_supplements": 0}
+    assert S.count_rows(db_path=appmod.DB) == {"explanation_renders": 0, "explanation_supplements": 0,
+                                               "explanation_exchanges": 0}
     monkeypatch.setenv("POX_EXPLANATION", "unknown-value")                  # 知らない値は off
     assert S.mode() == "off"
     html = open(os.path.join(ROOT, "templates", "profile.html"), encoding="utf-8").read()

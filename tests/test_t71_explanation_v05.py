@@ -171,7 +171,9 @@ def test_t451_saved_display_is_not_redrawn(xs):
     approve("me", "c_full", db_path=appmod.DB)                                          # 申請中（画面3 に出る）にする
     inc = _cli("c_full").get("/api/explanations/incoming?with=me").get_json()
     assert inc["status"] == "ok"
-    assert inc["html"] == X.personalize(OLD_HTML, "recipient", NAMES)                   # そのまま（名前だけ。開く枠も無い）
+    # 文は保存したまま（描き直さない）。並びと開閉は指示書74 追補1 で前の形にも当てる（側の見出しを足すだけ）
+    assert inc["html"] == X.incoming_html(OLD_HTML, NAMES)
+    assert '<div class="ex-purpose"><h4 class="ex-ph">■ アオイ さんの目的1「店」について</h4>' in inc["html"]
     assert "文からは分からないこと" in inc["html"] and "根拠は二人の公開の文です" in inc["html"]
 
 

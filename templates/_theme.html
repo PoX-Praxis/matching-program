@@ -1,7 +1,21 @@
-{#- 色の名前（指示書75 §1）。全ページの <head> で読み込む（_base.html と、_base を使わない login.html・index.html）。
-    色はここ 1 か所だけで決める。テンプレートは var(--…) で参照する。役割で名付ける（色の名前で付けない）。 -#}
+{#- 色の名前（指示書75 §1・§3）。全ページの <head> で読み込む（_base.html と、_base を使わない login.html・index.html）。
+    色はここ 1 か所だけで決める（明るい色は :root、暗い色は :root[data-theme="dark"]）。テンプレートは var(--…) で参照する。
+    役割で名付ける（色の名前で付けない）。表示の選択は、その人のブラウザの中（localStorage "pox_theme"）だけに覚える。 -#}
+<script>
+/* 表示（明るい／暗い）をページを描く前に決める（ちらつきを出さない。指示書75 §4）。選んだものがあればそれ、無ければ端末の設定。
+   サーバーには送らない・クッキーは使わない。 */
+(function () {
+  var t = null;
+  try { t = localStorage.getItem("pox_theme"); } catch (e) { t = null; }
+  if (t !== "dark" && t !== "light") {
+    t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  }
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
 <style>
   :root{
+    color-scheme: light;      /* 入力欄・ボタン・スクロールバーの既定の色（指示書75 §3） */
     /* ── 色の名前（指示書75 §1）: 役割で名付け、色はここ 1 か所だけで決める（テンプレートは var(--…) で参照する） ── */
     /* 地 */
     --bg: #ffffff;            /* ページの背景 */
@@ -39,5 +53,43 @@
     /* 説明の画面（指示書74 追補2 の帯） */
     --band-rev: #e6eef7;      /* 受けた人の目的の側の帯 */
     --band-main: #f4ecdc;     /* 申請者の目的の側の帯 */
+  }
+  /* 暗い色の組（指示書75 §3）。地は真っ黒にしない・文字は真っ白にしない。ナビの紺を基調にする。影は薄く */
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --bg: #0f1722;
+    --surface: #16212f;
+    --surface-2: #1c2938;
+    --overlay: rgba(0,0,0,.6);
+    --shadow: rgba(0,0,0,.12);   /* 暗い地では影を薄くし、縁の線（☰ のメニューの --line-strong）で見分ける（§3） */
+    --text: #e6ebf2;
+    --text-sub: #c3cbd6;
+    --text-muted: #9aa5b4;
+    --link: #9cc3ec;
+    --line: #2a3a4d;
+    --line-strong: #3e5168;
+    --ring: #9cc3ec;
+    --nav-bg: #13263d;
+    --nav-text: #f1f4f8;
+    --nav-sub: #b7cbe2;
+    --accent: #8fb8e6;
+    --accent-hover: #a8c8ee;
+    --on-accent: #0c1724;
+    --mark-bg: #24345a;
+    --mark-text: #cdd7ff;
+    --warn-text: #e6c36a;
+    --warn-bg: #3a2f12;
+    --warn-line: #6b5520;
+    --error-text: #ff9a9a;
+    --error-bg: #3d1a1d;
+    --ok-text: #80d4a2;
+    --ok-bg: #163428;
+    --band-rev: #1d3350;
+    --band-main: #3a2f1c;
+  }
+  html{ background: var(--bg); color: var(--text); }
+  /* 入力欄は地の色に合わせる（暗い表示で既定の灰色にしない）。ページごとの指定があれば、そちらが勝つ（:where で強さを 0 にする） */
+  :where(textarea, select, input:not([type=checkbox], [type=radio], [type=submit], [type=button], [type=file])){
+    background-color: var(--surface); color: var(--text);
   }
 </style>

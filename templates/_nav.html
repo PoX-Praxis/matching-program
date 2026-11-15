@@ -19,6 +19,22 @@
      ここでは端末幅で崩れやすい要素だけを整える。 */
   html, body{ max-width:100%; overflow-x:hidden; }   /* 100vw リボン由来の横スクロールを抑止 */
   img{ max-width:100%; height:auto; }
+  /* 表示の切り替えのボタン（指示書75 §4）。いまの表示に合わせて、月か太陽の一方だけを出す */
+  .pox-theme-btn{ background:none; border:none; color:var(--nav-sub); padding:2px; margin:0; cursor:pointer;
+                  line-height:0; display:inline-flex; align-items:center; }
+  .pox-theme-btn:hover{ color:var(--nav-text); }
+  :root[data-theme="dark"] .pox-theme-btn .pox-moon{ display:none; }
+  :root:not([data-theme="dark"]) .pox-theme-btn .pox-sun{ display:none; }
+  /* 狭い幅（430 以下）では、ナビに入らないので ☰ の中の 1 行にする（報告75 の案 B） */
+  .pox-theme-menu{ display:none; width:100%; text-align:left; padding:9px 10px; color:var(--link); background:none;
+                   border:none; border-radius:4px; cursor:pointer; font:inherit; }
+  .pox-theme-menu svg{ vertical-align:-3px; margin-right:6px; }
+  :root[data-theme="dark"] .pox-theme-menu .pox-moon{ display:none; }
+  :root:not([data-theme="dark"]) .pox-theme-menu .pox-sun{ display:none; }
+  @media (max-width:430px){
+    #poxNav .pox-theme-btn{ display:none; }
+    #poxNav .pox-theme-menu{ display:block; }
+  }
   @media (max-width:640px){
     #poxNav{ padding:10px 12px; }
     #poxNav > div{ gap:11px; }
@@ -41,6 +57,12 @@
     <a href="/register" id="navWrite" style="color:var(--nav-sub);text-decoration:none;white-space:nowrap">言語化する</a>
     <a href="/connect" id="navMatch" style="color:var(--nav-sub);text-decoration:none;white-space:nowrap">つながる</a>
     <a href="/communities" id="navCommunities" style="color:var(--nav-sub);text-decoration:none;white-space:nowrap">コミュニティ</a>
+    <!-- 表示の切り替え（指示書75 §4）。明るい表示では月（押すと暗くなる）、暗い表示では太陽（押すと明るくなる）。
+         選んだほうは、その人のブラウザの中（localStorage）だけに覚える。 -->
+    <button type="button" id="navTheme" class="pox-theme-btn" aria-label="表示を暗くする" title="表示を暗くする">
+      <svg class="pox-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <svg class="pox-sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7 7 17M17 7l1.7-1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
     <!-- 未ログイン時のみ表示（ログイン後は非表示にして ☰ 内のログアウトへ） -->
     <a href="/login" id="navLogin" style="color:var(--nav-sub);text-decoration:none;white-space:nowrap">ログイン</a>
     <button id="navMenuBtn" aria-label="メニュー" aria-expanded="false"
@@ -53,6 +75,8 @@
       <a href="#" id="menuMypage" hidden style="padding:9px 10px;color:var(--link);text-decoration:none;border-radius:4px">マイページ</a>
       <a href="/about" style="display:block;padding:9px 10px;color:var(--link);text-decoration:none;border-radius:4px">PoXとは</a>
       <a href="/privacy" style="display:block;padding:9px 10px;color:var(--link);text-decoration:none;border-radius:4px">プライバシー</a>
+      <!-- 表示の切り替え（狭い幅だけ。広い幅ではナビのボタン。指示書75 §4・報告75 の案 B） -->
+      <button type="button" id="menuTheme" class="pox-theme-menu" aria-label="表示を暗くする"><svg class="pox-moon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><svg class="pox-sun" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7 7 17M17 7l1.7-1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="pox-theme-label">表示を暗くする</span></button>
       <a href="#" id="menuLogout" hidden style="padding:9px 10px;color:var(--error-text);text-decoration:none;border-radius:4px;border-top:1px solid var(--line);margin-top:4px">ログアウト</a>
     </div>
   </div>
@@ -134,6 +158,28 @@ window.PoX = (function(){
       if (login) login.hidden = false;
     }
   });
+
+  // ── 表示の切り替え（指示書75 §4）。ボタンで選んだほうを localStorage だけに覚える（サーバー・クッキーには残さない）──
+  // 広い幅はナビのボタン（navTheme）、狭い幅（430 以下）は ☰ の中の 1 行（menuTheme）。どちらも同じ切り替え
+  var themeBtn = document.getElementById("navTheme");
+  var themeMenu = document.getElementById("menuTheme");
+  function syncThemeBtn(){
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    var label = dark ? "表示を明るくする" : "表示を暗くする";
+    themeBtn.setAttribute("aria-label", label);
+    themeBtn.setAttribute("title", label);
+    themeMenu.setAttribute("aria-label", label);
+    themeMenu.querySelector(".pox-theme-label").textContent = label;
+  }
+  function toggleTheme(){
+    var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("pox_theme", next); } catch (_) {}
+    syncThemeBtn();
+  }
+  themeBtn.addEventListener("click", toggleTheme);
+  themeMenu.addEventListener("click", toggleTheme);
+  syncThemeBtn();
 
   // ── 現在ページの強調（常時表示リンクのみ）────────────────────────────
   var path = location.pathname;

@@ -158,7 +158,7 @@ def test_t488_versions_agreement_and_display(monkeypatch):
         "c222f021707e8ab92f976d328ce7dbb56aa01051ef564863b768e6bda4a7f252"
     assert "その目的に組が1つも無いときだけ、status を \"not_covered\" にする。" in text
     assert os.path.exists(os.path.join(ROOT, "docs", "prompts", "explanation_p1_v0.3.txt"))     # 前の版は残す
-    assert G.FixedBackend().model == "fixed-rule-v2"
+    assert G.FixedBackend().model == "fixed-rule-v3"                                              # 指示書72 で v3（rel-v0.4）
     assert '"pending", "explained", "open", "not_covered"' in json.dumps(X.schema(), ensure_ascii=False)   # スキーマ v0.7
     fx = json.load(open(os.path.join(ROOT, "tests", "fixtures", "explanation_v0_4.json"), encoding="utf-8"))
     assert X.validate(fx["cases"][0]["card"])[0] is True                                          # v0.4 のカードは v0.4 のスキーマで

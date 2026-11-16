@@ -102,11 +102,11 @@ def test_t410_fixed_pipeline_end_to_end():
     assert X.validate(full)[0]
     html = X.render(full, "viewer", {"viewer": "アオイ", "target": "ハル"})
     assert "あなたの目的1" in html and "ハル さんは、" in html and X.FOOTER_TEXT in html
-    assert d["generation"]["prompt1_sha"] == G.PROMPT1_SHA and d["generation"]["model"] == "fixed-rule-v2"   # 指示書73 順3
+    assert d["generation"]["prompt1_sha"] == G.PROMPT1_SHA and d["generation"]["model"] == "fixed-rule-v3"   # 指示書72（rel-v0.4 の述語）
     # プロンプトはファイルが唯一の正（sha を固定）・埋める場所がある
     assert G.prompt_sha(1) == G.PROMPT1_SHA and G.prompt_sha(2) == G.PROMPT2_SHA
     assert G.P1_N_SLOT in G.prompt_text(1) and G.P2_SLOT in G.prompt_text(2)
-    # 規則の既定（fixed-rule-v2）でも最後まで通る（出すかどうかは確かめが決める）
+    # 規則の既定（fixed-rule-v3）でも最後まで通る（出すかどうかは確かめが決める）
     r2 = G.generate_direction(n, o, G.FixedBackend())
     assert X.validate(X.assemble(r2["direction"], None, True))[0]
 
@@ -244,7 +244,7 @@ def test_t414_version_bump_marks_superseded(world2, monkeypatch):
     backend = _gen_world(monkeypatch)
     assert appmod._explanation_on_profile_changed("me") >= 2
     n1 = _log_count()
-    backend.model = "fixed-rule-v3"                                              # 版を上げる
+    backend.model = "fixed-rule-next"                                            # 版を上げる（今の既定と違う名前）
     marked = S.mark_superseded(G.version_key(backend), db_path=appmod.DB)
     assert marked == n1 and _log_count() == n1                                   # 印だけ。作り直さない
     with S._connect(appmod.DB) as con:

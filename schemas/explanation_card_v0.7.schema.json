@@ -9,7 +9,7 @@
                "target_has_purposes", "purposes", "reverse_purposes", "citations", "output_digest"],
   "properties": {
     "schema_version": {"const": "expl-v0.7"},
-    "relation_rule_version": {"const": "rel-v0.3"},
+    "relation_rule_version": {"enum": ["rel-v0.3", "rel-v0.4"]},
     "status": {"enum": ["pending", "explained", "not_covered", "stale", "supplemented", "deleted", "superseded"],
                "description": "カード全体の状態（仕様 §12-2）。pending は出さない（「準備中」と出さない）"},
     "show_reason": {"enum": [null, "no_pair", "quote_failed", "model_declined"],

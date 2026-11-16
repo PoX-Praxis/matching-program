@@ -189,10 +189,10 @@ class Backend:
 class FixedBackend(Backend):
     """テスト用。決まった入力に決まった出力を返す。responder(stage, payload) を渡せば、それを使う。
     渡さなければ、規則で句を選ぶ（モデルではない。fixed-rule-v2: 段1 の決まり 5 v0.4 に合わせ、欠けた欠かせない要素を
-    missing_must に入れる。指示書73 順3）。"""
+    missing_must に入れる。指示書73 順3。fixed-rule-v3: R1・R2 のラベルを、確かめと同じ述語（rel-v0.4）で付ける。指示書72）。"""
     name = "fixed"
 
-    def __init__(self, responder=None, model="fixed-rule-v2"):
+    def __init__(self, responder=None, model="fixed-rule-v3"):
         self.responder = responder or rule_responder
         self.model = model
 
@@ -268,8 +268,9 @@ def startup_check():
 
 
 # ── 規則で句を選ぶ（fixed の既定。モデルではない）─────────────────────────────────────────────
-_R1_END = re.compile(r"(てきた|を担ってきた)")
-_R2_END = re.compile(r"(できる|関われる|手伝える)")
+# R1・R2 のラベルは、確かめ（check）と同じ述語で付ける（fixed-rule-v3・rel-v0.4。述語は 1 か所だけ）
+_R1_END = X.R1_PRED
+_R2_END = X.R2_PRED
 
 
 def _lcs(a, b):

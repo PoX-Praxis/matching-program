@@ -39,29 +39,74 @@ MODELS = {
 CMAKE_COMMON = ("-G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF "
                 "-DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF")
 
-# 準備の仕事（CPU）。/work は非公開のバケット（読み書き）、/src/nemotron は公式のリポジトリ（決めた revision・読むだけ）
+# 公式の Nemotron のファイル（決めた revision。リモートのコード *.py は取らない）。大きいファイルは LFS の sha256、
+# 小さいファイルは git の blob の sha1 で確かめる（2026-11-17 に Hugging Face の記録から取った値）
+NEMOTRON_FILES = {
+    "config.json": ("git", "8e76834d8d89a4fb448036a121d18995058cbe31"),
+    "generation_config.json": ("git", "5b46e661e3d33c20107e61c43d6c91fa1f1a225a"),
+    "chat_template.jinja": ("git", "9d506313e55e79d9250523b3de1e6aa7a4a2f929"),
+    "model.safetensors.index.json": ("git", "87ba9ca80b298deb039fc20688b97e695d0b3398"),
+    "special_tokens_map.json": ("git", "48f887e5f25bd8bbef22fcada4a251ee67042aa4"),
+    "tokenizer_config.json": ("git", "b0fa169fb4edff6dd4a4dc2049d913b36e7fb207"),
+    "tokenizer.json": ("sha256", "3277c00fe5fb3963b3cb7c07b7f183722d2af4d775a4aea7cfb3684d7cccbc2f"),
+    "model-00001-of-00004.safetensors": ("sha256", "4f679bcb426885f88f1ebdc896ddefb70f311efd7cc69cd051328140aea3b3a8"),
+    "model-00002-of-00004.safetensors": ("sha256", "bb18ece53ee105a4efbca3af0aac738350c15ab0ee79186ddbc70f48e841fd6e"),
+    "model-00003-of-00004.safetensors": ("sha256", "c488cd67d64acb1044ba2847157be348e2e5ff7216536d6c55920ee936470c89"),
+    "model-00004-of-00004.safetensors": ("sha256", "9a958876b0696f33df1ecc669c949b122ee58779be5ded77d49a55737ca20e24"),
+}
+_NEMO_URL = (f"https://huggingface.co/{L.PROFILES['nemotron-9b-ja']['official']}/resolve/"
+             f"{L.PROFILES['nemotron-9b-ja']['official_revision']}")
+
+# 準備の仕事（CPU）。/work は非公開のバケット（読み書き）
+# - llama.cpp: 組んだもの（bin/SHA256SUMS）が無いか、sha256 が合わないときだけ組む（合えば使い回す）
+# - Nemotron: 公式のファイルを決めた revision の URL から手元の disk に落とし、上の値で確かめてから変換する
+#   （ボリュームから直に読ませると、変換が止まった。報告76）。進み具合（大きさだけ）を 2 分ごとにログに出す
 PREPARE_SH = f"""set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq && apt-get install -y -qq git cmake ninja-build build-essential python3 python3-venv python3-pip curl ca-certificates >/dev/null
 git clone -q --depth 1 --branch {L.LLAMACPP['tag']} {L.LLAMACPP['repo']} /opt/llama.cpp
 test "$(git -C /opt/llama.cpp rev-parse HEAD)" = "{L.LLAMACPP['commit']}"
-cmake -S /opt/llama.cpp -B /opt/build-cuda {CMAKE_COMMON} -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES={CUDA_ARCH} >/dev/null
-cmake --build /opt/build-cuda -j"$CPU_CORES" --target llama-server >/dev/null
-cmake -S /opt/llama.cpp -B /opt/build-cpu {CMAKE_COMMON} >/dev/null
-cmake --build /opt/build-cpu -j"$CPU_CORES" --target llama-quantize >/dev/null
 mkdir -p /work/bin /work/models
-cp /opt/build-cuda/bin/llama-server /work/bin/llama-server-cuda
-cp /opt/build-cpu/bin/llama-quantize /work/bin/llama-quantize
-(cd /work/bin && sha256sum llama-server-cuda llama-quantize > SHA256SUMS)
-echo "[prepare] built"
+if [ -f /work/bin/SHA256SUMS ] && (cd /work/bin && sha256sum -c SHA256SUMS >/dev/null 2>&1); then
+  echo "[prepare] build reused"
+else
+  cmake -S /opt/llama.cpp -B /opt/build-cuda {CMAKE_COMMON} -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES={CUDA_ARCH} >/dev/null
+  cmake --build /opt/build-cuda -j"$CPU_CORES" --target llama-server >/dev/null
+  cmake -S /opt/llama.cpp -B /opt/build-cpu {CMAKE_COMMON} >/dev/null
+  cmake --build /opt/build-cpu -j"$CPU_CORES" --target llama-quantize >/dev/null
+  cp /opt/build-cuda/bin/llama-server /work/bin/llama-server-cuda
+  cp /opt/build-cpu/bin/llama-quantize /work/bin/llama-quantize
+  (cd /work/bin && sha256sum llama-server-cuda llama-quantize > SHA256SUMS)
+  echo "[prepare] built"
+fi
 python3 -m venv /opt/venv
 /opt/venv/bin/pip install -q -r /opt/llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
 /opt/venv/bin/pip freeze > /work/bin/convert_pip_freeze.txt
 mkdir -p /tmp/nemo
-for f in /src/nemotron/*; do case "$f" in *.py) ;; *) ln -s "$f" /tmp/nemo/ ;; esac; done
+python3 - <<'PY'
+import hashlib, json, subprocess, sys
+files = json.loads({json.dumps(json.dumps(NEMOTRON_FILES))})
+for k, (name, (kind, want)) in enumerate(sorted(files.items()), 1):
+    path = "/tmp/nemo/" + name
+    subprocess.run(["curl", "-sSfL", "--retry", "5", "-o", path, "{_NEMO_URL}/" + name], check=True)
+    data = open(path, "rb")
+    if kind == "sha256":
+        h = hashlib.sha256()
+        for chunk in iter(lambda: data.read(1 << 24), b""):
+            h.update(chunk)
+    else:
+        body = data.read()
+        h = hashlib.sha1(b"blob %d\\0" % len(body) + body)
+    if h.hexdigest() != want:
+        sys.exit(f"[prepare] mismatch {{name}}")
+    print(f"[prepare] downloaded {{k}}/{{len(files)}}", flush=True)
+PY
 test -z "$(find /tmp/nemo -name '*.py')"
+(while true; do sleep 120; echo "[prepare] progress f16=$(stat -c %s /tmp/nemo-f16.gguf 2>/dev/null || echo 0) q4=$(stat -c %s /tmp/nemotron-9b-ja-Q4_K_M.gguf 2>/dev/null || echo 0)"; done) &
 /opt/venv/bin/python /opt/llama.cpp/convert_hf_to_gguf.py /tmp/nemo --outtype f16 --outfile /tmp/nemo-f16.gguf >/tmp/convert.log 2>&1 || {{ tail -n 40 /tmp/convert.log; exit 1; }}
+echo "[prepare] f16 written"
 sha256sum /tmp/nemo-f16.gguf | cut -d' ' -f1 > /work/models/nemotron-9b-ja-F16.sha256
+rm -f /tmp/nemo/*.safetensors
 /work/bin/llama-quantize /tmp/nemo-f16.gguf /tmp/{MODELS['nemotron-9b-ja']['file']} Q4_K_M >/tmp/quantize.log 2>&1 || {{ tail -n 40 /tmp/quantize.log; exit 1; }}
 cp /tmp/{MODELS['nemotron-9b-ja']['file']} /work/models/
 echo "[prepare] converted"
@@ -122,10 +167,7 @@ def _volume(**kw):
 def prepare_spec(namespace):
     return {"image": IMAGES["devel"], "command": ["bash", "-c", PREPARE_SH], "flavor": FLAVORS["prepare"],
             "timeout": TIMEOUTS["prepare"], "name": "pox-stage3a-prepare",
-            "volumes": [dict(type="bucket", source=f"{namespace}/{BUCKET}", mount_path="/work", read_only=False),
-                        dict(type="model", source="nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese",
-                             revision=L.PROFILES["nemotron-9b-ja"]["official_revision"], mount_path="/src/nemotron",
-                             read_only=True)]}
+            "volumes": [dict(type="bucket", source=f"{namespace}/{BUCKET}", mount_path="/work", read_only=False)]}
 
 
 def run_spec(namespace, profile, gguf_sha, ids, repeat, bundle_sha, kind):

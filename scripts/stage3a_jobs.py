@@ -60,9 +60,10 @@ python3 -m venv /opt/venv
 mkdir -p /tmp/nemo
 for f in /src/nemotron/*; do case "$f" in *.py) ;; *) ln -s "$f" /tmp/nemo/ ;; esac; done
 test -z "$(find /tmp/nemo -name '*.py')"
-/opt/venv/bin/python /opt/llama.cpp/convert_hf_to_gguf.py /tmp/nemo --outtype f16 --outfile /tmp/nemo-f16.gguf >/tmp/convert.log 2>&1
+/opt/venv/bin/python /opt/llama.cpp/convert_hf_to_gguf.py /tmp/nemo --outtype f16 --outfile /tmp/nemo-f16.gguf >/tmp/convert.log 2>&1 || {{ tail -n 40 /tmp/convert.log; exit 1; }}
 sha256sum /tmp/nemo-f16.gguf | cut -d' ' -f1 > /work/models/nemotron-9b-ja-F16.sha256
-/work/bin/llama-quantize /tmp/nemo-f16.gguf /work/models/{MODELS['nemotron-9b-ja']['file']} Q4_K_M >/tmp/quantize.log 2>&1
+/work/bin/llama-quantize /tmp/nemo-f16.gguf /tmp/{MODELS['nemotron-9b-ja']['file']} Q4_K_M >/tmp/quantize.log 2>&1 || {{ tail -n 40 /tmp/quantize.log; exit 1; }}
+cp /tmp/{MODELS['nemotron-9b-ja']['file']} /work/models/
 echo "[prepare] converted"
 (cd /work/models && sha256sum *.gguf > SHA256SUMS)
 echo "[prepare] done"
@@ -72,10 +73,10 @@ echo "[prepare] done"
 RUN_SH = """set -euo pipefail
 test -f /work/bundle/manifest.json
 export DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1
-apt-get update -qq && apt-get install -y -qq python3 >/dev/null
+apt-get update -qq && apt-get install -y -qq python3 libgomp1 >/dev/null
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader > /out/gpu.csv
 nvidia-smi | grep -o "CUDA Version: [0-9.]*" > /out/cuda.txt || true
-(while true; do nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits >> /out/gpu_mem.csv; sleep 2; done) &
+(while true; do nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits >> /tmp/gpu_mem.csv; sleep 2; done) &
 T0=$(date +%s.%N)
 /work/bin/llama-server-cuda -m "/work/models/$GGUF_FILE" --host 127.0.0.1 --port 8080 -c @CTX@ -np @PARALLEL@ -b @BATCH@ -ub @UBATCH@ \\
   -ngl @NGL@ -fa @FA@ --no-cont-batching --no-webui --log-verbosity 1 > /tmp/server.log 2>&1 &
@@ -100,6 +101,8 @@ PY
 python3 /work/bundle/scripts/stage3a_run.py --profile "$PROFILE" --gguf-sha256 "$GGUF_SHA" --ids "$IDS" --repeat "$REPEAT" \\
   --record /out/record.json --out /out/result.json
 echo "[run] server log lines with error: $(grep -ci error /tmp/server.log || true)"
+printf '{"gpu_memory_used_mib_max": %s}\\n' "$(sort -n /tmp/gpu_mem.csv | tail -1)" > /out/gpu_mem.json
+cat /out/gpu_mem.json
 """
 for _k, _v in (("@CTX@", "ctx_size"), ("@PARALLEL@", "parallel"), ("@BATCH@", "batch_size"), ("@UBATCH@", "ubatch_size"),
                ("@NGL@", "n_gpu_layers"), ("@FA@", "flash_attn")):

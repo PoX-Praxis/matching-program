@@ -5,7 +5,7 @@
 - チャットの型は、モデルのファイルに入っているものを使う（llama-server の /apply-template で描く）。描いた後の入力のバイト列の
   sha256 を記録する
 - 出力の形は、文法の縛り（GBNF。schemas/grammar/）で JSON に縛る。プロンプトの外で当てる（プロンプトの sha256 は変わらない）。
-  候補ごとに、チャットの型の答えの前置き（LLM-jp-4 の <|channel|>final<|message|>）を文法の始まりに足す
+  文法の始まり（root）は候補ごとに決める（チャットの型が答えの前に前置きを求める候補は、それを始まりに置く）
 - 生成の設定は、温度 0・貪欲（top-k 1・top-p 1）・seed 固定・繰り返しの罰なし。全部を記録し、説明の鍵（version_key）に入れる
 - 呼んだ記録（calls）には、出力の文（架空の組の文）と時間・token の数・選ばれた字と次点の差を残す。ログには文を出さない
 """
@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import time
 import urllib.request
 
@@ -33,26 +34,27 @@ DECODING = {"temperature": 0.0, "top_k": 1, "top_p": 1.0, "min_p": 0.0, "typical
 SERVER = {"ctx_size": 8192, "parallel": 1, "batch_size": 2048, "ubatch_size": 512, "n_gpu_layers": 999,
           "flash_attn": "off", "cont_batching": False}
 
-# 候補（指示書76 §1-1）。gguf_sha256 は、手に入れたファイルの sha256（順1 で決める）
+# 候補（指示書76 §1-1 と、報告76 順1 の確認 2026-11-17）。候補は Nemotron の 1 つ
+# - LLM-jp-4 8B instruct は外した（確認 1・案 A）。決めた版の llama.cpp で変換できず、第三者のファイルはどれも公式の語彙と
+#   語の切り方が一致しない（報告76 §2-2）。次の手（llm-jp の fork・gpt-oss-20b）は KAORU が決める。ここに足さない
 PROFILES = {
-    "llmjp4-8b": {
-        "name": "LLM-jp-4 8B instruct", "official": "llm-jp/llm-jp-4-8b-instruct",
-        "official_revision": "098f2b2cf33021eba19a6d3582aa3d071ccc0aff", "quant": "Q4_K_M",
-        "license": "Apache-2.0",
-        # チャットの型は描いた日付を system に入れる（Current date）。型が用意している変数で日付を決め、日・機械が替わっても
-        # 描いた入力を同じにする（型そのものは変えない）
-        "template_kwargs": {"conversation_start_date": "2026-11-17"},
-        # チャットの型の答えは <|channel|>final<|message|>…（harmony）。前置きを文法の始まりに置き、その後を JSON に縛る
-        "grammar_root": '<|channel|> "final" <|message|> body',
-    },
     "nemotron-9b-ja": {
         "name": "NVIDIA Nemotron Nano 9B v2 Japanese", "official": "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese",
         "official_revision": "3979dd16634988c34cc3bd911583c51e6a731d10", "quant": "Q4_K_M",
         "license": "NVIDIA Nemotron Open Model License", "template_kwargs": {"enable_thinking": False},
         # 考える機能を切ると、チャットの型が <think></think> を先に置く。答えは JSON から始まる
         "grammar_root": "body",
+        # 公式のリポジトリの chat_template.jinja の sha256（日付・時刻を入れない型。報告76 の確認の後の節）
+        "official_chat_template_sha256": "dd617e596ae954cac585ba2c5e972af5f0b917ea7e6c6d74b63c2f67c24ece9e",
     },
 }
+EXCLUDED = {"llmjp4-8b": "報告76 順1 の確認 1（案 A）: 決めた版で変換できず、第三者のファイルは語の切り方が公式と一致しない"}
+_DATE_IN_TEMPLATE = re.compile(r"strftime|now\(|date|time", re.I)
+
+
+def template_facts(template):
+    """チャットの型の sha256 と、日付・時刻を入れる印があるか（確認 3。入れているなら、日が替わると描いた入力が変わる）。"""
+    return {"sha256": sha256_text(template or ""), "uses_date_or_time": bool(_DATE_IN_TEMPLATE.search(template or ""))}
 
 
 def sha256_text(s):
@@ -116,6 +118,11 @@ class LlamaCppBackend(G.Backend):
                                      headers={"Content-Type": "application/json"}, method="POST")
         with self._open(req, timeout=self.timeout) as r:
             return json.loads(r.read().decode("utf-8"))
+
+    def server_template(self):
+        """llama-server が読み込んだモデルのファイルのチャットの型（/props）の sha256 と、日付・時刻の印。"""
+        with self._open(urllib.request.Request(self.endpoint + "/props"), timeout=self.timeout) as r:
+            return template_facts(json.loads(r.read().decode("utf-8")).get("chat_template"))
 
     def render(self, prompt):
         """チャットの型で描く（モデルのファイルの型。llama-server の /apply-template）。"""

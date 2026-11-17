@@ -22,7 +22,7 @@ import explanation_llamacpp as L  # noqa: E402
 import explanation_measure as M  # noqa: E402
 
 SYNTHETIC = os.path.join(ROOT, "data", "explanation_bench", "synthetic_v1.json")
-TRIAL_IDS = ("S01", "S04", "S31")              # 順1 の小さな試し（R1・無関係・R4 共鳴）。結果を見て何も動かさない
+TRIAL_IDS = ("S01", "S04", "S31")              # 順1 の小さな試し（R1・無関係・R4 共鳴）。結果を見て何も動かさない（確認）
 # 橋渡しの 12 組（指示書76 §2。走らせる前に報告に書いた。選び方は報告76 順1）
 BRIDGE_IDS = ("S01", "S02", "S03", "S04", "S05", "S06", "S08", "S10", "S13", "S14", "S23", "S31")
 UNRELATED_NOTE = "無関係"
@@ -94,6 +94,11 @@ def main(argv=None, backend_factory=None):
     syn = load_synthetic()
     items = items_for(syn, ids)
     make = backend_factory or (lambda: L.LlamaCppBackend(args.endpoint, args.profile, args.gguf_sha256, record=record))
+    # チャットの型の確かめ（確認 3）: モデルのファイルの型の sha256 と、日付・時刻を入れる印。公式の型と同じか
+    tpl = make().server_template()
+    tpl["same_as_official"] = tpl["sha256"] == L.PROFILES[args.profile].get("official_chat_template_sha256")
+    print(f"[stage3a] chat template uses_date_or_time={tpl['uses_date_or_time']} "
+          f"same_as_official={tpl['same_as_official']}", flush=True)
     runs = []
     for i in range(args.repeat):
         backend = make()
@@ -108,6 +113,7 @@ def main(argv=None, backend_factory=None):
            "ids": list(ids) if ids else "all", "synthetic_sha256": M.sha256_file(SYNTHETIC),
            "prompt_sha256": {"1": G.PROMPT1_SHA, "2": G.PROMPT2_SHA}, "grammar_sha256": L.grammar_sha(args.profile),
            "decoding": backend.decoding, "version_key": G.version_key(backend), "record": record,
+           "chat_template": tpl,
            "determinism": determinism(runs), "unrelated": unrelated_errors(syn, runs[0]["records"]) if runs else None,
            "runs": runs}
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

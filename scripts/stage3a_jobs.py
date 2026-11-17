@@ -28,17 +28,13 @@ IMAGES = {
 FLAVORS = {"prepare": "cpu-upgrade", "run": "l4x1"}
 PRICE_PER_HOUR = {"cpu-upgrade": 0.03, "l4x1": 0.80}       # 2026-11-17 の Jobs の料金表
 TIMEOUTS = {"prepare": "100m", "trial": "40m", "run": "150m"}
+BUDGET_USD = 10.0                                           # 試験全体の上限（前払いの残高。報告76 順1 の確認）
 BUCKET = "pox-stage3a"                                      # 非公開のバケット（KAORU のアカウント）
 CUDA_ARCH = "89"                                            # L4（Ada）
 MODELS = {
-    # 自分で変換する（公式の safetensors → 決めた版の llama.cpp の変換の道具。リモートのコードは置かない）
+    # 公式の safetensors から、決めた版の llama.cpp の変換の道具で自分で作る（リモートのコードは置かない）。
+    # LLM-jp-4 8B は候補から外した（報告76 順1 の確認 1）。第三者のファイルは写さない
     "nemotron-9b-ja": {"file": "nemotron-9b-ja-Q4_K_M.gguf", "how": "convert"},
-    # 決めた版の道具で変換できない（報告76 順1）。第三者の GGUF を写す（出どころ・sha256・ライセンスを記録）
-    "llmjp4-8b": {"file": "llmjp4-8b-Q4_K_M.gguf", "how": "third_party",
-                  "repo": "mosh-hf/llm-jp-4-8b-instruct-GGUF", "revision": "7b810f3212ed42314f6f7612b2e3671b54ac18dc",
-                  "source_file": "llm-jp-4-8b-instruct-Q4_K_M.gguf",
-                  "sha256": "f350ed25095fc696cc9be98da698e454225b75c51c434b2226cfb9f151d000da",
-                  "license": "apache-2.0（そのページの記載）"},
 }
 CMAKE_COMMON = ("-G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF "
                 "-DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF")
@@ -68,8 +64,6 @@ test -z "$(find /tmp/nemo -name '*.py')"
 sha256sum /tmp/nemo-f16.gguf | cut -d' ' -f1 > /work/models/nemotron-9b-ja-F16.sha256
 /work/bin/llama-quantize /tmp/nemo-f16.gguf /work/models/{MODELS['nemotron-9b-ja']['file']} Q4_K_M >/tmp/quantize.log 2>&1
 echo "[prepare] converted"
-curl -sSL -o /work/models/{MODELS['llmjp4-8b']['file']} https://huggingface.co/{MODELS['llmjp4-8b']['repo']}/resolve/{MODELS['llmjp4-8b']['revision']}/{MODELS['llmjp4-8b']['source_file']}
-echo "{MODELS['llmjp4-8b']['sha256']}  /work/models/{MODELS['llmjp4-8b']['file']}" | sha256sum -c - >/dev/null
 (cd /work/models && sha256sum *.gguf > SHA256SUMS)
 echo "[prepare] done"
 """
@@ -142,6 +136,19 @@ def run_spec(namespace, profile, gguf_sha, ids, repeat, bundle_sha, kind):
                              read_only=False)]}
 
 
+def max_cost(spec):
+    """仕事 1 つの費用の上限（時間の上限 × 料金表。ドル）。"""
+    t = str(spec["timeout"])
+    hours = float(t[:-1]) / 60 if t.endswith("m") else float(t[:-1]) if t.endswith("h") else float(t) / 3600
+    return round(hours * PRICE_PER_HOUR[spec["flavor"]], 4)
+
+
+def check_budget(spec, spent):
+    """これまでに使った額（spent）に、この仕事の上限を足して、予算（10 ドル）を超えるなら作らない。"""
+    if spent + max_cost(spec) > BUDGET_USD:
+        raise SystemExit(f"予算を超える見込み: 使った {spent} ＋ この仕事の上限 {max_cost(spec)} > {BUDGET_USD} ドル。止めて報告する")
+
+
 def launch(spec):
     vols = [_volume(**v) for v in spec.pop("volumes")]
     return _api().run_job(volumes=vols, **spec)
@@ -186,12 +193,15 @@ def main(argv=None):
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--bundle-sha256", default="")
     ap.add_argument("--kind", default="trial", choices=("trial", "run"))
+    ap.add_argument("--spent", type=float, default=None, help="これまでに使った額（ドル）。prepare・run では必須")
     args = ap.parse_args(argv)
     ns = args.namespace or "<namespace>"
     if args.cmd == "plan":
         specs = [prepare_spec(ns)] + [run_spec(ns, p, "<sha>", args.ids, args.repeat, "<bundle>", args.kind) for p in L.PROFILES]
         print(json.dumps(specs, ensure_ascii=False, indent=1))
         return specs
+    if args.cmd in ("prepare", "run") and args.spent is None:
+        raise SystemExit("--spent（これまでに使った額）を渡す")
     api = _api()
     ns = args.namespace or api.whoami()["name"]
     if args.cmd == "bundle":
@@ -208,10 +218,14 @@ def main(argv=None):
         print(json.dumps(info, ensure_ascii=False))
         return info
     if args.cmd == "prepare":
+        spec = prepare_spec(ns)
+        check_budget(spec, args.spent)
         api.create_bucket(f"{ns}/{BUCKET}", private=True, exist_ok=True)
-        job = launch(prepare_spec(ns))
+        job = launch(spec)
     else:
-        job = launch(run_spec(ns, args.profile, args.gguf_sha256, args.ids, args.repeat, args.bundle_sha256, args.kind))
+        spec = run_spec(ns, args.profile, args.gguf_sha256, args.ids, args.repeat, args.bundle_sha256, args.kind)
+        check_budget(spec, args.spent)
+        job = launch(spec)
     print(json.dumps({"job_id": job.id, "url": job.url, "flavor": job.flavor}, ensure_ascii=False))
     return job
 

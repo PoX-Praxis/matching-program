@@ -103,6 +103,7 @@ def replay(res, run_index=0):
         reasons = []
         for prob in r["problems"]:
             st = _stage_of(prob)
+            prob = prob.replace("組・ラベル・見出し", "組／ラベル／見出し")          # 1 つの理由の中の「・」は分けない
             for why in M.drop_reasons([prob]):
                 reasons.append((st, why))
         p2 = trace[0]["stage2_payload"] if trace else {"purposes": []}

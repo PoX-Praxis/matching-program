@@ -1,0 +1,1728 @@
+{
+ "_note": "指示書76 順2 の記録（L4・Nemotron Nano 9B v2 Japanese・架空の 60 組 × 5 回の 1 回目）。§3 の線に届かなかったので、基準の出力ではない。5 回とも出力は一字ずつ同じ（決定性 67/67）。架空の組の文だけを含む。デスクトップでの橋渡しの組（12 組）と比べるために残す",
+ "profile": "nemotron-9b-ja",
+ "gguf_sha256": "c6c8c69a363798f2bd0d40dcd68d6ea407d6abfa456f00b02d7e1cee11eed9ec",
+ "official": "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese",
+ "official_revision": "3979dd16634988c34cc3bd911583c51e6a731d10",
+ "quant": "Q4_K_M",
+ "llamacpp": {
+  "repo": "https://github.com/ggml-org/llama.cpp",
+  "tag": "v1.0.0",
+  "commit": "b1b770d90d94cad9e9ea5b993bdbc383a522fb28",
+  "build": "b12359"
+ },
+ "server": {
+  "ctx_size": 8192,
+  "parallel": 1,
+  "batch_size": 2048,
+  "ubatch_size": 512,
+  "n_gpu_layers": 999,
+  "flash_attn": "off",
+  "cont_batching": false
+ },
+ "decoding": {
+  "temperature": 0.0,
+  "top_k": 1,
+  "top_p": 1.0,
+  "min_p": 0.0,
+  "typical_p": 1.0,
+  "seed": 0,
+  "repeat_penalty": 1.0,
+  "repeat_last_n": 0,
+  "presence_penalty": 0.0,
+  "frequency_penalty": 0.0,
+  "dry_multiplier": 0.0,
+  "xtc_probability": 0.0,
+  "mirostat": 0,
+  "n_predict": {
+   "1": 1536,
+   "2": 512
+  },
+  "n_probs": 2,
+  "cache_prompt": false,
+  "image": "nvidia/cuda:12.4.1-runtime-ubuntu22.04@sha256:517da2300c184c9999ec203c2665244bdebd3578d12fcc7065e83667932643d9",
+  "flavor": "l4x1",
+  "job_id": "6afc437e884144d2f44f30e7",
+  "gpu": "NVIDIA L4",
+  "driver": "620.70.06",
+  "gpu_memory_total": "23034 MiB",
+  "cuda": "CUDA Version : 13.5 [Deprecated; will be removed in CUDA 14.0. Use CUDA UMD Version instead]\nCUDA version : Deprecated, see \"CUDA UMD version\" instead",
+  "bundle_manifest_sha256": "48e11d153275f0d4c32e7c5b9794ccd039de74acceb47a4130b70bd780bb1f30",
+  "startup_seconds": 2.05
+ },
+ "template_kwargs": {
+  "enable_thinking": false
+ },
+ "chat_template": {
+  "sha256": "dd617e596ae954cac585ba2c5e972af5f0b917ea7e6c6d74b63c2f67c24ece9e",
+  "uses_date_or_time": false,
+  "same_as_official": true
+ },
+ "grammar_sha256": {
+  "1": "daec68ca5d7be9d54fcaebe0311e74284bfd6ce54e2ebca8d6236f41fcfe1b7a",
+  "2": "1d5accc7c07eb76b971d6f89a12c32c639518cf0b58bc39310532026365a5cab"
+ },
+ "prompt_sha256": {
+  "1": "c222f021707e8ab92f976d328ce7dbb56aa01051ef564863b768e6bda4a7f252",
+  "2": "19f3bdc7199f7502d6cb1f1c30679976f3a4b8a49a40ec637982cab8d9a3432e"
+ },
+ "synthetic_sha256": "018235232543a730603eaad00b43a4b1afe3de413bf76247ccd651f8003eea37",
+ "record": {
+  "image": "nvidia/cuda:12.4.1-runtime-ubuntu22.04@sha256:517da2300c184c9999ec203c2665244bdebd3578d12fcc7065e83667932643d9",
+  "flavor": "l4x1",
+  "gpu": "NVIDIA L4",
+  "driver": "620.70.06",
+  "gpu_memory_total": "23034 MiB",
+  "cuda": "CUDA Version : 13.5 [Deprecated; will be removed in CUDA 14.0. Use CUDA UMD Version instead]\nCUDA version : Deprecated, see \"CUDA UMD version\" instead",
+  "bundle_manifest_sha256": "48e11d153275f0d4c32e7c5b9794ccd039de74acceb47a4130b70bd780bb1f30",
+  "startup_seconds": 2.05
+ },
+ "version_key": "48b16354f69b481bdd52222a459a9229fc6c222b6ac3d8809c3bfcddb4854958",
+ "determinism": {
+  "runs": 5,
+  "calls": 67,
+  "same": 67,
+  "all_same": true
+ },
+ "records": [
+  {
+   "id": "S01",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S02",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① に組",
+    "① の文の形が決まりの形でない",
+    "ラベル",
+    "見出しに無い語がある"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S03",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S04",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S05",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S06",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S07",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S08",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① に組",
+    "① の文の形が決まりの形でない",
+    "ラベル",
+    "見出しに無い語がある"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S09",
+   "class": "判断できない",
+   "result": null
+  },
+  {
+   "id": "S10",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S11",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S12",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① に組",
+    "① の文の形が決まりの形でない",
+    "ラベル",
+    "見出しに無い語がある"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S13",
+   "class": "説明できる",
+   "rule_excluded": true,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S14",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S15",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S16",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S17",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① に組",
+    "① の文の形が決まりの形でない",
+    "ラベル",
+    "見出しに無い語がある"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S18",
+   "class": "判断できない",
+   "result": null
+  },
+  {
+   "id": "S19",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S20",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S21",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S22",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S23",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない",
+    "① の根拠の組が落ちた"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S24",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S25",
+   "class": "判断できない",
+   "result": null
+  },
+  {
+   "id": "S26",
+   "class": "説明できる",
+   "rule_excluded": true,
+   "result": "c",
+   "reasons": [
+    "補完の目的で R4 だけ"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S27",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S28",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S29",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S30",
+   "class": "判断できない",
+   "result": null
+  },
+  {
+   "id": "S31",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S32",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S33",
+   "class": "判断できない",
+   "result": null
+  },
+  {
+   "id": "S34",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S35",
+   "class": "判断できない",
+   "result": null
+  },
+  {
+   "id": "S36",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S37",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S38",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S39",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S40",
+   "class": "判断できない",
+   "result": null
+  },
+  {
+   "id": "S41",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S42",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S43",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① に組",
+    "① の文の形が決まりの形でない",
+    "ラベル",
+    "見出しに無い語がある"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S44",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S45",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S46",
+   "class": "説明できる",
+   "rule_excluded": true,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S47",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S48",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S49",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S50",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S51",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S52",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① の文の形が決まりの形でない"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S53",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S54",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S55",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "c",
+   "reasons": [
+    "① に組",
+    "① の文の形が決まりの形でない",
+    "ラベル",
+    "見出しに無い語がある"
+   ],
+   "relations": [],
+   "stage2": true,
+   "open": 0,
+   "leak": 3
+  },
+  {
+   "id": "S56",
+   "class": "説明できる",
+   "rule_excluded": true,
+   "result": "c",
+   "reasons": [
+    "R2 なのに申告の表現が無い"
+   ],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S57",
+   "class": "説明できる",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S58",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S59",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  },
+  {
+   "id": "S60",
+   "class": "説明できない",
+   "rule_excluded": false,
+   "result": "b",
+   "reasons": [],
+   "relations": [],
+   "stage2": false,
+   "open": 0,
+   "leak": 0
+  }
+ ],
+ "calls": [
+  {
+   "id": "S01",
+   "stage": 1,
+   "prompt_sha256": "8c0118950aee953a289de72f2742ed4a56cd7a25c13337491b0f30df1a818f16",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"食品の加工や衛生管理の工程を、現場で担ってきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"ジャム工房で十年、仕込みから殺菌、衛生記録までを担当してきました。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "0293296db04fe1a946434c5a775f2ba843cd6ed84d34ebea872db0ba6132ee8b",
+   "tokens_evaluated": 782,
+   "tokens_predicted": 146,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.056771,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S02",
+   "stage": 1,
+   "prompt_sha256": "b02b582e022e9d0adc3df0da555f3f67341aa755160055cff29999b194e1bc84",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"食品の加工や衛生管理の工程を、現場で担ってきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"保健所の営業許可を取るための、設備の配置や書類づくりを手伝えます。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "7417fc42fa92a5d4f942ac6a973656ef0eb40864a1b41b2b330d661b4ec967ee",
+   "tokens_evaluated": 786,
+   "tokens_predicted": 150,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.009485,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S02",
+   "stage": 2,
+   "prompt_sha256": "079aa93e5298e78135be2c89de471f395448a8e6f12a69867c7469b11030704e",
+   "output": "{\n  \"meanings\": [\n    {\n      \"purpose_ref\": \"N.purpose.p1\",\n      \"text\": \"食品の加工や衛生管理の工程を担ってきた人は、保健所の営業許可を取るための設備の配置や書類づくりを手伝えるため、地元の果物を加工品にして通年で売るという目的を支える可能性があります\",\n      \"cites\": [0]\n    }\n  ]\n}",
+   "output_sha256": "41a0c4857879dab5a5c0a683091c484b2558120bfe3cc2b30c1f5dd9c4042150",
+   "tokens_evaluated": 464,
+   "tokens_predicted": 115,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.002878,
+    "under_0_1": 4
+   }
+  },
+  {
+   "id": "S03",
+   "stage": 1,
+   "prompt_sha256": "e1d10a9b6ccbf6e89ca536adfb0a10c0486d361b98493237a3191cdba9ad8089",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"食品の加工や衛生管理の工程を、現場で担ってきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"地元の果物を使ったお菓子を食べ歩くのが好きで、新しい店をよく探している。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "82d0143086b939588bf98c93c521d42da3a78da5d4fc89b3e8398de3bdcd42c0",
+   "tokens_evaluated": 785,
+   "tokens_predicted": 149,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.003952,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S04",
+   "stage": 1,
+   "prompt_sha256": "eff6063a0dd7952fc6dffa1ec3fc398c565922aeadc41cff4a0213215b4993bd",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"食品の加工や衛生管理の工程を、現場で担ってきた人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "529bc7c26f692a3b3c4956f5d273da1957c48ea3ebcb29599c4d230f3a69e9ac",
+   "tokens_evaluated": 765,
+   "tokens_predicted": 96,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.106176,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S05",
+   "stage": 1,
+   "prompt_sha256": "5cbacff2e5757c4d8f54fee01bee9686b422c6d3e2281fbbd8ca76ef0bae249e",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"食品の加工や衛生管理の工程を、現場で担ってきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"いつか食品の加工を学んで、自分の店を持ちたいと思っている。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "bec52d54e48e1b372c352195102d6000ffd618b630b8c658a087108a61cacbbe",
+   "tokens_evaluated": 775,
+   "tokens_predicted": 139,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.0138,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S06",
+   "stage": 1,
+   "prompt_sha256": "07fc5a98fb1f807f095a7987d61adf5ecce154c954d1c6603650e5e83631607b",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"加工品の販路を、通販や小売店とのつながりで広げてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"地方の物産をネット通販で売り出し、百貨店の催事にも出店しました。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "3ed32cee617be2d423efe99e620366420afe5a4ed67f5729b46abf34f188dc5e",
+   "tokens_evaluated": 788,
+   "tokens_predicted": 152,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.080172,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S07",
+   "stage": 1,
+   "prompt_sha256": "c9527161d2932c5af593400f465cc3b1c8d3a630deeb0282d0013d79aaeaffd8",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"加工品の販路を、通販や小売店とのつながりで広げてきた人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "14b0e2175491ea8441ee9f7e18305fcc9ccec33297cbdf5d55e0e2747d6cc9fa",
+   "tokens_evaluated": 787,
+   "tokens_predicted": 102,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.021109,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S08",
+   "stage": 1,
+   "prompt_sha256": "7f7fe96130f43d149691d2475e4ac5d98d3e887a011e6546262987b1c4eaca77",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"加工品の販路を、通販や小売店とのつながりで広げてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"直売所に卸すための冷蔵の保管庫と、配送用の車を持っている。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "7d3ff3ddad9b2aee4d9d862bbeef74073aac7e1a21c3df58fd515e1e1ab83c51",
+   "tokens_evaluated": 788,
+   "tokens_predicted": 152,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.093852,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S08",
+   "stage": 2,
+   "prompt_sha256": "157a1c822fb1b183252615ca64a001e5219548f8778bb86703b137fb99765211",
+   "output": "{\n  \"meanings\": [\n    {\n      \"purpose_ref\": \"N.purpose.p1\",\n      \"text\": \"加工品の販路を、通販や小売店とのつながりで広げてきた人は、直売所に卸すための冷蔵の保管庫と、配送用の車を持っているので、地元の果物を加工品にして通年で売るための基盤をすでに整えている可能性があります\",\n      \"cites\": [0]\n    }\n  ]\n}",
+   "output_sha256": "00a17adea8aadb4c5cd19ea9678ceb3c93a49f73edb357b578adaf9c08090235",
+   "tokens_evaluated": 466,
+   "tokens_predicted": 129,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.016469,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S10",
+   "stage": 1,
+   "prompt_sha256": "6b752073c7286bbb60e91193e01b24ef982cb196915b18821a45df63bd5ac620",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"加工品の販路を、通販や小売店とのつながりで広げてきた人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "14b0e2175491ea8441ee9f7e18305fcc9ccec33297cbdf5d55e0e2747d6cc9fa",
+   "tokens_evaluated": 785,
+   "tokens_predicted": 102,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.155875,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S11",
+   "stage": 1,
+   "prompt_sha256": "a0317f7dda726fc97492b8caf9e4ea6bf18025747e0bd88c9bc42d0a9ae431d5",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"子どもの居場所や学習支援の場を、運営してきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"放課後の学習教室を五年間運営し、学校に行けない子も受け入れてきた。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "fc17d91568c0c0ca05856f7596e24d499f2cf5e48de8c802050598c206df023e",
+   "tokens_evaluated": 791,
+   "tokens_predicted": 146,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.018918,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S12",
+   "stage": 1,
+   "prompt_sha256": "1e51125367b4c5e8915cc9e79bbd7e84d744362dee130a479991e37ec0912755",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"子どもの居場所や学習支援の場を、運営してきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"週に一度なら、子どもたちの宿題を見る立場で関われる。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "3d817f0f2478e90b1572e57c3d1db8d55120c74804cdde23ad655afa8253547b",
+   "tokens_evaluated": 782,
+   "tokens_predicted": 137,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.073928,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S12",
+   "stage": 2,
+   "prompt_sha256": "6bcaec303de2d2bef72baa106a3764f23e929481a4e09f08f0db41cbef139f51",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"子どもの居場所や学習支援の場を運営してきた人は、週に一度なら宿題を見る立場で関われるため、学校に行きづらい子が安心して過ごせる場を地域につくりたいという目的に、足りない役割を補える可能性があります\", \"cites\": [0]}] }",
+   "output_sha256": "ae30f4f50407d1facb3dabb906d0727e486bf07bdb70c744f55a770991d5aa72",
+   "tokens_evaluated": 461,
+   "tokens_predicted": 108,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.001004,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S13",
+   "stage": 1,
+   "prompt_sha256": "6d84ffe2fb161929aadfed9c3ed054c7054c5411397125c1ca0009240ad9ec1e",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"子どもの居場所や学習支援の場を、運営してきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"不登校についての本をよく読み、子どもの気持ちを考えることに関心がある。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "3911bd123091ce9f9e06aafc9655bbb67b01180adbc61072b25060d8b9a0e455",
+   "tokens_evaluated": 784,
+   "tokens_predicted": 142,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.003159,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S14",
+   "stage": 1,
+   "prompt_sha256": "7fa0552c923b69fcd07b5f2f944f1f1a9022a9d8db968f32c8bf51f15663d447",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"子どもの居場所や学習支援の場を、運営してきた人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "79c0a0958eb9acc8b68728490a0ecc17f2af13e7bfc08f0dec2e34ac4b9f9646",
+   "tokens_evaluated": 774,
+   "tokens_predicted": 96,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.108523,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S15",
+   "stage": 1,
+   "prompt_sha256": "c138193ead3707e0ddbc4cb74c0c85d9c00b0e3bfefc81025dc260b7fa68da39",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"子どもの居場所や学習支援の場を、運営してきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"子どもの頃は学校が苦手で、よく図書館に逃げ込んでいた。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "ea7e131819389212c9dab00ea9a5c81d2be504607dadbfe9fd389cb39c7c2994",
+   "tokens_evaluated": 784,
+   "tokens_predicted": 139,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.035881,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S16",
+   "stage": 1,
+   "prompt_sha256": "91e2dce182f1aa0737e3805e9a3e26a8f360b30d0e6dd11abe6ba098e24f7345",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"活動に使える空き部屋や集会所を、地域で貸し出せる人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"自宅の離れが空いているので、平日の午後なら場所として提供できる。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "429960b7f158c5cabab2c602831d737aa60d798d15e430af9680ef229de01096",
+   "tokens_evaluated": 786,
+   "tokens_predicted": 144,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.013222,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S16",
+   "stage": 2,
+   "prompt_sha256": "a899302afb21e8dda4656fbec675c86ab8be3283d8dfe8611c0cb921b996ebb8",
+   "output": "{\n  \"meanings\": [\n    {\n      \"purpose_ref\": \"N.purpose.p1\",\n      \"text\": \"自宅の離れが空いている人（{N}）は、平日の午後に活動に使える空き部屋や集会所を地域で貸し出せる人（{O}）になれる可能性があります\",\n      \"cites\": [0]\n    }\n  ]\n}",
+   "output_sha256": "729209e788e808fc788bcce66fe0f30f2ddac8755142f10bc8059401e0f7d696",
+   "tokens_evaluated": 464,
+   "tokens_predicted": 97,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.017531,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S17",
+   "stage": 1,
+   "prompt_sha256": "f3f07c1b1928f26648105165a64f7ed64087f58c968dacfc55e7b51c0244da62",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"活動に使える空き部屋や集会所を、地域で貸し出せる人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"町内会の集会所の管理を任されていて、利用の受付ができる。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "08e3bb17506fb2bcb3ded9b9e2d63fcec4593589d6d982b5f168e6153b1a7337",
+   "tokens_evaluated": 787,
+   "tokens_predicted": 145,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.012768,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S17",
+   "stage": 2,
+   "prompt_sha256": "819cdc4bcf88a19abbfd31b75b0bf95439888259033b1e2bddb80d5fef19907b",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"町内会の集会所の管理を任されていて、利用の受付ができる人は、活動に使える空き部屋や集会所を地域で貸し出せる人で、学校に行きづらい子が安心して過ごせる場を、地域につくりたいという目的の{0}に、必要な資源を提供できる可能性があります\", \"cites\": [0] }] }",
+   "output_sha256": "095674a9a21fd1609fa15220b4af3720196d3847b352bee95148f944aa239909",
+   "tokens_evaluated": 465,
+   "tokens_predicted": 124,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.017765,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S19",
+   "stage": 1,
+   "prompt_sha256": "ffb69d3ce51b72ad09d217efe3bb75444d6be6f89ebd86f9a0b3bedcf3526b56",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"活動に使える空き部屋や集会所を、地域で貸し出せる人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "afd22caf50ad57446600c627151114bdc4309a073ab473052a6f49cd1c6920df",
+   "tokens_evaluated": 774,
+   "tokens_predicted": 99,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.121898,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S20",
+   "stage": 1,
+   "prompt_sha256": "8035a57187f9287f97cd4bdab0769f21c86db1772497cac5157d83d7d3ee7d28",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"活動に使える空き部屋や集会所を、地域で貸し出せる人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"将来は自分の家を、地域に開いた場にしたいと考えている。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "989557c7c7412aa9fe9904846977c9d84da2642899d2591bff255a1378497e4e",
+   "tokens_evaluated": 784,
+   "tokens_predicted": 142,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.067896,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S20",
+   "stage": 2,
+   "prompt_sha256": "54d9e22d79eaa4df89c217b26c9a36c3285bf9a89e979120d7faf04ae2d10047",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"将来は自分の家を、地域に開いた場にしたいと考えている人が、活動に使える空き部屋や集会所を、地域で貸し出せる人になれる可能性があります\", \"cites\": [0]}]}",
+   "output_sha256": "b59c0d9b618faba0b10e8493324ffbfd0681cdab30ade15177e6ff772d1eac7a",
+   "tokens_evaluated": 462,
+   "tokens_predicted": 83,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.051864,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S21",
+   "stage": 1,
+   "prompt_sha256": "d108b631d2ad010344fb5253f8c8f7a4f0fd78aa496d7803789a8a93f70e3cec",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"職人の作業を、映像や手順書として記録してきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"工場の研削作業を撮影し、手順書と動画の教材にまとめてきました。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "76be3b9fbcea4a42a95c2e9f4867371c4ac0306451aee74549688e6ea272cc8c",
+   "tokens_evaluated": 790,
+   "tokens_predicted": 146,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.020069,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S21",
+   "stage": 2,
+   "prompt_sha256": "99da682ee8b6da8295ae068d36adcc949f74852ad00decb7c7cd0ebb010c5fa5",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"職人の作業を映像や手順書として記録してきた人は、工場の研削作業を撮影し、手順書と動画の教材にまとめてきた人で、若い人に技を引き継ぐための資源を提供できる可能性があります\", \"cites\": [0]}] }",
+   "output_sha256": "e2a6985a1f07715e799ad0841679587c74ddcb29cb435ec3466f2ad08f608aed",
+   "tokens_evaluated": 468,
+   "tokens_predicted": 101,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.154942,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S22",
+   "stage": 1,
+   "prompt_sha256": "809c716851a48b3002ddf38c4362277cb6b48e4ab389f481261ee165e481c8dc",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"職人の作業を、映像や手順書として記録してきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"動画の撮影と編集なら、休日に手伝える。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "7a562343ca98b6bae8c4f04adef840bd77f8ffc9889961eb3752dd703da016e5",
+   "tokens_evaluated": 775,
+   "tokens_predicted": 131,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.071379,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S22",
+   "stage": 2,
+   "prompt_sha256": "1e3515a1f82929357f74952327818d645f890b7701ef201d84c38ce8ef4c32ac",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"職人の作業を映像や手順書として記録してきた人は、動画の撮影と編集を休日に手伝える人で、町工場の熟練の技を若い人に引き継げる形で残す可能性があります\", \"cites\": [0]}] }",
+   "output_sha256": "7bcebaf20dfbeb5c910fc27ae179dc012142060612ed87b113f656b088888ddb",
+   "tokens_evaluated": 453,
+   "tokens_predicted": 94,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.071578,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S23",
+   "stage": 1,
+   "prompt_sha256": "2af11dae09fecc28c90638ea09872c91c8cbb1cd31c480e0c133702f491353d1",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"職人の作業を、映像や手順書として記録してきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"職人の手仕事の映像を見るのが好きで、よく動画サイトで探している。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "834c4b170620d09a4d213d898abb6120eb69ebc5f39e5b83cbfe1fcfd7ad706e",
+   "tokens_evaluated": 784,
+   "tokens_predicted": 140,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.027444,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S23",
+   "stage": 2,
+   "prompt_sha256": "072f0333784b95ff2ec62f0a9ad0492994576ebe7885ec68f87bffa59d73599b",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"職人の作業を映像や手順書として記録してきた人は、職人の手仕事の映像を見るのが好きでよく動画サイトで探している人であり、若い人に技を引き継ぐための資源を提供できる可能性があります\", \"cites\": [0, 1]}]}",
+   "output_sha256": "5ae31934a31545aa90d6743c1732cb39d6b1790779fabf890a0725f67af66b7e",
+   "tokens_evaluated": 462,
+   "tokens_predicted": 98,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.035037,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S24",
+   "stage": 1,
+   "prompt_sha256": "a6c45f69d9e0bd989e199dacd2fa6ee1664322b35d75144dea27347a298bbc93",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"職人の作業を、映像や手順書として記録してきた人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "0ec8b1a6a1c6df1f45cfa702c24523045f21bc8592e91ef2d88a0d8e026579bc",
+   "tokens_evaluated": 774,
+   "tokens_predicted": 93,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.120782,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S26",
+   "stage": 1,
+   "prompt_sha256": "dd656bd85ba5494f4088f0ff35eecbc01c185416239fefbd4cd1fa03738ce85d",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"ものづくりの技術が、世代を越えて受け継がれることに関心がある人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"伝統工芸の後継者が減っていることが気になっていて、技の継承に関心がある。\", \"relation\": \"R4\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "ee875db690bf33e76b26080ce15866a0f007603ef26b4e1dee0d7fb41de6cfe9",
+   "tokens_evaluated": 797,
+   "tokens_predicted": 153,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.05692,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S27",
+   "stage": 1,
+   "prompt_sha256": "e13d2d7ca0169d0e97dc2835c70730b0232e6eb9807bcd147618ba47e24642ed",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"ものづくりの技術が、世代を越えて受け継がれることに関心がある人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"金型の職人として、四十年間で十人以上の弟子を育ててきた。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "be0d4108bd95a6b4253eb93902e69fa16428312cc89467611e0369d54f29ce6e",
+   "tokens_evaluated": 790,
+   "tokens_predicted": 146,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.080844,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S28",
+   "stage": 1,
+   "prompt_sha256": "35e793b64c98ec7d8544c02ff71caff6fa1d0b86a15449bc4eb178080d33e07d",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"ものづくりの技術が、世代を越えて受け継がれることに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "b2578ef6c66cc945d28cd34ee36de27b5e8240ff40b272bd04a21b52f6df358e",
+   "tokens_evaluated": 789,
+   "tokens_predicted": 91,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.107035,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S29",
+   "stage": 1,
+   "prompt_sha256": "570ef1e0befff83633fbca2fd04052d69afb3b8e538eef0abbf9709716746c64",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"ものづくりの技術が、世代を越えて受け継がれることに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "b2578ef6c66cc945d28cd34ee36de27b5e8240ff40b272bd04a21b52f6df358e",
+   "tokens_evaluated": 784,
+   "tokens_predicted": 91,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.092784,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S31",
+   "stage": 1,
+   "prompt_sha256": "d2b6d3286af45680025f3af16080e56a5aa5ddb9a9302cdcf8860677b1c5c2ca",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"地域の歴史や、昔の暮らしの記録に関心がある人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"祖父母から聞いた戦前の町の話を、ノートに書きとめておくことに関心がある。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "08dee931247f5b98c0775930c211e978497a27a85ca8ed8dd557f3cc308db7c4",
+   "tokens_evaluated": 785,
+   "tokens_predicted": 141,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.083207,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S32",
+   "stage": 1,
+   "prompt_sha256": "1ff9b9a88ff88b355d29e3404b714e6b9ce77548cf0375c741dd611e7da8d4c6",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"地域の歴史や、昔の暮らしの記録に関心がある人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"郷土史の会で、古い写真の収集と整理を十年続けてきた。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "2f8f3652dd6ad78217ef053a76b9d06876eebae508f3412bd44cee6c71749356",
+   "tokens_evaluated": 782,
+   "tokens_predicted": 138,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.076906,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S34",
+   "stage": 1,
+   "prompt_sha256": "61f492cc03aad81e42dd00f52d6b07ab7d7a8315cd53d7aa6fe90f3de3a239c8",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"地域の歴史や、昔の暮らしの記録に関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "96a610ad476f3d137581835cdbc69225c6b9a9215fad827ece70e1bfb76aa2d5",
+   "tokens_evaluated": 770,
+   "tokens_predicted": 83,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.078429,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S36",
+   "stage": 1,
+   "prompt_sha256": "d0346edd2bb944f8b8e1c8c583326b40205aa2aac295b5012500238c3ffb7fd3",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"高齢の方から話を聞き取り、文章にまとめてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"介護施設で、利用者の思い出話を聞いて冊子にまとめてきました。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "0dc1333059073c441efe9b4aaaf40d9bda36c37fd2585710e9e990d5b27a44ed",
+   "tokens_evaluated": 785,
+   "tokens_predicted": 144,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.033235,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S37",
+   "stage": 1,
+   "prompt_sha256": "39d3f4828e0881cd80bbbb50ee909516a51f2990a25bf00513f95ecb1179c33e",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"高齢の方から話を聞き取り、文章にまとめてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"聞き取った録音の文字起こしなら手伝える。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "b7f7204fa820f75d0bba11cc9daacfa40206f057d395ccae5e7d9f8e180de5bc",
+   "tokens_evaluated": 775,
+   "tokens_predicted": 131,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.096076,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S37",
+   "stage": 2,
+   "prompt_sha256": "e4155453a3ed90a4bc47811aa0f685a33460cc6b7b221da6606b8ca53a3b8d8d",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"聞き取りで記録したい人は、高齢の方から話を聞き取り文章にまとめた人であり、録音の文字起こしを手伝える可能性があります。\", \"cites\": [0]}]}",
+   "output_sha256": "e377b8eb621139e4ecd120050bbf4d79ef1219942a88a8b0ae0c914d754fa88c",
+   "tokens_evaluated": 454,
+   "tokens_predicted": 77,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.008342,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S38",
+   "stage": 1,
+   "prompt_sha256": "a04859b9ee86cbd850c60689b7479681687642c0c1c15485c86e913029104b21",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"高齢の方から話を聞き取り、文章にまとめてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"人の話を聞くことに関心があり、聞き方の本をよく読む。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "c522cb3daf59efcb53dd454b7d7634f6ed704ac1832c8103a3bc849bbb2e7d54",
+   "tokens_evaluated": 779,
+   "tokens_predicted": 135,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.062555,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S39",
+   "stage": 1,
+   "prompt_sha256": "7cb49dd6b204df7a3f64e74a5a73885617c1ea1710ad18edd7546a90c368326b",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"高齢の方から話を聞き取り、文章にまとめてきた人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "9f78ae9213bf8ef6faadc46ff3a5c560d9165b024a1f8afcff7e46355f87fb6b",
+   "tokens_evaluated": 772,
+   "tokens_predicted": 95,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.105723,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S41",
+   "stage": 1,
+   "prompt_sha256": "ff5679638ec2ace0588456998ec49ca7bc0a25c1e3e9738d17db73fc5f13c689",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"音響や照明など、イベントの裏方の技術を持つ人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"ライブハウスで八年間、音響を担当しました。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "4089095f5e3867096a3ec452af068c7975060053823b17fc62a6c6504345cfb6",
+   "tokens_evaluated": 771,
+   "tokens_predicted": 131,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.074849,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S42",
+   "stage": 1,
+   "prompt_sha256": "f00a7563cc7ccc0e0b4a535acb234981d820522a924ae58ae8e3e549c4ed5697",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"音響や照明など、イベントの裏方の技術を持つ人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"小規模な会場なら、照明の操作を担当できる。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "f31cced349b4fd055f1a2b46b510836224967ad956aa5686ea22649b8013b21b",
+   "tokens_evaluated": 774,
+   "tokens_predicted": 134,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.004115,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S42",
+   "stage": 2,
+   "prompt_sha256": "3bbe8db3b9710c537a69413a9ea83f569fafaeca80985a9d05d20fba4b6bc6dc",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"小規模な会場なら、照明の操作を担当できる音響や照明など、イベントの裏方の技術を持つ人が、地域の若手の音楽家が演奏できる小さなイベントを続けるための必要な資源を提供できる可能性があります\", \"cites\": [0]}]}",
+   "output_sha256": "6c2df13360937b93a66da60e176a33bdb9c18a36d1ad52f76650ab465cb52665",
+   "tokens_evaluated": 452,
+   "tokens_predicted": 100,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.02906,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S43",
+   "stage": 1,
+   "prompt_sha256": "2df21ff8a05ef7e5e75dec2bc0fb2821011eb12c6a70f76c55f68d12344d34e9",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"音響や照明など、イベントの裏方の技術を持つ人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"スピーカーとミキサーを一式持っていて、貸し出せる。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "87209e9b873863a84740c134f87d11c786b08c5d5160bd61f298af99bd7ba59c",
+   "tokens_evaluated": 779,
+   "tokens_predicted": 139,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.000699,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S43",
+   "stage": 2,
+   "prompt_sha256": "8061af5d940f7a8f795071e2d2ccea8f4eb2dcaa9c39e751babdedd20d4e42f5",
+   "output": "{\n  \"meanings\": [\n    {\n      \"purpose_ref\": \"N.purpose.p1\",\n      \"text\": \"スピーカーとミキサーを一式持っていて貸し出せる音響や照明など、イベントの裏方の技術を持つ人は、地域の若手の音楽家が演奏できる小さなイベントを続けるために、技術面を支えることができます\",\n      \"cites\": [0]\n    }\n  ]\n  }",
+   "output_sha256": "9132e31c0c840cc9184bc3c3fe4efe50f10982285c36a9e1bf748f812c05fb2b",
+   "tokens_evaluated": 457,
+   "tokens_predicted": 116,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.029324,
+    "under_0_1": 4
+   }
+  },
+  {
+   "id": "S44",
+   "stage": 1,
+   "prompt_sha256": "7ffb3f83f425996f8a17349f087d5cf2f1f6ac707a1d0207eabec9173e8f4441",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"音響や照明など、イベントの裏方の技術を持つ人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "173723157b1cbaafc1bf586dedcfd0d6ccb463ff872005a6ac7c3748ce3222a9",
+   "tokens_evaluated": 775,
+   "tokens_predicted": 94,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.032883,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S45",
+   "stage": 1,
+   "prompt_sha256": "8bb58537b0f8d636e76177770c57df33b447cae54af8c7383284ad6a0679be24",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"音響や照明など、イベントの裏方の技術を持つ人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "173723157b1cbaafc1bf586dedcfd0d6ccb463ff872005a6ac7c3748ce3222a9",
+   "tokens_evaluated": 773,
+   "tokens_predicted": 94,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.153423,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S46",
+   "stage": 1,
+   "prompt_sha256": "260088de42b88d9f7724629a69bec722961a723dd623fa67a0b05cf149744e79",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"若い表現者が活動を続けられる仕組みに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "5fa99bbb4619d40633c474f48d9dc5e8de0b4824164f7fabc6366fc462a758a7",
+   "tokens_evaluated": 784,
+   "tokens_predicted": 85,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.100481,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S47",
+   "stage": 1,
+   "prompt_sha256": "c138bb275f48e4d2acb7d6ca16e92e106adc4fb2d84c28ff1dfc5f94d1f769cc",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"若い表現者が活動を続けられる仕組みに関心がある人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "1370a88c64ca4d2c687d13b0f2d86a22f8d18e2a1e62c958fa62ed66f2259cb7",
+   "tokens_evaluated": 778,
+   "tokens_predicted": 95,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.10288,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S48",
+   "stage": 1,
+   "prompt_sha256": "68ebd34f8070994d8ea0e562064bbd87318aea3c4a47d4215f9fb6baa542029b",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"若い表現者が活動を続けられる仕組みに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "5fa99bbb4619d40633c474f48d9dc5e8de0b4824164f7fabc6366fc462a758a7",
+   "tokens_evaluated": 779,
+   "tokens_predicted": 86,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.018157,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S49",
+   "stage": 1,
+   "prompt_sha256": "50a5f507ca15f6ab0732bb3e190cb082eb72899a7a0c4ee1e19cb0ccaa841af7",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"若い表現者が活動を続けられる仕組みに関心がある人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "1370a88c64ca4d2c687d13b0f2d86a22f8d18e2a1e62c958fa62ed66f2259cb7",
+   "tokens_evaluated": 772,
+   "tokens_predicted": 96,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.044066,
+    "under_0_1": 3
+   }
+  },
+  {
+   "id": "S50",
+   "stage": 1,
+   "prompt_sha256": "ca1cca0371b93ecbf5e67bbdd5e47a39f9a13519c8c090180789643e48ec4469",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"若い表現者が活動を続けられる仕組みに関心がある人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "1370a88c64ca4d2c687d13b0f2d86a22f8d18e2a1e62c958fa62ed66f2259cb7",
+   "tokens_evaluated": 777,
+   "tokens_predicted": 95,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.052415,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S51",
+   "stage": 1,
+   "prompt_sha256": "f2ea523a9b6c6c6b76334dc937f7cd8ba43ced2ec59cdb2e3771cd49fae99a70",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"高齢の方に、機器の使い方を教えてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"携帯電話の販売店で、高齢のお客さまに操作を教える講座を担当してきた。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "dfb48ccbaeffbde07e8b85ce0f84e61148d5180cd347f7fae1e45afc9ddb1228",
+   "tokens_evaluated": 789,
+   "tokens_predicted": 150,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.031465,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S52",
+   "stage": 1,
+   "prompt_sha256": "feba1a2f4dc94ba13c8622f954dd75e7d10eed037fb727640bf454806ba99794",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"高齢の方に、機器の使い方を教えてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"公民館でのスマートフォン相談会に、教える立場で関われる。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "40c5a899006003a0a197ad701e7bbc1e3cb80e59f44e9d70afdfaea1f249efc7",
+   "tokens_evaluated": 777,
+   "tokens_predicted": 138,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.017765,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S52",
+   "stage": 2,
+   "prompt_sha256": "6b450cbbc4c331874885385b1b3aa1e1fc473efef1a77f3be2116f59ff93acc7",
+   "output": "{\n  \"meanings\": [\n    {\n      \"purpose_ref\": \"N.purpose.p1\",\n      \"text\": \"公民館でのスマートフォン相談会に、高齢の方に機器の使い方を教えてきた人が、家族や地域とつながれるようになる可能性があります\",\n      \"cites\": [0]\n    }\n  ]\n  }",
+   "output_sha256": "0b5b95104ca4534ad44926837072697d2427fa01ee3594981486ca1eca3a2d56",
+   "tokens_evaluated": 456,
+   "tokens_predicted": 87,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.020709,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S53",
+   "stage": 1,
+   "prompt_sha256": "17583d55943785f0002d38f903446221aeb4a746478bb9c88266f13b715e4455",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"高齢の方に、機器の使い方を教えてきた人。\"}], \"missing_must\": [\"N.need.p1.1-1\"]}] }",
+   "output_sha256": "1f9e2120896a812b178a9aa9d70ab095cd34a2e03734a58a0f013922a992fe16",
+   "tokens_evaluated": 774,
+   "tokens_predicted": 93,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.067664,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S54",
+   "stage": 1,
+   "prompt_sha256": "f1463014b761b5cf992944f40db4ce05a243f881194560d3493220d76a95fdea",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"高齢の方に、機器の使い方を教えてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"祖父にスマートフォンの使い方を教えたいと思っている。\", \"relation\": \"R2\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "b448b809926456c9632b4efb8e173be5fb311543a9c02a5927ffc877a09e1875",
+   "tokens_evaluated": 773,
+   "tokens_predicted": 134,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.05515,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S55",
+   "stage": 1,
+   "prompt_sha256": "a9ed2af11a9563036dbd3ad8c03aaa4d3393cafa81ba66f1c4741328593233b1",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\",\n  \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": true, \"need_quote\": \"高齢の方に、機器の使い方を教えてきた人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"中古の端末を何台か持っていて、練習用に貸し出せる。\", \"relation\": \"R3\"}],\n  \"unknown\": [],\n  \"missing_must\": []}] }",
+   "output_sha256": "641f251a408f2ee26c9bc4b050071b801d77745d7ffcf2819960d7a9b9eab142",
+   "tokens_evaluated": 781,
+   "tokens_predicted": 142,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.061437,
+    "under_0_1": 2
+   }
+  },
+  {
+   "id": "S55",
+   "stage": 2,
+   "prompt_sha256": "d938cc0a1dc4a5c6d6913e53f585fe56033dfc57cabe7dfba70099a8639ac4fc",
+   "output": "{\"meanings\": [{\"purpose_ref\": \"N.purpose.p1\", \"text\": \"高齢者がスマートフォンで家族や地域とつながれるようにするためには、機器の使い方を教えてきた人（{N}）が、中古の端末を何台か持っていて練習用に貸し出せる（{O}）ことで、実践的な学びの場が生まれ、つながりを実現する可能性があります。\", \"cites\": [0]}] }",
+   "output_sha256": "cd4b494302cb95fe13b48171e8782df09cead6de922999e9145852a23cdeb5a1",
+   "tokens_evaluated": 459,
+   "tokens_predicted": 127,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.058468,
+    "under_0_1": 5
+   }
+  },
+  {
+   "id": "S56",
+   "stage": 1,
+   "prompt_sha256": "d345d2c8f6a211bdbd3d37bab32296ce340b13b291e3c61159905ec9bff28930",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"explained\", \"elements\": [{\"need_ref\": \"N.need.p1.1-1\", \"must\": false, \"need_quote\": \"人と人の孤立を防ぐ、地域の仕組みに関心がある人。\", \"offer_ref\": \"O.offer.1\", \"offer_quote\": \"一人暮らしの高齢者が孤立しないための、見守りの仕組みに関心がある。\", \"relation\": \"R2\"}], \"unknown\": [], \"missing_must\": []}] }",
+   "output_sha256": "2da4fe9017bff9371b61db6c3e131ad9856f54370c5c1c24ef4c9131fe79c0d5",
+   "tokens_evaluated": 787,
+   "tokens_predicted": 145,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.104085,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S57",
+   "stage": 1,
+   "prompt_sha256": "a9703e6ebad8a1c3828ace751629279bbdf31a4077b2027f2786d958859c9da9",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"人と人の孤立を防ぐ、地域の仕組みに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "18c3bcf1b4cd46e992634a682d81cba4ab4db9b5a7c9c744390068208f22a416",
+   "tokens_evaluated": 778,
+   "tokens_predicted": 85,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.070545,
+    "under_0_1": 1
+   }
+  },
+  {
+   "id": "S58",
+   "stage": 1,
+   "prompt_sha256": "e85b3af315937b3692cd0eceb81a5f23f7f8d883d21aec2320bc605cdc489571",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"人と人の孤立を防ぐ、地域の仕組みに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "18c3bcf1b4cd46e992634a682d81cba4ab4db9b5a7c9c744390068208f22a416",
+   "tokens_evaluated": 772,
+   "tokens_predicted": 85,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.142017,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S59",
+   "stage": 1,
+   "prompt_sha256": "f80a80265c29b99bdbcca628059887ef4b460aa256e906f6ad4a652b7681ed4f",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"人と人の孤立を防ぐ、地域の仕組みに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "18c3bcf1b4cd46e992634a682d81cba4ab4db9b5a7c9c744390068208f22a416",
+   "tokens_evaluated": 771,
+   "tokens_predicted": 85,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.131118,
+    "under_0_1": 0
+   }
+  },
+  {
+   "id": "S60",
+   "stage": 1,
+   "prompt_sha256": "4d9049089814ecdece0c83aea8fe57f91100b18308a78d3d6354a74714063291",
+   "output": "{\"purposes\": [{\"ref\": \"N.purpose.p1\", \"status\": \"not_covered\", \"elements\": [], \"unknown\": [{\"need_ref\": \"N.need.p1.1-1\", \"need_quote\": \"人と人の孤立を防ぐ、地域の仕組みに関心がある人。\"}], \"missing_must\": []}] }",
+   "output_sha256": "18c3bcf1b4cd46e992634a682d81cba4ab4db9b5a7c9c744390068208f22a416",
+   "tokens_evaluated": 780,
+   "tokens_predicted": 85,
+   "stop_type": "eos",
+   "margin": {
+    "min": 0.018515,
+    "under_0_1": 2
+   }
+  }
+ ]
+}

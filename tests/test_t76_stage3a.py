@@ -7,6 +7,7 @@
 511 文法（プロンプトの外の縛り）とプロンプトの sha256・橋渡しの 12 組の選び方
 512 決定性の比べ方（出力が一字ずつ同じか）
 513 報告76 順1 の確認: LLM-jp-4 は外した・チャットの型の日付と時刻の確かめ・予算 10 ドルの上限
+514 順2 の分析: §3 の線の合否・段ごとの理由・関係の対応表（記録した出力をもう一度通す）
 """
 import builtins
 import io
@@ -329,3 +330,42 @@ def test_t513_confirmation_after_stage1(tmp_path):
         J.check_budget(run, 8.1)
     with pytest.raises(SystemExit):
         J.main(["run", "--namespace", "ns", "--profile", "nemotron-9b-ja"])                           # 使った額が無いと作らない
+
+
+# ── 514 順2 の分析（線の合否・段ごとの理由・関係の対応表。記録した出力をもう一度通す）──────────────────────
+def test_t514_analyze_replays_and_judges(tmp_path):
+    import stage3a_analyze as A
+    out = tmp_path / "r.json"
+    res = R.main(["--profile", "nemotron-9b-ja", "--gguf-sha256", SHA, "--ids", "all", "--repeat", "5", "--out", str(out)],
+                 backend_factory=lambda: _backend("nemotron-9b-ja"))
+    s = A.summary(res)
+    assert s["replay_mismatch"] == []                                                    # もう一度通しても、結果の種類が同じ
+    assert s["stage2_reached"] == sum(1 for r in res["runs"][0]["records"] if r.get("stage2"))
+    assert all(k.split("|")[1] in ("R1", "R2", "R3", "R4") for k in s["table_elements"])
+    assert sum(s["table_pairs"].values()) == 53                                          # 生成した組（判断できないを除く）
+    lines, ok = A.judge(res)
+    assert set(lines) == {"1 誤り", "2 拾えた", "3 規則で出さない", "4 原文の漏れ", "5 決定性"}
+    assert lines["5 決定性"]["pass"] is True and lines["4 原文の漏れ"]["pass"] is True
+    c = res["runs"][0]["counts"]
+    assert lines["2 拾えた"]["pass"] is (c["recall"]["shown"] >= 17)                       # 線は事前登録のまま
+    assert A.LINES == {"errors_max": 1, "unrelated_errors_max": 0, "recall_min": 17, "rule_excluded_max": 0, "leak_max": 0}
+    blob = json.dumps(s, ensure_ascii=False)
+    for p in R.load_synthetic()["pairs"]:
+        assert p["other"][:10] not in blob                                               # 文は出さない
+
+
+def test_t514_strict_leak_check():
+    import stage3a_analyze as A
+    o = M.one_sentence_person(OFFER)
+    raw1 = {"purposes": [{"ref": "N.purpose.p1", "elements": [
+        {"need_quote": "売上や在庫の記録", "offer_quote": "三年担当してきました", "relation": "R1"}]}]}
+    good = {"purposes": [{"purpose_ref": "N.purpose.p1", "見出し": TITLE, "種類": "補完", "elements": [
+        {"no": 0, "need_quote": "売上や在庫の記録", "offer_quote": "三年担当してきました", "relation": "R1",
+         "relation_name": "足りない役割を補える"}]}]}
+    assert A.leak_strict(_n(), o, raw1, good) == 0
+    bad = json.loads(json.dumps(good))
+    bad["purposes"][0]["elements"][0]["offer_quote"] = OFFER                                        # 原文の全文（段1 の組に無い）
+    assert A.leak_strict(_n(), o, raw1, bad) >= 1
+    bad = json.loads(json.dumps(good))
+    bad["purposes"][0]["原文"] = OFFER                                                               # 欄を足して原文を渡す
+    assert A.leak_strict(_n(), o, raw1, bad) >= 1

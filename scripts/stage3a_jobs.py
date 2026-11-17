@@ -128,6 +128,21 @@ install -m 0755 /work/bin/llama-server-cuda /opt/llama-server-cuda   # バケッ
 cp "/work/models/$GGUF_FILE" /tmp/model.gguf
 echo "$GGUF_SHA  /tmp/model.gguf" | sha256sum -c - >/dev/null          # 決めたモデルのファイルか
 echo "[run] model and server verified"
+# メモリの内訳（デスクトップに載るかの見積もり用）: 同じ設定で一度だけ起こし、要求は送らずに、読み込みの行（大きさだけ）を出す
+/opt/llama-server-cuda -m /tmp/model.gguf --host 127.0.0.1 --port 8081 -c @CTX@ -np @PARALLEL@ -b @BATCH@ -ub @UBATCH@ \\
+  -ngl @NGL@ -fa @FA@ --no-cont-batching --no-webui --log-verbosity 3 > /tmp/probe.log 2>&1 &
+PROBE=$!
+python3 - <<'PY'
+import time, urllib.request
+for _ in range(600):
+    try:
+        if urllib.request.urlopen("http://127.0.0.1:8081/health", timeout=2).status == 200:
+            break
+    except Exception:
+        time.sleep(1)
+PY
+kill $PROBE; wait $PROBE 2>/dev/null || true
+grep -E "buffer size =|offloaded [0-9]+/[0-9]+ layers" /tmp/probe.log | sed -E 's/^[^a-z_]*//' | sed 's/^/[run] mem /' || true
 T0=$(date +%s.%N)
 /opt/llama-server-cuda -m /tmp/model.gguf --host 127.0.0.1 --port 8080 -c @CTX@ -np @PARALLEL@ -b @BATCH@ -ub @UBATCH@ \\
   -ngl @NGL@ -fa @FA@ --no-cont-batching --no-webui --log-verbosity 1 > /tmp/server.log 2>&1 &

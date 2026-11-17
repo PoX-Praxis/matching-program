@@ -190,8 +190,9 @@ def run_pair(n, o, backend):
                and p["status"] not in X.SHOWN_STATUSES for p in d["purposes"]):
             reasons.append(R4_RULE)                       # 機械の状態で not_covered にした（理由の文が problems に出ない）
     stage2 = bool(trace and trace[0]["stage2_payload"]["purposes"])
+    leak = leak_violations(d, trace[0]["stage2_payload"]) if trace else 0      # 段2 に原文が漏れた数（指示書76 §2）
     return {"result": kind, "reasons": sorted(set(reasons)), "relations": rels, "stage2": stage2,
-            "open": open_count(d)}
+            "open": open_count(d), "leak": leak}
 
 
 def bench_measure(items, backend):
@@ -205,7 +206,7 @@ def bench_measure(items, backend):
     c = {"pairs": 0, "classes": {k: 0 for k in CLASSES}, "rule_excluded": {"n": 0, "shown": 0},
          "errors": {"shown": 0, "n": 0}, "recall": {"shown": 0, "n": 0}, "relation_match": {"same": 0, "shown": 0},
          "by_relation": {r: {"shown": 0, "n": 0} for r in RELS}, "kinds": {k: 0 for k in KINDS}, "reasons": Counter(),
-         "open": 0, "not_built": 0, "unreadable_label": 0}
+         "open": 0, "leak": 0, "not_built": 0, "unreadable_label": 0}
     records = []
     for pr, n, o in items:
         c["pairs"] += 1
@@ -227,6 +228,7 @@ def bench_measure(items, backend):
         c["kinds"][r["result"]] += 1
         c["reasons"].update(r["reasons"])
         c["open"] += r["open"]
+        c["leak"] += r["leak"]
         labels = {x for x in pr.get("expl_label") or [] if x in RELS}
         rule = cls == "説明できる" and n["purposes"][0]["kind"] == "補完" and labels == {"R4"}
         if cls == "説明できない":

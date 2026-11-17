@@ -747,3 +747,59 @@ R2_PRED = re.compile(r"(?:でき|関われ|手伝え)(?:る|ます)(?!ように|
 - 保存した表示を並べ直すだけ（文は変えない。16-4 と同じやり方・同じ見出しの型）
 - 画面1 の「補足する」（kind = self。運営だけが読む）の案内は 1 文目だけ（「あなたの文の言い換えについての補足です（400 字まで）。運営だけが読み、相手には届きません。」）
 - 「この接続の内容を非公開にする」のチェックは、画面2 と承認画面から外した（列は残す。公開の機能ができたときに、接続のページで切り替える。ポリシー 2026-11b）
+
+## 17. v0.9 の追記（指示書76・2026-11-17。段階3a の動かし方と記録する一式。順1 の時点）
+
+この節は、説明を作る LLM を選ぶ試験（段階3a）の**動かし方**だけを書く。説明の形・確かめ・述語・禁止の語・プロンプト（段1 `expl-p1-v0.4`・段2 `expl-p2-v0.3`）は変えない。本番の生成は止めたまま（推論の仕組みを本番に組み込まない）。
+
+### 17-1. 動かし方
+
+- **外部の AI のサービス（他社の推論 API・Hugging Face の Inference Providers）は使わない。**PoX が選んだモデルのファイル（GGUF・Q4_K_M）を、決めた版の llama.cpp（`v1.0.0`・commit `b1b770d90d94cad9e9ea5b993bdbc383a522fb28`・build b12359）の llama-server に読ませる
+- 動かす所は Hugging Face Jobs。試し・計測は **L4 1 枚（`l4x1`）**、準備（llama.cpp を組む・変換）は CPU（`cpu-upgrade`）。仕事ごとに時間の上限を付ける
+- 入れ物は Docker Hub の `nvidia/cuda` を digest で決める（Jobs は Docker Hub と Spaces の入れ物を受け付ける。llama.cpp の公式の入れ物は ghcr.io にあるので使わず、決めた commit を決めた入れ物の中で組む）
+  - 組む: `nvidia/cuda:12.4.1-devel-ubuntu22.04@sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5`
+  - 動かす: `nvidia/cuda:12.4.1-runtime-ubuntu22.04@sha256:517da2300c184c9999ec203c2665244bdebd3578d12fcc7065e83667932643d9`
+  - 組み方（cmake の設定・CUDA の arch 89）は `scripts/stage3a_jobs.py` の `PREPARE_SH` が正
+- llama-server は同じ入れ物の中で 127.0.0.1 だけで聞く。バックエンドは `src/explanation_llamacpp.py` の `LlamaCppBackend`（`/apply-template` でモデルのファイルのチャットの型を描き、`/completion` に文法を付けて呼ぶ）
+- **鍵はジョブに渡さない。**モデル・渡す一式・出力は、KAORU のアカウントの非公開のバケットと、公式のリポジトリ（決めた revision・読むだけ）をボリュームとして付けて読み書きする。ジョブを作る要求だけが、作業環境の秘密（Hugging Face のトークン）で認められる
+- 借りた機械に渡すのは `scripts/stage3a_bundle.py` の `FILES` だけ（コード・プロンプト・スキーマ・文法・架空の 60 組）。渡す前に、架空の組に人の名前の印・「縛られているもの」・連絡先が無いことを機械で確かめる。`local/` への道は無い
+- ログ（ジョブの標準出力）には文を出さない。件数・時間だけ。llama-server のログは入れ物の中のファイルに置き、ジョブのログには出さない
+- 出力は、終わったら手元に引き取り、バケットから消す。モデルのファイルは残す
+
+### 17-2. チャットの型と、文法の縛り
+
+- チャットの型は、モデルのファイル（GGUF）に入っているものを使う。描いた後の入力のバイト列の sha256 を、呼ぶごとに記録する
+- 型が用意している変数だけを渡す（型そのものは変えない）
+  - LLM-jp-4 8B: `conversation_start_date = "2026-11-17"`（型は描いた日付を system に入れるので、日と機械が替わっても描いた入力を同じにする）
+  - Nemotron: `enable_thinking = false`（考える機能を切る。型が答えの前に `<think></think>` を置く）
+- 出力の形は、文法（GBNF）で縛る。プロンプトの外で当てるので、プロンプトの sha256 は変わらない
+  - 本体: `schemas/grammar/explanation_p1_out.gbnf`（sha256 `7d435479…24ea`）・`explanation_p2_out.gbnf`（sha256 `e55882bf…4da8`）。プロンプトの「# 出力」の形（項目・並び・ラベルの値）だけを縛り、句の長さ・中身は縛らない
+  - 始まり（root）は候補ごとに足す。LLM-jp-4 は `<|channel|> "final" <|message|> body`（型の答えの前置き。特別な印の token で縛る）、Nemotron は `body`
+  - 文法の全文（root ＋ 本体）の sha256: LLM-jp-4 段1 `ed4b4edf…efefb`・段2 `111b6345…12a6`、Nemotron 段1 `daec68ca…1b7a`・段2 `1d5accc7…5cab`
+
+### 17-3. 生成の設定（`src/explanation_llamacpp.py` の `DECODING`・`SERVER`）
+
+| 項目 | 値 |
+|---|---|
+| 温度・貪欲 | `temperature 0`・`top_k 1`・`top_p 1`・`min_p 0`・`typical_p 1` |
+| seed | 0 |
+| 繰り返しの罰 | なし（`repeat_penalty 1`・`repeat_last_n 0`・`presence_penalty 0`・`frequency_penalty 0`・DRY と XTC も 0・mirostat 0） |
+| 出す長さの上限 | 段1 1536・段2 512 token |
+| 止める印 | モデルの終わりの印（文法が終わると、終わりの印だけを許す） |
+| 選ばれた字と次点の差 | `n_probs 2`（記録だけ。生成には使わない） |
+| 前の入力の再利用 | しない（`cache_prompt false`） |
+| サーバー | 文脈 8192・並列 1（`-np 1`）・`--no-cont-batching`・バッチ 2048／512・全部の層を GPU に（`-ngl 999`）・flash attention off |
+
+### 17-4. 記録する一式（候補ごと。指示書76 §1-4）
+
+モデルのファイルの sha256・公式の revision・圧縮の形・llama.cpp の commit と組み方・入れ物の digest・GPU の種類・ドライバと CUDA の版・生成の設定・文法の sha256・プロンプトの sha256・物差しの sha256・渡した一式の目録の sha256・かかった時間（起動・1 件あたり）・GPU のメモリ・費用。
+
+- `LlamaCppBackend` の `model`（公式のリポジトリ@revision:圧縮の形）・`revision`（モデルのファイルの sha256）・`decoding`（生成の設定・サーバー・llama.cpp・文法の sha256・型に渡す変数・入れ物と GPU の記録）は、すべて説明の鍵（`version_key`）に入る
+- 結果の JSON（`scripts/stage3a_run.py` の出力）に、指示書72 の数（誤り・拾えた・規則で出さない・関係の一致・結果の種類 a〜d・落ちた理由・段2 への漏れ・open）と、「無関係」の 10 組の誤り・決定性（組・段ごとの出力の sha256 を比べる）・呼んだ記録（出力の文・時間・token の数・差）を書く
+
+### 17-5. モデルのファイルの手に入れ方（順1 の時点）
+
+| 候補 | 道 | 理由 |
+|---|---|---|
+| Nemotron Nano 9B v2 Japanese | 1（公式の safetensors から、決めた版の変換の道具で自分で作る） | 決めた版で変換できる。リモートのコード（`*.py`）は変換のフォルダに置かない（置かなくても、置いたときと同じ結果になることを、語彙だけの変換で確かめた） |
+| LLM-jp-4 8B instruct | 2（第三者の GGUF） | 決めた版の変換の道具は、LLM-jp-4 の語彙（Unigram・`tokenizer.model` 無し）を変換できない（「BPE pre-tokenizer was not recognized」）。第三者のファイルは、どれも公式の分け方（token）と一致しない（報告76 順1） |

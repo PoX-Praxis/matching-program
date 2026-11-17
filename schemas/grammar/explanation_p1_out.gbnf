@@ -1,0 +1,13 @@
+# 段1（expl-p1-v0.4）の出力の形の縛り（指示書76 §1-3）。プロンプトの「# 出力」の形を、そのまま文法にしたもの。
+# 型・項目の並び・ラベルの値（R1〜R4・explained／not_covered）だけを縛る。句の長さ・中身は縛らない（確かめが見る）。
+# 始まり（root）は候補ごとに足す（チャットの型の、答えの前置き）。
+body ::= "{" ws "\"purposes\"" ws ":" ws "[" ws ( purpose ( ws "," ws purpose )* )? ws "]" ws "}"
+purpose ::= "{" ws "\"ref\"" ws ":" ws string ws "," ws "\"status\"" ws ":" ws status ws "," ws "\"elements\"" ws ":" ws "[" ws ( element ( ws "," ws element )* )? ws "]" ws "," ws "\"unknown\"" ws ":" ws "[" ws ( unknown ( ws "," ws unknown )* )? ws "]" ws "," ws "\"missing_must\"" ws ":" ws "[" ws ( string ( ws "," ws string )* )? ws "]" ws "}"
+status ::= "\"explained\"" | "\"not_covered\""
+element ::= "{" ws "\"need_ref\"" ws ":" ws string ws "," ws "\"must\"" ws ":" ws boolean ws "," ws "\"need_quote\"" ws ":" ws string ws "," ws "\"offer_ref\"" ws ":" ws string ws "," ws "\"offer_quote\"" ws ":" ws string ws "," ws "\"relation\"" ws ":" ws relation ws "}"
+relation ::= "\"R1\"" | "\"R2\"" | "\"R3\"" | "\"R4\""
+unknown ::= "{" ws "\"need_ref\"" ws ":" ws string ws "," ws "\"need_quote\"" ws ":" ws string ws "}"
+boolean ::= "true" | "false"
+string ::= "\"" char* "\""
+char ::= [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F]{4} )
+ws ::= | " " | "\n" [ \t]{0,20}

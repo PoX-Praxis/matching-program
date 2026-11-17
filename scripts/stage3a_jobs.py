@@ -107,7 +107,8 @@ test -z "$(find /tmp/nemo -name '*.py')"
 echo "[prepare] f16 written"
 sha256sum /tmp/nemo-f16.gguf | cut -d' ' -f1 > /work/models/nemotron-9b-ja-F16.sha256
 rm -f /tmp/nemo/*.safetensors
-/work/bin/llama-quantize /tmp/nemo-f16.gguf /tmp/{MODELS['nemotron-9b-ja']['file']} Q4_K_M >/tmp/quantize.log 2>&1 || {{ tail -n 40 /tmp/quantize.log; exit 1; }}
+install -m 0755 /work/bin/llama-quantize /opt/llama-quantize        # バケットは実行の印を持たないので、手元に写して印を付ける
+/opt/llama-quantize /tmp/nemo-f16.gguf /tmp/{MODELS['nemotron-9b-ja']['file']} Q4_K_M >/tmp/quantize.log 2>&1 || {{ tail -n 40 /tmp/quantize.log; exit 1; }}
 cp /tmp/{MODELS['nemotron-9b-ja']['file']} /work/models/
 echo "[prepare] converted"
 (cd /work/models && sha256sum *.gguf > SHA256SUMS)
@@ -122,8 +123,13 @@ apt-get update -qq && apt-get install -y -qq python3 libgomp1 >/dev/null
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader > /out/gpu.csv
 nvidia-smi | grep -o "CUDA Version: [0-9.]*" > /out/cuda.txt || true
 (while true; do nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits >> /tmp/gpu_mem.csv; sleep 2; done) &
+(cd /work/bin && sha256sum -c SHA256SUMS >/dev/null)
+install -m 0755 /work/bin/llama-server-cuda /opt/llama-server-cuda   # バケットは実行の印を持たないので、手元に写して印を付ける
+cp "/work/models/$GGUF_FILE" /tmp/model.gguf
+echo "$GGUF_SHA  /tmp/model.gguf" | sha256sum -c - >/dev/null          # 決めたモデルのファイルか
+echo "[run] model and server verified"
 T0=$(date +%s.%N)
-/work/bin/llama-server-cuda -m "/work/models/$GGUF_FILE" --host 127.0.0.1 --port 8080 -c @CTX@ -np @PARALLEL@ -b @BATCH@ -ub @UBATCH@ \\
+/opt/llama-server-cuda -m /tmp/model.gguf --host 127.0.0.1 --port 8080 -c @CTX@ -np @PARALLEL@ -b @BATCH@ -ub @UBATCH@ \\
   -ngl @NGL@ -fa @FA@ --no-cont-batching --no-webui --log-verbosity 1 > /tmp/server.log 2>&1 &
 python3 - <<'PY'
 import time, urllib.request

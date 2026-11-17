@@ -228,7 +228,7 @@ def test_t510_bundle_does_not_read_local(tmp_path, monkeypatch):
 def test_t510_jobs_have_no_token_and_pinned_images():
     specs = [J.prepare_spec("ns")] + [J.run_spec("ns", p, SHA, "trial", 1, "b" * 64, "trial") for p in L.PROFILES]
     blob = json.dumps(specs, ensure_ascii=False)
-    for bad in ("HF_TOKEN", "secrets", "Authorization", "token"):
+    for bad in ("HF_TOKEN", "secrets", "Authorization", "Bearer", "token=", "--token"):
         assert bad not in blob, bad                                                                 # ジョブに鍵を渡さない
     assert not re.search(r"hf_[A-Za-z0-9]{20,}", blob)                                              # トークンの形の文字列も無い
     for s in specs:
@@ -241,7 +241,12 @@ def test_t510_jobs_have_no_token_and_pinned_images():
     assert specs[0]["flavor"] == "cpu-upgrade" and all(s["flavor"] == "l4x1" for s in specs[1:])  # L4 1 枚（T4 は使わない）
     assert "find /tmp/nemo -name '*.py'" in J.PREPARE_SH and "trust_remote_code" not in J.PREPARE_SH  # リモートのコードを置かない
     assert f"--branch {L.LLAMACPP['tag']}" in J.PREPARE_SH and L.LLAMACPP["commit"] in J.PREPARE_SH
-    assert "sha256sum" in J.PREPARE_SH and "huggingface.co/" not in J.PREPARE_SH                    # 第三者のファイルは写さない
+    urls = re.findall(r"https://huggingface\.co/[^\s\"']+", J.PREPARE_SH)
+    official = f"https://huggingface.co/{L.PROFILES['nemotron-9b-ja']['official']}/resolve/" \
+               f"{L.PROFILES['nemotron-9b-ja']['official_revision']}/"
+    assert urls and all(u.startswith(official) for u in urls), urls                                 # 公式・決めた revision だけ
+    assert all(not n.endswith(".py") for n in J.NEMOTRON_FILES) and len(J.NEMOTRON_FILES) == 11     # リモートのコードは取らない
+    assert all(k in ("sha256", "git") and len(v) in (64, 40) for k, v in J.NEMOTRON_FILES.values())  # 落としたものを確かめる
     assert "> /tmp/server.log" in J.RUN_SH and "--log-verbosity 1" in J.RUN_SH                      # サーバーのログはジョブのログに出さない
 
 

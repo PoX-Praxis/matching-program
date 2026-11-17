@@ -765,6 +765,11 @@ R2_PRED = re.compile(r"(?:でき|関われ|手伝え)(?:る|ます)(?!ように|
 - 借りた機械に渡すのは `scripts/stage3a_bundle.py` の `FILES` だけ（コード・プロンプト・スキーマ・文法・架空の 60 組）。渡す前に、架空の組に人の名前の印・「縛られているもの」・連絡先が無いことを機械で確かめる。`local/` への道は無い
 - ログ（ジョブの標準出力）には文を出さない。件数・時間だけ。llama-server のログは入れ物の中のファイルに置き、ジョブのログには出さない
 - 出力は、終わったら手元に引き取り、バケットから消す。モデルのファイルは残す
+- 準備の仕事（順1 の残りで直した形）
+  - llama.cpp は、組んだもの（`bin/SHA256SUMS`）の sha256 が合えば使い回し、合わなければ組む
+  - 公式の Nemotron のファイルは、決めた revision の URL から手元の disk に落とし、LFS の sha256（大きいファイル）と git の blob の sha1（小さいファイル）で確かめてから変換する。公式のリポジトリをボリュームとして付けて直に読ませると、変換が止まった（CPU 0%・通信 0 のまま）
+  - 変換の Python は、llama.cpp の `requirements-convert_hf_to_gguf.txt` のとおりに入れる（torch 2.11.0+cpu・transformers 4.57.6 など。入ったものの一覧は `bin/convert_pip_freeze.txt`）。`gguf` は llama.cpp の中の `gguf-py` が使われる
+- バケットのボリュームは実行の印（x）を持たない。実行ファイルは手元に写して印を付けてから動かす。モデルのファイルも手元に写し、sha256 を確かめてから llama-server に読ませる
 
 ### 17-2. チャットの型と、文法の縛り
 
@@ -806,6 +811,11 @@ R2_PRED = re.compile(r"(?:でき|関われ|手伝え)(?:る|ます)(?!ように|
 | **Nemotron Nano 9B v2 Japanese**（唯一の候補） | 1（公式の safetensors から、決めた版の変換の道具で自分で作る） | 決めた版で変換できる。リモートのコード（`*.py`）は変換のフォルダに置かない（置かなくても、置いたときと同じ結果になることを、語彙だけの変換で確かめた） |
 | LLM-jp-4 8B instruct | **外した**（確認 1・案 A。指示書76 §8） | 決めた版の変換の道具は、LLM-jp-4 の語彙（Unigram・`tokenizer.model` 無し）を変換できない（「BPE pre-tokenizer was not recognized」）。第三者のファイルは、どれも公式の語の切り方と一致しない（食い違い 6.5〜11.2%。報告76 §2-2） |
 
+- Nemotron の作ったファイル（順1 の準備のジョブ・2026-11-17）
+  - Q4_K_M: `nemotron-9b-ja-Q4_K_M.gguf`・sha256 `c6c8c69a363798f2bd0d40dcd68d6ea407d6abfa456f00b02d7e1cee11eed9ec`
+  - 途中の F16: sha256 `32454da278ac9051232150fe4ac6fc26bb74582f90573cce99583d27b4bc6c2a`
+  - 組んだもの: `llama-server-cuda` sha256 `845bd1d1aa9ebec51ee3645444c11020becbb99420939bfb71db7ffeb8154b3d`・`llama-quantize` sha256 `4175b42d1842a41fe756de1f97e35ddf3d581e65de1ea94fbc0e9ff3e6782218`
+  - 入っているチャットの型は公式と同じ（sha256 `dd617e59…`）。日付・時刻を入れない
 - 線（指示書76 §3）は動かさない。Nemotron が線に届かなかったときの次の手（llm-jp の fork を固定する・gpt-oss-20b）は KAORU が決める（先回りして試さない）
 
 ### 17-6. 予算と、出力の扱い（報告76 順1 の確認）

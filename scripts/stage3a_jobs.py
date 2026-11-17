@@ -121,7 +121,7 @@ test -f /work/bundle/manifest.json
 export DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1
 apt-get update -qq && apt-get install -y -qq python3 libgomp1 >/dev/null
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader > /out/gpu.csv
-nvidia-smi | grep -o "CUDA Version: [0-9.]*" > /out/cuda.txt || true
+{ nvidia-smi -q | grep -i -m1 "CUDA Version" || nvidia-smi --version | grep -i -m1 "CUDA" || true; } | sed 's/  */ /g' > /out/cuda.txt
 (while true; do nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits >> /tmp/gpu_mem.csv; sleep 2; done) &
 (cd /work/bin && sha256sum -c SHA256SUMS >/dev/null)
 install -m 0755 /work/bin/llama-server-cuda /opt/llama-server-cuda   # バケットは実行の印を持たないので、手元に写して印を付ける

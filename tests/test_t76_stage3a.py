@@ -352,3 +352,20 @@ def test_t514_analyze_replays_and_judges(tmp_path):
     blob = json.dumps(s, ensure_ascii=False)
     for p in R.load_synthetic()["pairs"]:
         assert p["other"][:10] not in blob                                               # 文は出さない
+
+
+def test_t514_strict_leak_check():
+    import stage3a_analyze as A
+    o = M.one_sentence_person(OFFER)
+    raw1 = {"purposes": [{"ref": "N.purpose.p1", "elements": [
+        {"need_quote": "売上や在庫の記録", "offer_quote": "三年担当してきました", "relation": "R1"}]}]}
+    good = {"purposes": [{"purpose_ref": "N.purpose.p1", "見出し": TITLE, "種類": "補完", "elements": [
+        {"no": 0, "need_quote": "売上や在庫の記録", "offer_quote": "三年担当してきました", "relation": "R1",
+         "relation_name": "足りない役割を補える"}]}]}
+    assert A.leak_strict(_n(), o, raw1, good) == 0
+    bad = json.loads(json.dumps(good))
+    bad["purposes"][0]["elements"][0]["offer_quote"] = OFFER                                        # 原文の全文（段1 の組に無い）
+    assert A.leak_strict(_n(), o, raw1, bad) >= 1
+    bad = json.loads(json.dumps(good))
+    bad["purposes"][0]["原文"] = OFFER                                                               # 欄を足して原文を渡す
+    assert A.leak_strict(_n(), o, raw1, bad) >= 1

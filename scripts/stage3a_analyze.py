@@ -50,6 +50,31 @@ def _stage_of(problem):
     return "そのほか"
 
 
+def leak_strict(n, o, raw1, payload2):
+    """段2 の入力に原文が漏れていないか（厳しく）。段2 の入力は、次だけでできていること:
+    N の目的の参照・見出し・種類、関係のラベルと名前、段1 の出力にあった組（句は 40 字以内で、原文の連続した一部）。
+    外れた数を返す。（計測の leak は、段2 の後の向きと比べるので、段2 で落ちた目的の組を漏れと数えてしまう）"""
+    import explanation as X
+    ns, os_ = G.need_side(n), G.offer_side(o)
+    refs = {p["ref"] for p in ns["purposes"]}
+    titles = {p["title"] for p in ns["purposes"]}
+    need_src, offer_src = list(ns["cites"].values()), list(os_["cites"].values())
+    raw_pairs = {(e.get("need_quote"), e.get("offer_quote"), e.get("relation"))
+                 for p in (raw1 or {}).get("purposes") or [] if isinstance(p, dict)
+                 for e in p.get("elements") or [] if isinstance(e, dict)}
+    bad = 0
+    for p in payload2.get("purposes") or []:
+        bad += int(set(p) != {"purpose_ref", "見出し", "種類", "elements"})
+        bad += int(p.get("purpose_ref") not in refs) + int(p.get("見出し") not in titles) + int(p.get("種類") not in ("補完", "共鳴"))
+        for e in p.get("elements") or []:
+            bad += int(set(e) != {"no", "need_quote", "offer_quote", "relation", "relation_name"})
+            bad += int((e["need_quote"], e["offer_quote"], e["relation"]) not in raw_pairs)
+            bad += int(len(e["need_quote"]) > X.QUOTE_MAX) + int(len(e["offer_quote"]) > X.QUOTE_MAX)
+            bad += int(not any(e["need_quote"] in t for t in need_src)) + int(not any(e["offer_quote"] in t for t in offer_src))
+            bad += int(e["relation_name"] != X.RELATIONS.get(e["relation"], ("",))[0])
+    return bad
+
+
 def replay(res, run_index=0):
     """記録した出力を、もう一度パイプラインに通す（モデルは呼ばない）。組ごとの理由（段つき）と、モデルが付けた関係を返す。"""
     run = res["runs"][run_index]
@@ -69,7 +94,8 @@ def replay(res, run_index=0):
                 assert c["stage"] == stage, (pid, c["stage"], stage)
                 return c["output"]
             return G.FixedBackend(responder, model="replay")
-        r = G.generate_direction(n, o, backend())
+        trace = []
+        r = G.generate_direction(n, o, backend(), trace=trace)
         kind = M.run_pair(n, o, backend())["result"]
         raw1 = G.parse_json(calls[pr["id"]][0]["output"])
         model_rels = [e.get("relation") for p in (raw1 or {}).get("purposes") or [] if isinstance(p, dict)
@@ -79,8 +105,10 @@ def replay(res, run_index=0):
             st = _stage_of(prob)
             for why in M.drop_reasons([prob]):
                 reasons.append((st, why))
+        p2 = trace[0]["stage2_payload"] if trace else {"purposes": []}
         out[pr["id"]] = {"model_relations": model_rels, "reasons": reasons, "stage2": len(calls[pr["id"]]) > 1,
-                         "replayed_kind": kind}
+                         "replayed_kind": kind, "leak_strict": leak_strict(n, o, raw1, p2),
+                         "stage2_purposes": len(p2.get("purposes") or [])}
     return out
 
 
@@ -104,7 +132,9 @@ def summary(res):
             table_el[(lab_key, rel)] += 1
         table_pair[(lab_key, "・".join(sorted(set(rels))) if rels else "組なし")] += 1
     mismatch = [i for i, r in rep.items() if r["replayed_kind"] != recs[i]["result"]]
-    return {"replay_mismatch": mismatch, "stage2_reached": len(s2), "stage2_dropped": len(s2_dropped), "stage2_reasons": dict(s2_reasons),
+    return {"replay_mismatch": mismatch, "leak_counter": res["runs"][0]["counts"]["leak"],
+            "leak_strict": sum(r["leak_strict"] for r in rep.values()),
+            "leak_counter_pairs": sorted(i for i, r in recs.items() if r.get("leak")), "stage2_reached": len(s2), "stage2_dropped": len(s2_dropped), "stage2_reasons": dict(s2_reasons),
             "reasons": dict(all_reasons), "table_elements": {f"{a}|{b}": v for (a, b), v in sorted(table_el.items())},
             "table_pairs": {f"{a}|{b}": v for (a, b), v in sorted(table_pair.items())},
             "r2_predicate": sum(v for k, v in all_reasons.items() if "R2 なのに申告の表現が無い" in k),

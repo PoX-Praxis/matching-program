@@ -130,8 +130,8 @@ def test_t500_result_kinds_and_no_text(tmp_path):
     for kind, resp in cases.items():
         r = M.run_pair(_n(), M.one_sentence_person(o), G.FixedBackend(resp))
         assert r["result"] == kind, (kind, r)
-        assert set(r) == {"result", "reasons", "relations", "stage2", "open"}
-        assert r["stage2"] is (kind == "d") and r["open"] == 0
+        assert set(r) == {"result", "reasons", "relations", "stage2", "open", "leak"}
+        assert r["stage2"] is (kind == "d") and r["open"] == 0 and r["leak"] == 0
         if kind == "c":
             assert r["reasons"] == ["R2 なのに申告の表現が無い"]
         if kind == "d":
@@ -150,7 +150,8 @@ def test_t500_result_kinds_and_no_text(tmp_path):
         assert not any(t[i:i + 8] in blob for i in range(max(1, len(t) - 7))), t[:8]
     recs = res["bench"]["synthetic_v1"]["records"]
     assert len(recs) == 60 and {r["id"] for r in recs} == {p["id"] for p in syn["pairs"]}
-    assert all(set(r) <= {"id", "class", "result", "rule_excluded", "reasons", "relations", "stage2", "open"} for r in recs)
+    assert all(set(r) <= {"id", "class", "result", "rule_excluded", "reasons", "relations", "stage2", "open", "leak"}
+               for r in recs)
 
 
 # ── 501（§5-4）R1 の述語 ────────────────────────────────────────────────────────────

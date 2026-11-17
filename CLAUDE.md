@@ -34,6 +34,9 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - `templates/register.html`: 送信前にJS側でも正規化
 
 ## 継続中タスク
+- [ ] 指示書76 順1 の残り（新しいセッションで）: 準備のジョブ（llama.cpp v1.0.0 を組む・Nemotron を変換）と 3 組の試し → 報告して止まる
+  - 手順と確認は `docs/reports/76.md` の「順1（準備）の確認の後」§3。候補は Nemotron だけ（LLM-jp-4 は外した）。予算 10 ドル
+  - 鍵（Hugging Face のトークン）は環境の秘密。ジョブに渡さない。3 組の結果でプロンプト・線・確かめを動かさない
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

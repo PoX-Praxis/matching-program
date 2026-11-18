@@ -34,8 +34,9 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - `templates/register.html`: 送信前にJS側でも正規化
 
 ## 継続中タスク
-- [ ] 指示書77a 順1（照合の表 v0.2 を LLM なしで測る）は報告して止まった（`docs/reports/77a.md`）。表を直した版（v0.3 など）が届いたら、同じ計測をもう一度行う
-  - 照合は `src/match_table.py`、表は `data/match_tables/<版>/`（文書の写し。Code は中身を変えない）、計測は `scripts/t77a_measure.py`
+- [ ] 指示書77a 追補1（照合の表 v0.3 を LLM なしで測る）は報告して止まった（`docs/reports/77a.md` の追補1）。表を直すかは Claude と Sakana が決める。次の版が届いたら同じ計測をもう一度行う
+  - 照合は `src/match_table.py`（`match(..., version="v0.3", words="lemma")`。既定は v0.2 のまま）、表は `data/match_tables/<版>/`（文書の写し。Code は中身を変えない）
+  - 計測は `scripts/t77a_measure.py --version v0.3`（記録 `data/explanation_bench/runs/77a_match_tables_v0.3.json`）。v0.2 の表と記録は残す
   - fugashi＋unidic-lite は `requirements-bench.txt`（CI だけ。本番の requirements.txt には入れない）
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動

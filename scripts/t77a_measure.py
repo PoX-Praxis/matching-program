@@ -8,6 +8,9 @@
 使い方:
   python3 scripts/t77a_measure.py --nomic            # nomic を手元で読み込んで値を出し、記録を書く
   python3 scripts/t77a_measure.py --sims-from <記録>  # 記録にある nomic の値で、もう一度計算する（モデルは読まない）
+  python3 scripts/t77a_measure.py --version v0.3 [--nomic | --sims-from <記録>]   # 追補1: 表 v0.3・gates_v1.1
+追補1（表 v0.3）: 主は「辞書形で当てる」形、比べは「表記のままで当てる」形。nomic は判定に使わず、
+「概念不明」のログに参考の近さだけを残す（数値は記録のファイルだけ。画面・公開 API には出さない）。
 """
 import argparse
 import copy
@@ -22,8 +25,11 @@ import match_table as MT  # noqa: E402
 SYN = os.path.join(ROOT, "data", "explanation_bench", "synthetic_v1.json")
 R2 = os.path.join(ROOT, "data", "explanation_bench", "synthetic_v1_labels_r2.json")
 GATES = os.path.join(ROOT, "data", "explanation_bench", "gates_v1.json")
+GATES_V11 = os.path.join(ROOT, "data", "explanation_bench", "gates_v1.1.json")
 RECORD = os.path.join(ROOT, "data", "explanation_bench", "runs", "77a_match_tables_v0.2.json")
+RECORD_V03 = os.path.join(ROOT, "data", "explanation_bench", "runs", "77a_match_tables_v0.3.json")
 DOCS = {"表": os.path.join(ROOT, "docs", "match_tables_v0.2.md"), "原則": os.path.join(ROOT, "docs", "answer_principle_v1.md")}
+DOCS_V03 = {"表": os.path.join(ROOT, "docs", "match_tables_v0.3.md"), "原則": os.path.join(ROOT, "docs", "answer_principle_v1.md")}
 NOMIC = ("nomic-ai/nomic-embed-text-v2-moe", "1066b6599d099fbb93dfcb64f9c37a7c9e503e85")       # element_probe.NOMIC と同じ
 NOMIC_CODE = ("nomic-ai/nomic-bert-2048", "7710840340a098cfb869c4f65e87cf2b1b70caca")
 NOMIC_PREFIX = "search_query: "        # embedding_config の nomic-emb-v2 の symmetric（対象の句どうしは対称に比べる）
@@ -33,13 +39,14 @@ GATE_KIND = {"否定": ("関門", "否定"), "推量": ("関門", "推量・伝�
              "主語が O でない": ("関門", "主語が O でない"), "希望": ("関門", "希望"), "受益": ("関門", "受身・受益"),
              "受身": ("関門", "受身・受益"), "探す": ("関門", "探す・募集する"), "募集する": ("関門", "探す・募集する"),
              "消費": ("関門", "消費"), "学ぶ側": ("関門", "学ぶ側"), "期間なしの現在": ("種類", "応えない：現在の形・期間なし"),
-             "条件が違う": ("条件", None), "領域が近い": ("領域", None), "枠の内容が違う": ("枠", None), "述語が違う": ("述語", None)}
+             "条件が違う": ("条件", None), "領域が近い": ("領域", None), "枠の内容が違う": ("枠", None), "述語が違う": ("述語", None),
+             "従属節の否定": ("関門", "否定"), "主語": ("関門", "主語が O でない"), "禁止語": ("領域", None)}
 
 
-def load_items():
+def load_items(gates_path=GATES):
     syn = json.load(open(SYN, encoding="utf-8"))
     r2 = json.load(open(R2, encoding="utf-8"))["labels"]
-    gates = json.load(open(GATES, encoding="utf-8"))["items"]
+    gates = json.load(open(gates_path, encoding="utf-8"))["items"]
     kinds = {p["id"]: p["種類"] for p in syn["people"]}
     items = []
     for x in syn["pairs"]:
@@ -56,10 +63,10 @@ def load_items():
     return items
 
 
-def run_all(items, mode, sim=None, threshold=None):
+def run_all(items, mode, sim=None, threshold=None, version=None, words=None):
     out = {}
     for it in items:
-        r = MT.match(it["need"], it["offer"], mode=mode, sim=sim, threshold=threshold)
+        r = MT.match(it["need"], it["offer"], mode=mode, sim=sim, threshold=threshold, version=version, words=words)
         out[it["id"]] = r
     return out
 
@@ -164,7 +171,7 @@ def summarize(items, results):
         hits = sorted({g for c in r["clauses"] for g in (c.get("関門") or [])})
         reasons = [c.get("理由") for c in r["clauses"]]
         if exp_step == "関門":
-            at_expected = exp_gate in hits
+            at_expected = exp_gate in hits or exp_gate in (r.get("why") or "")
         elif exp_gate is not None:
             at_expected = exp_gate in reasons
         else:
@@ -182,7 +189,8 @@ def summarize(items, results):
         r = results[it["id"]]
         gpos.append({"id": it["id"], "期待": f"{it['gold']}（{it['gold_sub']}）", "通った": r["passed"],
                      "関係": r.get("relation"), "C の種類": r.get("kind"), "C": r.get("C"),
-                     "期待どおり": bool(r["passed"] and r["relation"] == it["gold"] and r["kind"] == it["gold_sub"]),
+                     "期待どおり": bool(r["passed"] and r["relation"] == it["gold"]
+                                    and (r["kind"] == it["gold_sub"] or (r.get("short") or "").startswith(it["gold_sub"] or "-"))),
                      "段": r.get("where"), "理由": r.get("why")})
     bases = {}
     for it in gs:
@@ -196,7 +204,7 @@ def summarize(items, results):
     return {"60": c60, "gates": cg}
 
 
-def type1_list(items, results):
+def type1_list(items, results):  # noqa: C901
     out = []
     for it in items:
         r = results[it["id"]]
@@ -266,6 +274,103 @@ def measure(sims, nomic_info=None):
     return out
 
 
+# ── 追補1（表 v0.3）──────────────────────────────────────────────────────────────────────
+def slim_v03(results):
+    out = slim(results)
+    for i, r in results.items():
+        out[i].update({"joined": r.get("joined", False), "units": r.get("units"), "unit": r.get("unit"),
+                       "つながなかった": r.get("つながなかった", [])})
+    return out
+
+
+def concept_unknown_log(items, results, sims):
+    """表 v0.3 §6 の 4: 領域で「分からない」で落ちた組の行。人のメモの欄は空。nomic の近さは参考（判定に使わない）。"""
+    rows = []
+    for it in items:
+        r = results[it["id"]]
+        if r["passed"] or r.get("where") != "領域":
+            continue
+        unit = r.get("unit")
+        rows.append({"id": it["id"], "必要の句": it["need"], "相手の句": unit, "人のメモ": "",
+                     "nomic の近さ（参考）": sims.get((it["need"], unit)), "落とした理由": r.get("why")})
+    return rows
+
+
+def compare_with_v02(items, res03):
+    """v0.2 で拾えていた組（記録の split）のうち、v0.3 でどうなったか。共通の概念と、両側の領域の名詞も書く。"""
+    rec = json.load(open(RECORD, encoding="utf-8"))
+    v02 = rec["modes"]["split"]["results"]
+    by = {it["id"]: it for it in items}
+    rows = []
+    for i, r in v02.items():
+        if not r["passed"] or i not in res03:
+            continue
+        r3 = res03[i]
+        row = {"id": i, "v0.2": f"{r['relation']}・{r['kind']}", "v0.3": (f"{r3['relation']}・{r3['kind']}" if r3["passed"]
+                                                                        else f"落とした（{r3.get('where')}：{r3.get('why')}）")}
+        if r3["passed"]:
+            tok = MT._VER.set("v0.3")
+            tw = MT._WORDS.set("lemma")
+            try:
+                need = MT.Span([t for t in MT.tokenize(by[i]["need"]) if t.surface != "。"])
+                off = MT.Span(MT.tokenize(r3["clause"]))
+                c = (r3.get("domain") or "").replace("概念 ", "")
+                row["概念"] = c
+                row["領域の名詞（必要）"] = MT.concept_detail(need)[c]["領域の名詞"] if c in MT.concept_detail(need) else []
+                row["領域の名詞（相手）"] = MT.concept_detail(off)[c]["領域の名詞"] if c in MT.concept_detail(off) else []
+            finally:
+                MT._VER.reset(tok)
+                MT._WORDS.reset(tw)
+        rows.append(row)
+    return rows
+
+
+def words_diff(items, a, b):
+    """辞書形と表記のままで、結果（通ったか・関係・［C］・段）が変わった組。"""
+    out = []
+    for it in items:
+        x, y = a[it["id"]], b[it["id"]]
+        kx = (x["passed"], x.get("relation"), x.get("kind"), x.get("clause"), x.get("where"))
+        ky = (y["passed"], y.get("relation"), y.get("kind"), y.get("clause"), y.get("where"))
+        if kx != ky:
+            out.append({"id": it["id"], "辞書形": kx, "表記のまま": ky})
+    return out
+
+
+def measure_v03(sims, nomic_info=None):
+    items = load_items(GATES_V11)
+    tok = MT._VER.set("v0.3")
+    try:
+        needs = {}
+        for it in items:
+            if it["need"] not in needs:
+                needs[it["need"]] = MT.match(it["need"], "。", version="v0.3")["need"]
+        out = {"version": "77a-s1", "table": {"version": "v0.3", "files": MT.table_digest("v0.3"),
+                                              "docs": {k: __import__("hashlib").sha256(open(p, "rb").read()).hexdigest()
+                                                       for k, p in DOCS_V03.items()}},
+               "gates": os.path.basename(GATES_V11), "tools": MT.tool_versions(), "needs": needs, "modes": {}}
+    finally:
+        MT._VER.reset(tok)
+    res = {}
+    for words in MT.WORDS:
+        res[words] = run_all(items, "split", version="v0.3", words=words)
+        out["modes"][words] = {"counts": summarize(items, res[words]), "type1": type1_list(items, res[words]),
+                               "joined": [{"id": i, "offer_quote": r["clause"]} for i, r in res[words].items()
+                                          if r["passed"] and r.get("joined")],
+                               "results": slim_v03(res[words])}
+    out["words_diff"] = words_diff(items, res["lemma"], res["surface"])
+    out["v0.2 で拾えていた組"] = compare_with_v02(items, res["lemma"])
+    out["概念不明"] = concept_unknown_log(items, res["lemma"], sims)
+    out["offer_quote"] = {i: res["lemma"][i].get("clause") for i in ("G31", "G34")}
+    out["nomic"] = dict(nomic_info or {})
+    out["nomic"]["使い方"] = "判定に使わない。「概念不明」のログの参考の近さだけ（必要の文と、領域の段まで進んだ相手の句）"
+    out["nomic"]["sims"] = [{"a": a, "b": b, "cos": v} for (a, b), v in sorted(sims.items())]
+    again = run_all(items, "split", version="v0.3", words="lemma")
+    out["determinism"] = {"same": json.dumps(slim_v03(again), ensure_ascii=False, sort_keys=True)
+                          == json.dumps(out["modes"]["lemma"]["results"], ensure_ascii=False, sort_keys=True)}
+    return out
+
+
 def sims_from_record(path):
     rec = json.load(open(path, encoding="utf-8"))
     return {(x["a"], x["b"]): x["cos"] for x in rec["nomic"]["sims"]}, {k: v for k, v in rec["nomic"].items() if k != "sims"}
@@ -275,8 +380,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--nomic", action="store_true", help="nomic を手元で読み込んで、対象の句どうしの近さを出す")
     ap.add_argument("--sims-from", help="記録にある nomic の値を使う（モデルは読まない）")
-    ap.add_argument("--out", default=RECORD)
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--version", default="v0.2", choices=MT.VERSIONS)
     a = ap.parse_args(argv)
+    if a.version == "v0.3":
+        return main_v03(a)
+    a.out = a.out or RECORD
     items = load_items()
     if a.nomic:
         pairs = sorted({(q[1], q[2]) for mode in MT.MODES for q in nomic_queries(run_all(items, mode))})
@@ -295,6 +404,33 @@ def main(argv=None):
                       "gates 負例": f"{c['gates']['負例']['落とした']}/{c['gates']['負例']['組']}",
                       "nomic の線": rec["modes"]["split"]["nomic"]["線"], "決定性": rec["determinism"]},
                      ensure_ascii=False))
+    return rec
+
+
+def main_v03(a):
+    items = load_items(GATES_V11)
+    if a.nomic:
+        base = run_all(items, "split", version="v0.3", words="lemma")
+        pairs = sorted({(r["need"], r["相手の句"]) for r in [{"need": it["need"], "相手の句": base[it["id"]].get("unit")}
+                                                          for it in items if not base[it["id"]]["passed"]
+                                                          and base[it["id"]].get("where") == "領域"]})
+        sims, info = nomic_sims(pairs)
+    elif a.sims_from:
+        sims, info = sims_from_record(a.sims_from)
+    else:
+        sims, info = {}, {"note": "nomic の値なし（参考の近さは空）"}
+    rec = measure_v03(sims, info)
+    out = a.out or RECORD_V03
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(rec, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+    c = rec["modes"]["lemma"]["counts"]
+    print(json.dumps({"60": {k: c["60"][k] for k in ("出した", "正しさ", "拾えた")} | {"誤り": c["60"]["誤り"]["出した"]},
+                      "gates 負例": f"{c['gates']['負例']['落とした']}/{c['gates']['負例']['組']}",
+                      "gates 正例": f"{sum(1 for x in c['gates']['正例'] if x['期待どおり'])}/{len(c['gates']['正例'])}",
+                      "辞書形と表記のままの差": len(rec["words_diff"]), "概念不明": len(rec["概念不明"]),
+                      "決定性": rec["determinism"]}, ensure_ascii=False))
     return rec
 
 

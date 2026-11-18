@@ -9,6 +9,7 @@
   python3 scripts/t77a_measure.py --nomic            # nomic を手元で読み込んで値を出し、記録を書く
   python3 scripts/t77a_measure.py --sims-from <記録>  # 記録にある nomic の値で、もう一度計算する（モデルは読まない）
   python3 scripts/t77a_measure.py --version v0.3 [--nomic | --sims-from <記録>]   # 追補1: 表 v0.3・gates_v1.1
+  python3 scripts/t77a_measure.py --version v0.3.1-dev                           # 追補2: 表 v0.3.1-dev・gates_v1.2（辞書形）
 追補1（表 v0.3）: 主は「辞書形で当てる」形、比べは「表記のままで当てる」形。nomic は判定に使わず、
 「概念不明」のログに参考の近さだけを残す（数値は記録のファイルだけ。画面・公開 API には出さない）。
 """
@@ -26,10 +27,15 @@ SYN = os.path.join(ROOT, "data", "explanation_bench", "synthetic_v1.json")
 R2 = os.path.join(ROOT, "data", "explanation_bench", "synthetic_v1_labels_r2.json")
 GATES = os.path.join(ROOT, "data", "explanation_bench", "gates_v1.json")
 GATES_V11 = os.path.join(ROOT, "data", "explanation_bench", "gates_v1.1.json")
+GATES_V12 = os.path.join(ROOT, "data", "explanation_bench", "gates_v1.2.json")
 RECORD = os.path.join(ROOT, "data", "explanation_bench", "runs", "77a_match_tables_v0.2.json")
 RECORD_V03 = os.path.join(ROOT, "data", "explanation_bench", "runs", "77a_match_tables_v0.3.json")
+RECORD_V031 = os.path.join(ROOT, "data", "explanation_bench", "runs", "77a_match_tables_v0.3.1-dev.json")
 DOCS = {"表": os.path.join(ROOT, "docs", "match_tables_v0.2.md"), "原則": os.path.join(ROOT, "docs", "answer_principle_v1.md")}
 DOCS_V03 = {"表": os.path.join(ROOT, "docs", "match_tables_v0.3.md"), "原則": os.path.join(ROOT, "docs", "answer_principle_v1.md")}
+DOCS_V031 = {"表": os.path.join(ROOT, "docs", "match_tables_v0.3.1-dev.md"), "原則": os.path.join(ROOT, "docs", "answer_principle_v1.md")}
+TEACH_IDS = ("G37", "G38", "G39", "G40", "G41", "G42", "G43", "G44", "G45")   # 追補2 §2-4: A〜C の安定の確かめ
+QUOTE_IDS_V031 = ("G31", "G34", "G46", "G49", "G50")
 NOMIC = ("nomic-ai/nomic-embed-text-v2-moe", "1066b6599d099fbb93dfcb64f9c37a7c9e503e85")       # element_probe.NOMIC と同じ
 NOMIC_CODE = ("nomic-ai/nomic-bert-2048", "7710840340a098cfb869c4f65e87cf2b1b70caca")
 NOMIC_PREFIX = "search_query: "        # embedding_config の nomic-emb-v2 の symmetric（対象の句どうしは対称に比べる）
@@ -40,7 +46,9 @@ GATE_KIND = {"否定": ("関門", "否定"), "推量": ("関門", "推量・伝�
              "受身": ("関門", "受身・受益"), "探す": ("関門", "探す・募集する"), "募集する": ("関門", "探す・募集する"),
              "消費": ("関門", "消費"), "学ぶ側": ("関門", "学ぶ側"), "期間なしの現在": ("種類", "応えない：現在の形・期間なし"),
              "条件が違う": ("条件", None), "領域が近い": ("領域", None), "枠の内容が違う": ("枠", None), "述語が違う": ("述語", None),
-             "従属節の否定": ("関門", "否定"), "主語": ("関門", "主語が O でない"), "禁止語": ("領域", None)}
+             "従属節の否定": ("関門", "否定"), "主語": ("関門", "主語が O でない"), "禁止語": ("領域", None),
+             "枠の相手が違う": ("枠", None), "汎用の名詞（相手の側）": ("枠", None), "一致した述語の否定": ("関門", "否定"),
+             "評価": ("関門", "気持ち・後悔・評価")}
 
 
 def load_items(gates_path=GATES):
@@ -194,6 +202,8 @@ def summarize(items, results):
                      "段": r.get("where"), "理由": r.get("why")})
     bases = {}
     for it in gs:
+        if it["base"] not in by:
+            continue                                                  # G44・G45 は 60 組に無い架空の必要（base なし）
         b = by[it["base"]]
         r = results[b["id"]]
         ok = (r["passed"] and r["relation"] == b["gold"]) if b["gold"] != "説明できない" else not r["passed"]
@@ -371,6 +381,63 @@ def measure_v03(sims, nomic_info=None):
     return out
 
 
+def regression_v03(items, res031):
+    """追補2 §2-3: v0.3 の記録（辞書形）にある組で、v0.3.1-dev の結果（通ったか・関係・［C］・引用・段）が変わった組。"""
+    rec = json.load(open(RECORD_V03, encoding="utf-8"))["modes"]["lemma"]["results"]
+    out = []
+    for it in items:
+        i = it["id"]
+        if i not in rec:
+            continue
+        a, b = rec[i], res031[i]
+        ka = {"通った": a["passed"], "関係": a["relation"], "C の種類": a["kind"], "引用": a["clause"], "段": a["where"], "理由": a["why"]}
+        kb = {"通った": b["passed"], "関係": b.get("relation"), "C の種類": b.get("kind"), "引用": b.get("clause"),
+              "段": b.get("where"), "理由": b.get("why")}
+        if ka != kb:
+            changed = [k for k in ka if ka[k] != kb[k]]
+            out.append({"id": i, "正解": it["gold"], "変わったもの": changed, "v0.3": ka, "v0.3.1-dev": kb})
+    return out
+
+
+def measure_v031():
+    """追補2: 表 v0.3.1-dev を、60 組（r2）と gates_v1.2 で測る（辞書形だけ）。nomic は使わない。"""
+    items = load_items(GATES_V12)
+    version = "v0.3.1-dev"
+    tok = MT._VER.set(version)
+    try:
+        needs = {}
+        for it in items:
+            if it["need"] not in needs:
+                needs[it["need"]] = MT.match(it["need"], "。", version=version)["need"]
+        files = MT.table_digest(version)
+    finally:
+        MT._VER.reset(tok)
+    res = run_all(items, "split", version=version, words="lemma")
+    counts = summarize(items, res)
+    teach = [{"id": i, "期待": next(it for it in items if it["id"] == i)["gold"]
+              + (f"（{next(it for it in items if it['id'] == i)['gold_sub']}）" if next(it for it in items if it["id"] == i)["gold_sub"] else ""),
+              "結果": (f"{res[i]['relation']}・{res[i]['kind']}" if res[i]["passed"] else f"落とした（{res[i].get('where')}）"),
+              "理由": res[i].get("why"), "期待どおり": res[i]["passed"] == (next(it for it in items if it["id"] == i)["gold"] != "説明できない")}
+             for i in TEACH_IDS]
+    out = {"version": "77a-s2", "table": {"version": version, "files": files,
+                                          "docs": {k: __import__("hashlib").sha256(open(p, "rb").read()).hexdigest()
+                                                   for k, p in DOCS_V031.items()}},
+           "gates": os.path.basename(GATES_V12), "tools": MT.tool_versions(), "words": "lemma", "needs": needs,
+           "counts": counts, "type1": type1_list(items, res),
+           "joined": [{"id": i, "場合": r["joined"], "offer_quote": r["clause"]} for i, r in res.items() if r["passed"] and r.get("joined")],
+           "教える A〜C": {"組": teach, "すべて期待どおり": all(x["期待どおり"] for x in teach),
+                         "A〜C を外した形": "測っていない（G37〜G45 がすべて期待どおりのため。指示書77a 追補2 §2-4）"},
+           "回帰（v0.3 から変わった組）": regression_v03(items, res),
+           "offer_quote": {i: res[i].get("clause") for i in QUOTE_IDS_V031},
+           "概念不明": concept_unknown_log(items, res, {}),
+           "nomic": {"使い方": "使わない（表 §6）。「概念不明」のログの近さは計算していない（空）"},
+           "results": slim_v03(res)}
+    again = run_all(items, "split", version=version, words="lemma")
+    out["determinism"] = {"same": json.dumps(slim_v03(again), ensure_ascii=False, sort_keys=True)
+                          == json.dumps(out["results"], ensure_ascii=False, sort_keys=True)}
+    return out
+
+
 def sims_from_record(path):
     rec = json.load(open(path, encoding="utf-8"))
     return {(x["a"], x["b"]): x["cos"] for x in rec["nomic"]["sims"]}, {k: v for k, v in rec["nomic"].items() if k != "sims"}
@@ -385,6 +452,20 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.version == "v0.3":
         return main_v03(a)
+    if a.version == "v0.3.1-dev":
+        rec = measure_v031()
+        out = a.out or RECORD_V031
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False, indent=1)
+            f.write("\n")
+        c = rec["counts"]
+        print(json.dumps({"60": {k: c["60"][k] for k in ("出した", "正しさ", "拾えた")} | {"誤り": c["60"]["誤り"]["出した"]},
+                          "gates 負例": f"{c['gates']['負例']['落とした']}/{c['gates']['負例']['組']}",
+                          "gates 正例": f"{sum(1 for x in c['gates']['正例'] if x['期待どおり'])}/{len(c['gates']['正例'])}",
+                          "教える A〜C": rec["教える A〜C"]["すべて期待どおり"], "回帰": len(rec["回帰（v0.3 から変わった組）"]),
+                          "決定性": rec["determinism"]}, ensure_ascii=False))
+        return rec
     a.out = a.out or RECORD
     items = load_items()
     if a.nomic:

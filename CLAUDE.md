@@ -34,9 +34,9 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - `templates/register.html`: 送信前にJS側でも正規化
 
 ## 継続中タスク
-- [ ] 指示書77a 追補1（照合の表 v0.3 を LLM なしで測る）は報告して止まった（`docs/reports/77a.md` の追補1）。表を直すかは Claude と Sakana が決める。次の版が届いたら同じ計測をもう一度行う
-  - 照合は `src/match_table.py`（`match(..., version="v0.3", words="lemma")`。既定は v0.2 のまま）、表は `data/match_tables/<版>/`（文書の写し。Code は中身を変えない）
-  - 計測は `scripts/t77a_measure.py --version v0.3`（記録 `data/explanation_bench/runs/77a_match_tables_v0.3.json`）。v0.2 の表と記録は残す
+- [ ] 指示書77a 追補2（照合の表 v0.3.1-dev を LLM なしで測る）は報告して止まった（`docs/reports/77a.md` の追補2）。凍結するかは Claude と Sakana が見てから決め、KAORU が確かめる。凍結の後は、お手本と v2 を見て表を直さない（直すなら v0.3.2）
+  - 照合は `src/match_table.py`（`match(..., version="v0.3.1-dev")`。既定は v0.2 のまま。v0.3 も残す）、表は `data/match_tables/<版>/`（文書の写し。Code は中身を変えない・表に無い分岐を足さない）
+  - 計測は `scripts/t77a_measure.py --version v0.3.1-dev`（記録 `data/explanation_bench/runs/77a_match_tables_v0.3.1-dev.json`・gates_v1.2）。v0.2・v0.3 の表と記録は残す
   - fugashi＋unidic-lite は `requirements-bench.txt`（CI だけ。本番の requirements.txt には入れない）
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動

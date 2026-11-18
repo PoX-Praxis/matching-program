@@ -1,0 +1,35 @@
+{
+ "version": "v0.2",
+ "source": {
+  "表": {
+   "file": "docs/match_tables_v0.2.md",
+   "sha256": "092a3ba61074c61f488cdc7324ae8243d2d3a5aef6eaf236b5bd529e04d1495b"
+  },
+  "原則": {
+   "file": "docs/answer_principle_v1.md",
+   "sha256": "5d276093356ddc6facfb9d92f77a66a4f322f1818e6051a6d1d45491bda3a43b"
+  }
+ },
+ "files": [
+  "gates.json",
+  "clause_kinds.json",
+  "predicates.json",
+  "objects.json",
+  "concepts.json",
+  "conditions.json",
+  "need_types.json",
+  "type_compat.json",
+  "nominalize.json"
+ ],
+ "tool": {
+  "fugashi": "1.5.2",
+  "unidic-lite": "1.0.8",
+  "requirements": "requirements-bench.txt"
+ },
+ "写し方": [
+  "日本語の欄（形・例・動詞（例）・まとめる句・注 など）は、文書のまま写した。足したり、解釈で広げたりしていない",
+  "match の欄は、文書の形を形態素の並びで読むための機械の読み方（Code）。文書の語だけを使う",
+  "nominalize.json は［B］の名詞化の規則（指示書77a §2-3 で Code が案を作る）。表と同じ版で管理する（生成仕様 v1.0 §6-1）",
+  "文書だけでは決められなかったところと、読み方は docs/reports/77a.md §1 に挙げた"
+ ]
+}

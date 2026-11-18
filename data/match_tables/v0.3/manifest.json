@@ -1,0 +1,38 @@
+{
+ "version": "v0.3",
+ "source": {
+  "表": {
+   "file": "docs/match_tables_v0.3.md",
+   "sha256": "da2e39f006ec3d87a2bcc8dc93c94ad1baf9ff5e1afe40ab34ba419713cb9605"
+  },
+  "原則": {
+   "file": "docs/answer_principle_v1.md",
+   "sha256": "5d276093356ddc6facfb9d92f77a66a4f322f1818e6051a6d1d45491bda3a43b"
+  }
+ },
+ "files": [
+  "gates.json",
+  "clause_kinds.json",
+  "predicates.json",
+  "objects.json",
+  "concepts.json",
+  "conditions.json",
+  "need_types.json",
+  "type_compat.json",
+  "nominalize.json",
+  "units.json"
+ ],
+ "tool": {
+  "fugashi": "1.5.2",
+  "unidic-lite": "1.0.8",
+  "requirements": "requirements-bench.txt"
+ },
+ "前の版": "v0.2（data/match_tables/v0.2/・記録 77a_match_tables_v0.2.json）は消さずに残す",
+ "写し方": [
+  "日本語の欄（形・例・動詞（例）・領域の名詞・支える語・禁止語・注 など）は、文書のまま写した。足したり、解釈で広げたりしていない",
+  "match の欄は、文書の形を形態素の並びで読むための機械の読み方（Code）。文書の語だけを使う",
+  "units.json は §8 の 0（単位）。sentence_gates（文全体で見る関門）は機械の読み方で、報告77a 追補1 §1 に挙げた",
+  "nominalize.json・need_types.json・type_compat.json は v0.2 と同じ（原則 v1 と生成仕様 v1.0 は変えていない）",
+  "文書だけでは決められなかったところと、読み方は docs/reports/77a.md の追補1 §1 に挙げた"
+ ]
+}

@@ -20,7 +20,7 @@ TABLE_ROOT = os.path.join(ROOT, "data", "match_tables")
 VERSION = "v0.2"
 TABLE_FILES = ("gates.json", "clause_kinds.json", "predicates.json", "objects.json", "concepts.json",
                "conditions.json", "need_types.json", "type_compat.json", "nominalize.json")
-VERSIONS = ("v0.2", "v0.3")
+VERSIONS = ("v0.2", "v0.3", "v0.3.1-dev")
 WORDS = ("lemma", "surface")       # 内容語の当て方: 辞書形（lemma）・表記のまま（surface）
 _VER = contextvars.ContextVar("match_table_version", default=VERSION)
 _WORDS = contextvars.ContextVar("match_table_words", default="surface")
@@ -67,6 +67,10 @@ def table_digest(version=None):
 
 def _v02():
     return _VER.get() == "v0.2"
+
+
+def _v031():
+    return _VER.get() == "v0.3.1-dev"
 
 
 @functools.lru_cache(maxsize=None)
@@ -433,6 +437,9 @@ def analyze_pred(toks, src=None):
         p.negated = True
     if p.chain and p.chain[0].pos1 == "助動詞" and p.chain[0].base in ("れる", "られる"):
         p.passive = True
+    if _v031() and any(c.pos1 == "助動詞" and c.base in ("ない", "ぬ", "ず") and k > 0 and p.chain[k - 1].pos1 == "動詞"
+                       for k, c in enumerate(p.chain)):
+        p.negated = True                                              # 表 §1「動詞＋ない」（記録していない：い＋ない）
     vk = W.index(p.verb_i)
     # 「〜立場で関われる」の〜
     if p.head == "関わる" and vk >= 3 and tok(vk - 1).surface == "で" and tok(vk - 2).surface == "立場" \
@@ -563,6 +570,14 @@ def concept_detail(span):
         out[c["概念"]] = {"領域の名詞": [w for w in m["domain"] if span.has(w)], "支える語": [w for w in m["support"] if span.has(w)],
                         "禁止語": [w for w in m["forbidden"] if span.has(w)]}
     return out
+
+
+def hit_concepts(text):
+    """v0.3.1-dev §3-2: 句が、概念の領域の名詞か支える語に当たる概念。"""
+    if not text:
+        return []
+    det = concept_detail(Span(tokenize(text)))
+    return [c for c, d in det.items() if d["領域の名詞"] or d["支える語"]]
 
 
 def concepts_v03(span):
@@ -867,6 +882,45 @@ def gate_hits(clause, need_type=None, names=None):
             and p.head is not None and _gate_hit(g, p, sp, clause)]
 
 
+def _teach_frame_v031(need, holes, names, clause, sent, st):
+    """表 v0.3.1-dev §3-2「教える」の比べ方。合えば None、落とすなら (判定, 理由)。"""
+    teach = load_tables()["predicates"]["教えるの比べ方"]["match"]
+    generic, ghole = set(teach["generic_nouns"]), teach["generic_hole"]
+    chosen = {}
+    for name in names:
+        if name not in need.holes:
+            continue                                                  # 必要に無い穴は比べない
+        nh, oh = need.holes[name], holes.get(name)
+        if name == ghole and nh in generic:
+            st.trace.setdefault("枠（比べない穴）", []).append(f"〈{name}〉必要が汎用の名詞（{nh}）")
+            continue
+        if name == ghole and oh in generic:
+            return "合わない", f"〈{name}〉相手の側だけが汎用の名詞（{oh}）で、必要は特定（{nh}）"
+        nc = hit_concepts(nh)
+        if not oh:
+            # 相手の句に穴が無い: 相手の文全体に、穴の概念と同じ概念の語があれば合う（v0.3 から）
+            common = set(nc) & set(offer_concepts(sent)) if sent is not None else set()
+            if not common:
+                return "分からない", f"〈{name}〉が相手の句に無く、文全体にも同じ概念の語が無い（必要「{nh}」{nc}）"
+            st.trace.setdefault("枠（文全体で見た穴）", {})[name] = sorted(common)
+        else:
+            oc = hit_concepts(oh)
+            common = set(nc) & set(oc)
+            if not common:
+                return "合わない", f"〈{name}〉が同じ概念の領域の名詞・支える語に当たらない（必要「{nh}」{nc}・相手「{oh}」{oc}）"
+        chosen[name] = sorted(common)
+    det = concept_detail(clause.span)
+    for name, cs in chosen.items():
+        ok = [c for c in cs if det[c]["領域の名詞"] and not det[c]["禁止語"]]
+        if not ok:
+            forb = sorted({w for c in cs for w in det[c]["禁止語"]})
+            if forb:
+                return "合わない", f"〈{name}〉の概念（{'・'.join(cs)}）の禁止語が節にある（{'・'.join(forb)}）"
+            return "分からない", f"〈{name}〉の概念（{'・'.join(cs)}）の領域の名詞が節に無い"
+    st.trace["枠（教える・v0.3.1-dev）"] = chosen
+    return None
+
+
 def _check_clause(need, clause, sim, threshold, sent=None):
     tabs = load_tables()
     st = Step(clause)
@@ -934,7 +988,11 @@ def _check_clause(need, clause, sim, threshold, sent=None):
             for name, marker in fr["match"]["holes"]:
                 holes[name] = np_before(p.toks, vi, marker, p.src)
         st.trace["枠の穴（相手の句）"] = holes
-        for name in m["holes"]:
+        if _v031():
+            bad = _teach_frame_v031(need, holes, m["holes"], clause, sent, st)
+            if bad is not None:
+                return st.fail("枠", *bad)
+        for name in ([] if _v031() else m["holes"]):
             if name not in need.holes:
                 continue                                    # 必要に無い穴は比べない
             if not holes.get(name):
@@ -1034,6 +1092,8 @@ def _match(need_text, offer_text, mode, sim, threshold):
     if need.type.startswith("型なし") or need.type == "資格":
         out.update({"where": "種類", "why": f"必要の型が「{need.type}」"})
         return out
+    if _v031():
+        return _match_v031(need, offer_text, mode, out)
     if not _v02():
         return _match_v03(need, offer_text, mode, out)
     order = {s: i for i, s in enumerate(STEPS)}
@@ -1047,6 +1107,71 @@ def _match(need_text, offer_text, mode, sim, threshold):
             best = st
     if best is not None:
         out.update({"where": best.where, "why": best.why, "verdict": best.verdict})
+    return out
+
+
+def quote_text(clause):
+    """v0.3.1-dev §8-0 の引用: 一致した述語を含む最小の節。終わりの読点と、節をつなぐ接続助詞（〜が・〜ので）は除く。"""
+    core = core_toks(clause.toks)
+    return clause.sentence[core[0].start:core[-1].end] if core else clause.text
+
+
+def _match_v031(need, offer_text, mode, out):
+    """表 v0.3.1-dev §8-0: 節ごとに試す。前の節をつなぐのは 2 つの場合だけ（① 前の節が条件・修飾 ② 主節に自分の「〜を」の
+    対象が無く、前の節が独立した主張）。どちらも前の節が関門に当たればつながない。40 字まで。"""
+    units = load_tables()["units"]["match"]
+    order = {s: i for i, s in enumerate(STEPS)}
+    toks = [t for t in tokenize(offer_text) if t.surface != "。"]
+    sent = Clause(offer_text, toks, 0).span
+    clauses = split_clauses(offer_text, mode)
+    out["units"] = [c.text for c in clauses]
+    for c in clauses:                                                 # 文全体に追加でかける関門（否定・推量・伝聞・主語）
+        hits = gate_hits(c, need.type, units["sentence_gates"])
+        if hits:
+            out["clauses"].append({"句": c.text, "落ちた段": "関門", "判定": "合わない", "理由": "・".join(hits) + "（文全体）",
+                                   "関門": hits})
+            out.update({"where": "関門", "why": "・".join(hits) + "（文全体で見る）", "verdict": "合わない"})
+            return out
+    tried, passed = [], []
+    for i, c in enumerate(clauses):
+        unit, how = c, None
+        if i > 0:
+            prev = clauses[i - 1]
+            cond = any(Span(core_toks(prev.toks)).ends(f) or prev.span.ends(f) for f in units["join_condition_ends"])
+            need_obj = not own_object(analyze_pred(c.toks, c.sentence))
+            if cond or need_obj:
+                case = "① 条件・修飾" if cond else "② 対象を補う"
+                joined = Clause(offer_text, prev.toks + c.toks, i)
+                if gate_hits(prev):
+                    note = f"前の節が関門に当たる（{'・'.join(gate_hits(prev))}）"
+                elif len(joined.text) > units["join_max_chars"]:
+                    note = f"つなぐと {len(joined.text)} 字（{units['join_max_chars']} 字まで）"
+                else:
+                    note = None
+                    unit, how = joined, case
+                if note is not None:
+                    out.setdefault("つながなかった", []).append({"前の節": prev.text, "節": c.text, "場合": case, "理由": note})
+        st = _check_clause(need, unit, None, None, sent=sent)
+        st.trace["つないだ"] = how or False
+        tried.append(st)
+        if st.verdict == "合う":
+            passed.append(st)
+    out["clauses"] = [st.as_dict() for st in tried]
+    if passed:
+        rels = {(st.trace["関係"], st.trace["C の種類"]) for st in passed}
+        if len(rels) > 1:
+            out.update({"where": "種類", "why": f"有効な述語が 2 つ以上で、関係が決まらない（{sorted(rels)}）", "verdict": "分からない"})
+            return out
+        st = passed[0]
+        out["joined"] = st.trace["つないだ"]
+        return _passed(out, st, quote_text(st.clause))
+    best = None
+    for st in tried:
+        if best is None or order[st.where] > order[best.where]:
+            best = st
+    if best is not None:
+        out.update({"where": best.where, "why": best.why, "verdict": best.verdict, "unit": best.clause.text,
+                    "joined": best.trace.get("つないだ", False)})
     return out
 
 

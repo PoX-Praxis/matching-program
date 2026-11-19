@@ -36,3 +36,13 @@ v2 の正解づくりの続き。正解つきの JSON を v2_full.json として
 4. 報告して止まる
 
 報告の決まりは前と同じ：報告に v2 の文を書かない（id と数だけ）。食い違った組の中身は data/explanation_bench/v2/disagreements.md にだけ書く。
+
+---
+
+## 固定（2026-11-19・KAORU から）
+
+v2 の正解を固定する。V54 は KAORU が「応える」に決めた（ほかの 59 組は v2_items.json のまま）。
+
+1. この結果で data/explanation_bench/v2/v2_labels.json を作る（V54 を KAORU が決めたことと、v2_items と GPT の正解を、記録として残す）
+2. sha256 を README に書いて固定する。固定の後は、正解を変えない
+3. 報告して止まる（報告は id と数だけ。v2 の文は書かない）

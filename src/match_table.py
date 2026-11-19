@@ -20,7 +20,7 @@ TABLE_ROOT = os.path.join(ROOT, "data", "match_tables")
 VERSION = "v0.2"
 TABLE_FILES = ("gates.json", "clause_kinds.json", "predicates.json", "objects.json", "concepts.json",
                "conditions.json", "need_types.json", "type_compat.json", "nominalize.json")
-VERSIONS = ("v0.2", "v0.3", "v0.3.1-dev")
+VERSIONS = ("v0.2", "v0.3", "v0.3.1-dev", "v0.3.2-dev")
 WORDS = ("lemma", "surface")       # 内容語の当て方: 辞書形（lemma）・表記のまま（surface）
 _VER = contextvars.ContextVar("match_table_version", default=VERSION)
 _WORDS = contextvars.ContextVar("match_table_words", default="surface")
@@ -40,7 +40,7 @@ _E_ROW = {"う": "え", "く": "け", "ぐ": "げ", "す": "せ", "つ": "て", 
 # ── 表と道具 ────────────────────────────────────────────────────────────────────────────
 def table_files(version=None):
     version = version or _VER.get()
-    return TABLE_FILES + (("units.json",) if version != "v0.2" else ())
+    return TABLE_FILES + (("units.json",) if version != "v0.2" else ()) + (("readings.json",) if version == "v0.3.2-dev" else ())
 
 
 def load_tables(version=None):
@@ -70,7 +70,35 @@ def _v02():
 
 
 def _v031():
-    return _VER.get() == "v0.3.1-dev"
+    """v0.3.1-dev 以降（v0.3.2-dev は v0.3.1-dev の上に、機械の読みだけを直した版）。"""
+    return _VER.get() in ("v0.3.1-dev", "v0.3.2-dev")
+
+
+def _v032():
+    return _VER.get() == "v0.3.2-dev"
+
+
+def _reading(name):
+    """表 v0.3.2-dev の機械の読み（文書 §0 の v0.3.2-dev の変更・readings.json）の match。"""
+    return next(r["match"] for r in load_tables()["readings"]["readings"] if r["#"] == name)
+
+
+def _is_final_particle(t):
+    """v0.3.2-dev M3: 文末の終助詞「よ」「ね」。"""
+    return t.pos1 == "助詞" and t.pos2 == "終助詞" and t.surface in _reading("M3")["final_particles"]
+
+
+def _m4_skip(t):
+    """v0.3.2-dev M4: 関心の形の「に」と「関心」の間で飛ばす語（読点・副詞）。"""
+    return t.surface in PUNCT or t.pos1 in _reading("M4")["skip"]
+
+
+def _strip_tail(toks):
+    """句の終わりの句読点と（v0.3.2-dev では）終助詞「よ」「ね」を除く。"""
+    toks = list(toks)
+    while toks and (toks[-1].surface in PUNCT or (_v032() and _is_final_particle(toks[-1]))):
+        toks = toks[:-1]
+    return toks
 
 
 @functools.lru_cache(maxsize=None)
@@ -170,9 +198,7 @@ _CONJ_TAIL = ("が", "けれど", "けど", "ので", "のに")
 
 def core_toks(toks):
     """句の終わりの読点と、節をつなぐ接続助詞（〜が・〜けれど・〜ので）を除いた語の並び（v0.3 の関門の形を見る）。"""
-    out = [t for t in toks if t.surface.strip()]
-    while out and out[-1].surface in PUNCT:
-        out = out[:-1]
+    out = _strip_tail([t for t in toks if t.surface.strip()])     # v0.3.2-dev M3: 文末の「よ」「ね」も除く
     while out and ((out[-1].pos1 == "助詞" and out[-1].pos2 == "接続助詞" and out[-1].surface in _CONJ_TAIL)
                    or (len(out) > 1 and out[-1].surface == "で" and out[-1].base == "だ" and out[-2].pos2 == "準体助詞")):
         out = out[:-2] if out[-1].surface == "で" and out[-1].base == "だ" else out[:-1]
@@ -239,6 +265,8 @@ def _split_points(toks):
 def _ends_with_predicate(seg):
     """句の終わりが述語の形（連用・終止・接続助詞・だ の連用）か。名詞・格助詞・「なら」で終わるものは述語の句にしない。"""
     toks = [t for t in seg if t.surface not in PUNCT]
+    if _v032():
+        toks = _strip_tail(toks)                                      # M3: 文末の「よ」「ね」
     if not toks:
         return False
     t = toks[-1]
@@ -333,6 +361,7 @@ class Pred:
         self.chain, self.modality = [], None
         self.content, self.content_i = None, None      # 「〜立場で関われる」の〜・「〜ことができる」の〜
         self.inner, self.inner_i = None, None          # 「〜のが好き」の〜
+        self.m1 = False                                # v0.3.2-dev M1 で可能と読んだ
 
 
 def _strip_end(toks, forms):
@@ -365,9 +394,7 @@ def _cut_words(toks, n):
 def analyze_pred(toks, src=None):
     p = Pred()
     p.src = src
-    toks = [t for t in toks if t.surface.strip()]
-    while toks and toks[-1].surface in PUNCT:
-        toks = toks[:-1]
+    toks = _strip_tail([t for t in toks if t.surface.strip()])      # v0.3.2-dev M3: 文末の「よ」「ね」も除く
     toks, p.modality = _strip_end(toks, _MODAL_ENDS)
     core = core_toks(toks)
     if len(core) < len(toks) and Span(core).norm.endswith(("ことがない", "ことはない", "ことができる")):
@@ -428,6 +455,9 @@ def analyze_pred(toks, src=None):
     elif t.pos1 == "形容詞" and t.base == "ない" and prev is not None and prev.surface in ("が", "は") \
             and prev2 is not None and prev2.surface == "関心":
         p.head, p.head_i, p.negated = "関心がある", W[j - 2], True
+    elif _v032() and t.pos1 == "動詞" and t.base == _reading("F1")["verb"] and prev is not None \
+            and prev2 is not None and [prev2.surface, prev.surface] == _reading("F1")["before"]:
+        p.head, p.head_i = _reading("F1")["head_as"], W[j - 2]     # F1: 「関心を持つ」は「関心がある」と同じ述語
     elif t.pos1 == "動詞":
         p.head = verb_key(t)
         p.potential = p.potential or is_potential(t)
@@ -437,6 +467,8 @@ def analyze_pred(toks, src=None):
         p.negated = True
     if p.chain and p.chain[0].pos1 == "助動詞" and p.chain[0].base in ("れる", "られる"):
         p.passive = True
+        if _v032() and _m1_potential(t, p):
+            p.passive, p.potential, p.m1 = False, True, True          # M1: 一段動詞＋「られる」を可能と読む
     if _v031() and any(c.pos1 == "助動詞" and c.base in ("ない", "ぬ", "ず") and k > 0 and p.chain[k - 1].pos1 == "動詞"
                        for k, c in enumerate(p.chain)):
         p.negated = True                                              # 表 §1「動詞＋ない」（記録していない：い＋ない）
@@ -453,8 +485,32 @@ def analyze_pred(toks, src=None):
     return p
 
 
+def chain_bases(p):
+    """述語の後の語の辞書形の並び。v0.3.2-dev M3: 縮んだ形「てる・でる」は「て・いる」「で・いる」と読む。"""
+    if not _v032():
+        return [t.base for t in p.chain]
+    con = _reading("M3")["contracted"]
+    out = []
+    for t in p.chain:
+        out += con[t.base] if t.pos1 == "助動詞" and t.base in con else [t.base]
+    return out
+
+
+def _m1_potential(v, p):
+    """v0.3.2-dev M1: 一段動詞＋「られる」を可能と読むか。① 動詞に「〜を」の対象がある ② 「られる」の後が「ます」だけか、何も無い。"""
+    m = _reading("M1")
+    if v.pos1 != "動詞" or not str(v.ctype).startswith(tuple(m["verb_ctype"])) or not str(v.cform).startswith("未然形"):
+        return False
+    if not p.chain or p.chain[0].base != m["aux"]:
+        return False
+    rest = [t for t in p.chain[1:] if not (t.pos1 == "助詞" and t.pos2 == "接続助詞" and t.surface in _CONJ_TAIL)]
+    if any(t.base not in m["after_allowed"] for t in rest):
+        return False
+    return bool(np_before(p.toks, p.head_i, m["object_marker"], p.src))
+
+
 def chain_has(p, seq):
-    bases = [t.base for t in p.chain]
+    bases = chain_bases(p)
     n = len(seq)
     return any(bases[i:i + n] == list(seq) for i in range(len(bases) - n + 1))
 
@@ -527,9 +583,15 @@ def object_np(p):
 
 def interest_np(p):
     """「〜に関心がある」の〜（句の始めから「に関心」の前まで）。"""
-    if p.head != "関心がある" or p.head_i is None or p.head_i < 1 or p.toks[p.head_i - 1].surface != "に":
+    if p.head != "関心がある" or p.head_i is None or p.head_i < 1:
         return None
-    seg = [t for t in p.toks[:p.head_i - 1]]
+    i = p.head_i - 1
+    if _v032():                                                       # M4: 「に」と「関心」の間の読点・副詞
+        while i > 0 and _m4_skip(p.toks[i]):
+            i -= 1
+    if p.toks[i].surface != "に":
+        return None
+    seg = [t for t in p.toks[:i]]
     while seg and seg[0].surface in PUNCT:
         seg.pop(0)
     return _text(seg, p.src) or None
@@ -811,6 +873,51 @@ def _gate_hit(g, p, span, clause):
     return False
 
 
+def _drop_m4(toks):
+    """v0.3.2-dev M4: 「に」と「関心」の間にある読点・副詞を除いた語の並び。"""
+    a, b = _reading("M4")["between"]
+    drop = set()
+    for k, t in enumerate(toks):
+        if t.surface != b:
+            continue
+        i = k - 1
+        while i > 0 and _m4_skip(toks[i]):
+            i -= 1
+        if i < k - 1 and toks[i].surface == a:
+            drop.update(range(i + 1, k))
+    return [t for k, t in enumerate(toks) if k not in drop]
+
+
+def _plain_end(span):
+    """v0.3.2-dev M2・M3: 句の末尾を常体に直した語の並び。文末の「よ」「ね」と節をつなぐ接続助詞を除き、
+    丁寧の「動詞＋ます」は動詞の辞書形に、縮んだ「てる・でる」（「〜てます」を含む）は「ている・でいる」に直す。"""
+    ws = [t for t in core_toks(span.toks) if t.surface not in PUNCT]
+    if not ws:
+        return span
+    con = _reading("M3")["contracted"]
+    last, text = ws[-1], None
+    if last.pos1 == "助動詞" and last.base == _reading("M2")["polite"] and str(last.cform).startswith("終止形") \
+            and len(ws) >= 2:
+        v, head = ws[-2], "".join(t.surface for t in ws[:-2])
+        if v.pos1 == "助動詞" and v.base in con:
+            text = head + "".join(con[v.base])
+        elif v.pos1 == "動詞" and str(v.cform).startswith("連用形"):
+            text = head + v.base
+    elif last.pos1 == "助動詞" and last.base in con:
+        text = "".join(t.surface for t in ws[:-1]) + "".join(con[last.base])
+    return Span(tokenize(text)) if text else Span(ws)
+
+
+def _form_ends(span, term):
+    """表 §2 の形が句の末尾にあるか。v0.3.2-dev は丁寧の形・縮んだ形・文末の「よ」「ね」でも当てる（M2・M3）。"""
+    return span.ends(term) or (_v032() and _plain_end(span).ends(term))
+
+
+def _form_contains(span, term):
+    """表 §2 の形が句にあるか。v0.3.2-dev は関心の形の「に」と「関心」の間の読点・副詞を飛ばす（M4）。"""
+    return span.has(term) or (_v032() and Span(_drop_m4(span.toks)).has(term))
+
+
 def clause_kind(p, span, sent=None):
     """句の種類（表 §2）。返り値: (種類, 期間) 。応えないものは「応えない：…」。
     v0.3: 使える立場の形は文全体から取る（sent）。"""
@@ -820,13 +927,13 @@ def clause_kind(p, span, sent=None):
     core = Span(core_toks(span.toks))
 
     def ok(m):
-        if "contains" in m and not span.has(m["contains"]):
+        if "contains" in m and not _form_contains(span, m["contains"]):
             return False
-        if "end" in m and not span.ends(m["end"]):
+        if "end" in m and not _form_ends(span, m["end"]):
             return False
         if "sentence_contains_any" in m and not any((sent or span).has(x) for x in m["sentence_contains_any"]):
             return False
-        if "ends_any" in m and not any(core.ends(x) for x in m["ends_any"]):
+        if "ends_any" in m and not any(_form_ends(core, x) for x in m["ends_any"]):
             return False
         if "period" in m and bool(period) != m["period"]:
             return False

@@ -23,3 +23,16 @@
 - 食い違った組の中身は、KAORU 用の別のファイル data/explanation_bench/v2/disagreements.md にだけ書く（id・need・offer・両方の正解と理由）
 
 KAORU が食い違いを決めたら、その結果で v2_labels.json を作り、sha256 を記録して固定する。固定の後は、正解を変えない。
+
+---
+
+## 続き（2026-11-19・KAORU から）
+
+v2 の正解づくりの続き。正解つきの JSON を v2_full.json として渡す（データ名は v2_items）。最初に渡した v2_draft.json は、正解の欄を消した一覧だった。
+
+1. v2_full.json を data/explanation_bench/v2/ に保存し、sha256 を README に足す
+2. v2_full.json の id・need・offer・purpose が、v2_draft.json と 60 組とも一字も違わないか確かめる（GPT が同じ組に正解を付けたかの確かめ）。違う組があれば、id と数だけ報告して止まる
+3. 前の指示の §2（数の確かめ）と §3（食い違った組の id の一覧）を行う
+4. 報告して止まる
+
+報告の決まりは前と同じ：報告に v2 の文を書かない（id と数だけ）。食い違った組の中身は data/explanation_bench/v2/disagreements.md にだけ書く。

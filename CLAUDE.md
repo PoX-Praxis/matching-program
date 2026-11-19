@@ -44,6 +44,7 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 機械の［A］は `scripts/machine_a.py`（規則 `data/machine_a/a_rules_v1.json` は指示書 §3 の写し。規則に無い変換を足さない・迷えば型の ①）
   - 計測は `scripts/t77b_measure.py`（記録 `data/explanation_bench/runs/77b_v2_machineA.json`。v2 の文は記録に書かない）。事前登録は `docs/prereg/v2_lines_2026-11-19.md`（封印・sha256 17d60c6c…）
   - v2 の ① の文は KAORU 用の `data/explanation_bench/v2/77b_sentences_for_KAORU.md` にだけある。落ちた後に v2 を開けば「探索」の扱い。直した表は新しい v3 で判定する
+  - 追補（探索）：KAORU の指示で v2 を探索として開き、表が落とした 23 組を `data/explanation_bench/v2/77b_drops_explore.md` に書いた（報告 77b の「探索」の節）。表・機械の読み（M1〜M4）をどう直すかは決めていない。直した表は v3 で判定する
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

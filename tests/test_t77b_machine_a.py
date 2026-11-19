@@ -5,7 +5,7 @@
 548 規則 2: 許された丁寧の形だけを常体にする。五段動詞の「〜ました」・並びに無い形は型の ①
 549 規則 1・3・4・5・6
 550 60 組（参考）: 通った 15 組のうち、生成の ① 13・型の ① 2（S11・S56 は規則 4）
-551 v2 の記録: 1 回目が本番・3 回とも同じ・記録が再現する・sha256 の一式・v2 の文が記録と報告に無い
+551 v2 の記録: 1 回目が本番・3 回とも同じ・記録が再現する・sha256 の一式・v2 の文が記録と順1 の報告に無い
 552 v2 の数と合否（事前登録 §2 の線）
 """
 import hashlib
@@ -23,6 +23,7 @@ import match_table as MT  # noqa: E402
 import t77b_measure as M  # noqa: E402
 
 REPORT = os.path.join(ROOT, "docs", "reports", "77b.md")
+EXPLORE_MARK = "## 探索"    # 合否を固定した後、KAORU の指示で v2 を探索として開いた節（v2 の文を書いてよい）
 
 
 def sha(path):
@@ -156,8 +157,9 @@ def test_t551_no_v2_text_in_record_or_report():
         texts |= {x[k] for k in ("clause", "sentence", "B") if x.get(k)}
         if x.get("a") and x["a"].get("A"):
             texts.add(x["a"]["A"])
-    for path in (M.RECORD, REPORT):
-        body = open(path, encoding="utf-8").read()
+    report = open(REPORT, encoding="utf-8").read()
+    assert EXPLORE_MARK in report                     # 探索（v2 を開いた後）の節より前が、順1 の報告
+    for path, body in ((M.RECORD, open(M.RECORD, encoding="utf-8").read()), (REPORT, report.split(EXPLORE_MARK)[0])):
         assert [t for t in texts if t in body] == [], path
 
 

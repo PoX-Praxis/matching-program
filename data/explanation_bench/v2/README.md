@@ -5,11 +5,12 @@
 
 | ファイル | 中身 | sha256 |
 |---|---|---|
-| `v2_draft.json` | Claude の別の会話が作った 60 組（渡されたまま） | b30d4d00306069607d5e66964a53552f08c4feaa3980c850caa0645a1e9cc2b7 |
+| `v2_items.json` | Claude の別の会話が作った 60 組と正解（指示では v2_full.json。渡されたまま） | 2c6c4a5046081f8156b17adfc5f842ade0a8f89686fda453f5c3e7dcd214f3ea |
+| `v2_draft.json` | 上の一覧から正解の欄を消したもの（GPT に渡した形。渡されたまま） | b30d4d00306069607d5e66964a53552f08c4feaa3980c850caa0645a1e9cc2b7 |
 | `v2_gpt_raw.txt` | GPT の一時チャットが付けた正解（渡されたまま。行末の `\` と `&#x20;` が入った形） | 3bd2556246c00cbfdfd4a659c7859fe38ec3928ad1a9726d6da9680c2366fedf |
 | `v2_gpt.json` | 上の形を外して、JSON として読める形にしたもの（中身は同じ） | e05424e5c525e69d7d1c4d2023c808b4879fc064be16afb576606249694865c5 |
 | `prompt_make_v2_2026-11-19.txt` | v2 を作らせた文（PoX_v2を作る_別の会話に渡す文_2026-11-19） | 196fc9a77675ffcdd502484e3b3f421019d1c4df5632807c98db40f3f028f483 |
 | `prompt_gpt_check_2026-11-19.txt` | GPT に確かめさせた文（PoX_v2の正解_もう一つの確かめ_GPTに渡す文_2026-11-19） | 700767febd4f305e40b929e0a9c115cc7161b90e13e9dfca68cffcef146a8878 |
 
-- 食い違いの中身は `disagreements.md`（KAORU 用）にだけ書く。両方の正解がそろってから作る
+- 食い違いの中身は `disagreements.md`（KAORU 用）にだけ書いた（1 組）。KAORU の決定を待っている
 - KAORU が食い違いを決めたら `v2_labels.json` を作り、sha256 をここに書いて固定する。固定の後は正解を変えない

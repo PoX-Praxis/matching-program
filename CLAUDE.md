@@ -38,7 +38,7 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 照合は `src/match_table.py`（`match(..., version="v0.3.1-dev")`。既定は v0.2 のまま。v0.3 も残す）、表は `data/match_tables/<版>/`（文書の写し。Code は中身を変えない・表に無い分岐を足さない）
   - 計測は `scripts/t77a_measure.py --version v0.3.1-dev`（記録 `data/explanation_bench/runs/77a_match_tables_v0.3.1-dev.json`・gates_v1.2）。v0.2・v0.3 の表と記録は残す
   - fugashi＋unidic-lite は `requirements-bench.txt`（CI だけ。本番の requirements.txt には入れない）
-- [ ] v2 の正解づくり（`docs/reports/v2_labels.md`）: 材料は `data/explanation_bench/v2/`。渡された `v2_draft.json` に正解（label・sub・area）が無いので止まっている。正解の入った draft が届いたら、数の確かめと食い違いの一覧（中身は `disagreements.md` だけ）→ KAORU が決めたら `v2_labels.json` を作って sha256 で固定する
+- [ ] v2 の正解づくり（`docs/reports/v2_labels.md`）: 材料は `data/explanation_bench/v2/`（正解つきは `v2_items.json`）。数は合っていた。GPT との食い違いは 1 組で、中身は `disagreements.md` だけに書いた。KAORU が決めたら `v2_labels.json` を作って sha256 で固定する（固定の後は正解を変えない）
   - 報告には v2 の文を書かない（id と数だけ）。v2 の中身を照合の表の作業に使わない。照合も LLM もまだ動かさない
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動

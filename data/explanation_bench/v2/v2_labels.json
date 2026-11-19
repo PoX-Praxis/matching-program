@@ -1,0 +1,828 @@
+{
+ "version": "v2-labels-1",
+ "fixed": "2026-11-19",
+ "状態": "固定。固定の後は正解を変えない（直すなら新しい版として別のファイルにする）",
+ "sources": {
+  "v2_items.json": "2c6c4a5046081f8156b17adfc5f842ade0a8f89686fda453f5c3e7dcd214f3ea",
+  "v2_gpt.json": "e05424e5c525e69d7d1c4d2023c808b4879fc064be16afb576606249694865c5",
+  "v2_draft.json": "b30d4d00306069607d5e66964a53552f08c4feaa3980c850caa0645a1e9cc2b7"
+ },
+ "決め方": "v2_items（Claude の別の会話）と GPT（一時チャット）の正解が一致した 59 組はそのまま。食い違った 1 組（V54）は KAORU が決めた",
+ "KAORU の決定": {
+  "V54": {
+   "日付": "2026-11-19",
+   "決定": "応える",
+   "label": "R4",
+   "sub": "関心",
+   "注": "食い違いの 2 案（説明できない／R4・関心）のうち、応える側（GPT の R4・関心）を採った",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-",
+    "basis": "§5 関心で役割",
+    "reason": "関心で経験の必要に応えない"
+   },
+   "gpt": {
+    "label": "R4",
+    "sub": "関心",
+    "basis": "5",
+    "reason": "聞き取り経験ではなく関心を表明している"
+   }
+  }
+ },
+ "counts": {
+  "全部": 60,
+  "説明できる": 25,
+  "説明できない": 35,
+  "内訳": {
+   "R1・現職": 2,
+   "R1・経験": 6,
+   "R1・継続": 2,
+   "R2・申告": 5,
+   "R3・使える立場": 2,
+   "R3・所有": 3,
+   "R4・関心": 5
+  }
+ },
+ "labels": {
+  "V01": {
+   "label": "R2",
+   "sub": "申告",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R2",
+    "sub": "申告"
+   },
+   "gpt": {
+    "label": "R2",
+    "sub": "申告"
+   }
+  },
+  "V02": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V03": {
+   "label": "R2",
+   "sub": "申告",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R2",
+    "sub": "申告"
+   },
+   "gpt": {
+    "label": "R2",
+    "sub": "申告"
+   }
+  },
+  "V04": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V05": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V06": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V07": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V08": {
+   "label": "R3",
+   "sub": "所有",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R3",
+    "sub": "所有"
+   },
+   "gpt": {
+    "label": "R3",
+    "sub": "所有"
+   }
+  },
+  "V09": {
+   "label": "R1",
+   "sub": "経験",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "経験"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "経験"
+   }
+  },
+  "V10": {
+   "label": "R3",
+   "sub": "使える立場",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R3",
+    "sub": "使える立場"
+   },
+   "gpt": {
+    "label": "R3",
+    "sub": "使える立場"
+   }
+  },
+  "V11": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V12": {
+   "label": "R2",
+   "sub": "申告",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R2",
+    "sub": "申告"
+   },
+   "gpt": {
+    "label": "R2",
+    "sub": "申告"
+   }
+  },
+  "V13": {
+   "label": "R1",
+   "sub": "現職",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "現職"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "現職"
+   }
+  },
+  "V14": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V15": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V16": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V17": {
+   "label": "R4",
+   "sub": "関心",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R4",
+    "sub": "関心"
+   },
+   "gpt": {
+    "label": "R4",
+    "sub": "関心"
+   }
+  },
+  "V18": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V19": {
+   "label": "R4",
+   "sub": "関心",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R4",
+    "sub": "関心"
+   },
+   "gpt": {
+    "label": "R4",
+    "sub": "関心"
+   }
+  },
+  "V20": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V21": {
+   "label": "R3",
+   "sub": "使える立場",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R3",
+    "sub": "使える立場"
+   },
+   "gpt": {
+    "label": "R3",
+    "sub": "使える立場"
+   }
+  },
+  "V22": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V23": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V24": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V25": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V26": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V27": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V28": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V29": {
+   "label": "R3",
+   "sub": "所有",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R3",
+    "sub": "所有"
+   },
+   "gpt": {
+    "label": "R3",
+    "sub": "所有"
+   }
+  },
+  "V30": {
+   "label": "R1",
+   "sub": "経験",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "経験"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "経験"
+   }
+  },
+  "V31": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V32": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V33": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V34": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V35": {
+   "label": "R2",
+   "sub": "申告",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R2",
+    "sub": "申告"
+   },
+   "gpt": {
+    "label": "R2",
+    "sub": "申告"
+   }
+  },
+  "V36": {
+   "label": "R1",
+   "sub": "継続",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "継続"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "継続"
+   }
+  },
+  "V37": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V38": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V39": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V40": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V41": {
+   "label": "R3",
+   "sub": "所有",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R3",
+    "sub": "所有"
+   },
+   "gpt": {
+    "label": "R3",
+    "sub": "所有"
+   }
+  },
+  "V42": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V43": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V44": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V45": {
+   "label": "R1",
+   "sub": "経験",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "経験"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "経験"
+   }
+  },
+  "V46": {
+   "label": "R1",
+   "sub": "経験",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "経験"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "経験"
+   }
+  },
+  "V47": {
+   "label": "R2",
+   "sub": "申告",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R2",
+    "sub": "申告"
+   },
+   "gpt": {
+    "label": "R2",
+    "sub": "申告"
+   }
+  },
+  "V48": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V49": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V50": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V51": {
+   "label": "R4",
+   "sub": "関心",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R4",
+    "sub": "関心"
+   },
+   "gpt": {
+    "label": "R4",
+    "sub": "関心"
+   }
+  },
+  "V52": {
+   "label": "R1",
+   "sub": "継続",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "継続"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "継続"
+   }
+  },
+  "V53": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V54": {
+   "label": "R4",
+   "sub": "関心",
+   "決め方": "KAORU が決めた（応える）",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "R4",
+    "sub": "関心"
+   }
+  },
+  "V55": {
+   "label": "R1",
+   "sub": "経験",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "経験"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "経験"
+   }
+  },
+  "V56": {
+   "label": "R1",
+   "sub": "経験",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "経験"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "経験"
+   }
+  },
+  "V57": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V58": {
+   "label": "説明できない",
+   "sub": "-",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "説明できない",
+    "sub": "-"
+   },
+   "gpt": {
+    "label": "説明できない",
+    "sub": "-"
+   }
+  },
+  "V59": {
+   "label": "R1",
+   "sub": "現職",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R1",
+    "sub": "現職"
+   },
+   "gpt": {
+    "label": "R1",
+    "sub": "現職"
+   }
+  },
+  "V60": {
+   "label": "R4",
+   "sub": "関心",
+   "決め方": "v2_items と GPT が一致",
+   "v2_items": {
+    "label": "R4",
+    "sub": "関心"
+   },
+   "gpt": {
+    "label": "R4",
+    "sub": "関心"
+   }
+  }
+ }
+}

@@ -75,10 +75,10 @@ def load_v2():
     return items
 
 
-def run_once(items):
+def run_once(items, version=VERSION):
     out = {}
     for it in items:
-        r, a, s = MA.explain(it["need"], it["offer"], version=VERSION, N=N_WORD, O=O_WORD)
+        r, a, s = MA.explain(it["need"], it["offer"], version=version, N=N_WORD, O=O_WORD)
         out[it["id"]] = {"passed": r["passed"], "where": r.get("where"), "relation": r.get("relation"), "kind": r.get("kind"),
                          "clause": r.get("clause"), "B": r["need"].get("B"), "C": r.get("C"), "short": r.get("short"),
                          "joined": r.get("joined"), "a": a, "sentence": s}

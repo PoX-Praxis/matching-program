@@ -45,6 +45,10 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 計測は `scripts/t77b_measure.py`（記録 `data/explanation_bench/runs/77b_v2_machineA.json`。v2 の文は記録に書かない）。事前登録は `docs/prereg/v2_lines_2026-11-19.md`（封印・sha256 17d60c6c…）
   - v2 の ① の文は KAORU 用の `data/explanation_bench/v2/77b_sentences_for_KAORU.md` にだけある。落ちた後に v2 を開けば「探索」の扱い。直した表は新しい v3 で判定する
   - 追補（探索）：KAORU の指示で v2 を探索として開き、表が落とした 23 組を `data/explanation_bench/v2/77b_drops_explore.md` に書いた（報告 77b の「探索」の節）。表・機械の読み（M1〜M4）をどう直すかは決めていない。直した表は v3 で判定する
+- [ ] 指示書78 順1（機械の読み M1〜M4・F1 を直して測る）は報告して止まった（`docs/reports/78.md`。合否は決めない）。表 v0.3.2-dev：60 組・gates は v0.3.1-dev と同じ、v2（探索）は説明 3/24・誤り 0
+  - 表は `docs/match_tables_v0.3.2-dev.md`・`data/match_tables/v0.3.2-dev/`（読みは §0''' と `readings.json`。語は足していない）。照合は `match(..., version="v0.3.2-dev")`（読みは `_v032()` のときだけ）
+  - 計測は `scripts/t78_measure.py`（記録 `data/explanation_bench/runs/78_match_tables_v0.3.2-dev.json`）。v0.3.1-dev は凍結のまま
+  - 前からある読みの穴 N1〜N3（「〜たら」を過去と読む・「〜したいです」が希望の関門に当たらない・「〜んでいる」が継続にならない）は直していない
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

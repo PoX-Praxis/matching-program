@@ -34,12 +34,16 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - `templates/register.html`: 送信前にJS側でも正規化
 
 ## 継続中タスク
-- [ ] 指示書77a 追補2（照合の表 v0.3.1-dev を LLM なしで測る）は報告して止まった（`docs/reports/77a.md` の追補2）。凍結するかは Claude と Sakana が見てから決め、KAORU が確かめる。凍結の後は、お手本と v2 を見て表を直さない（直すなら v0.3.2）
+- [x] 指示書77a 追補2（照合の表 v0.3.1-dev を LLM なしで測る）。表 v0.3.1-dev は 2026-11-19 に凍結した（事前登録 §1）。凍結の後は、お手本と v2 を見て表を直さない（直すなら v0.3.2）
   - 照合は `src/match_table.py`（`match(..., version="v0.3.1-dev")`。既定は v0.2 のまま。v0.3 も残す）、表は `data/match_tables/<版>/`（文書の写し。Code は中身を変えない・表に無い分岐を足さない）
   - 計測は `scripts/t77a_measure.py --version v0.3.1-dev`（記録 `data/explanation_bench/runs/77a_match_tables_v0.3.1-dev.json`・gates_v1.2）。v0.2・v0.3 の表と記録は残す
   - fugashi＋unidic-lite は `requirements-bench.txt`（CI だけ。本番の requirements.txt には入れない）
 - [x] v2 の正解は固定した（2026-11-19・`data/explanation_bench/v2/v2_labels.json`・sha256 2c47105e…・テスト 545）。固定の後は正解を変えない（直すなら新しい版として別のファイル）
   - 報告には v2 の文を書かない（id と数だけ）。v2 の中身を照合の表の作業に使わない。照合も LLM も、指示があるまで動かさない
+- [ ] 指示書77b 順1（照合の表 v0.3.1-dev ＋ 機械の［A］で v2 を測る）は報告して止まった（`docs/reports/77b.md`）。**合否は否**（線 1 誤り 0・線 2 1/24・線 4 同じ）。順2（LLM の［A］を参考に測る）は KAORU の「進めて」まで動かさない
+  - 機械の［A］は `scripts/machine_a.py`（規則 `data/machine_a/a_rules_v1.json` は指示書 §3 の写し。規則に無い変換を足さない・迷えば型の ①）
+  - 計測は `scripts/t77b_measure.py`（記録 `data/explanation_bench/runs/77b_v2_machineA.json`。v2 の文は記録に書かない）。事前登録は `docs/prereg/v2_lines_2026-11-19.md`（封印・sha256 17d60c6c…）
+  - v2 の ① の文は KAORU 用の `data/explanation_bench/v2/77b_sentences_for_KAORU.md` にだけある。落ちた後に v2 を開けば「探索」の扱い。直した表は新しい v3 で判定する
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

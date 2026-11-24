@@ -65,7 +65,7 @@ class FakeLlama(BaseHTTPRequestHandler):
         self._send(404, {})
 
     def do_POST(self):
-        if self.headers.get("Authorization") != f"Bearer {self.server.key}":
+        if self.headers.get("X-Api-Key") != self.server.key:          # HF Jobs の口は Authorization を通さない（X-Api-Key で届く）
             return self._send(401, {"error": "key"})
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if self.path == "/tokenize":

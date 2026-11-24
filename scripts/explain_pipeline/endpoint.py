@@ -24,8 +24,9 @@ class LocalHttp:
 
     def _headers(self, accept="application/json"):
         h = {"Content-Type": "application/json", "Accept": accept}
-        if self.api_key:
+        if self.api_key:                     # HF Jobs の口は Authorization を通さないので、X-Api-Key にも入れる（llama-server は両方を見る）
             h["Authorization"] = f"Bearer {self.api_key}"
+            h["X-Api-Key"] = self.api_key
         return h
 
     def body(self, prompt, max_tokens):

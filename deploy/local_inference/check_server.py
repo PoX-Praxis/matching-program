@@ -40,17 +40,22 @@ def main(argv=None):
             "temperature": g["temperature"], "top_p": g["top_p"], "seed": g["seed"], "max_tokens": 2000,
             "reasoning_effort": g["reasoning_effort"], "chat_template_kwargs": {"reasoning_effort": g["reasoning_effort"]}}
     req = urllib.request.Request(url + "/v1/chat/completions", data=json.dumps(body).encode("utf-8"),
-                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}", "X-Api-Key": key})
     t0 = time.time()
     with urllib.request.urlopen(req, timeout=900) as r:
         res = json.load(r)
     text = ((res.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-    try:
-        got = json.loads(text[text.find("{"):text.rfind("}") + 1])
-        ok = isinstance(got, dict)
-    except ValueError:
-        ok = False
+    ok = False
+    for cand in (text.strip(), text[text.find("{"):text.rfind("}") + 1]):      # JSON として読めるか（そのまま・{ } の中）
+        try:
+            json.loads(cand)
+            ok = True
+            break
+        except ValueError:
+            pass
     say(f"② JSON が返りました: {'はい' if ok else 'いいえ'}（{time.time() - t0:.1f} 秒）")
+    if not ok:
+        say(f"   返ってきた文の始め（架空の確かめの文への答え）: {text[:80]!r}")
     tm = res.get("timings") or {}
     say(f"③ 1 秒あたりのトークン数: 出す {tm.get('predicted_per_second', 0):.1f}・読む {tm.get('prompt_per_second', 0):.1f}"
         "（この 2 つの数を Claude に伝えてください）")

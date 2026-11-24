@@ -1,0 +1,15 @@
+# Linux（systemd）の例（指示書81 §4）。/opt/pox は、リポジトリを置いた場所に読み替える。
+#   sudo cp pox-llama.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable pox-llama
+[Unit]
+Description=PoX llama-server (start, check, notify PoX)
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /opt/pox/deploy/local_inference/autostart/linux_after_boot.sh
+
+[Install]
+WantedBy=multi-user.target

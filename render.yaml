@@ -69,6 +69,22 @@ services:
         sync: false          # 未設定なら 587
       - key: POX_SMTP_FROM
         sync: false          # 既定は POX_SMTP_USER
+      ## 接続の説明の生成（指示書81・config/explain_runtime.toml）。POX_EXPLAIN_BACKEND が未設定なら作らない。
+      ## 値はダッシュボードで手入力（鍵・URL をリポジトリに書かない）。表示は別のフラグ（POX_EXPLANATION）で切ったまま。
+      - key: POX_EXPLAIN_BACKEND
+        sync: false          # hf_jobs（1 日 1 回まとめて作る）／local_http（PC。予定が入ったらすぐ作る）
+      - key: POX_HF_TOKEN
+        sync: false          # hf_jobs のとき: Jobs を起こせる Hugging Face のトークン
+      - key: POX_HF_NAMESPACE
+        sync: false          # hf_jobs のとき: Jobs の名前空間（未設定ならトークンの持ち主）
+      - key: POX_EXPLAIN_ENDPOINT
+        sync: false          # local_http のとき: PC のトンネルの URL
+      - key: POX_EXPLAIN_ENDPOINT_KEY
+        sync: false          # local_http のとき: PC の llama-server の鍵（PC の .env と同じ値）
+      - key: POX_EXPLAIN_GPU
+        sync: false          # local_http のとき: PC の GPU の名前（カードの版の記録に残す）
+      - key: POX_EXPLAIN_DRAIN_TOKEN
+        sync: false          # /ops/explanations/drain・status の鍵（32 文字以上。PC が戻ったときに呼ぶ）
 
   ## 日次 root バッチ（指示書17 §6）。1日1回 UTC 00:10 に scripts/daily_anchor.py を実行。
   ## イベントゼロの日も空 root を記録し、落ちた日は次回にバックフィルされる（gap 無し）。

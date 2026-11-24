@@ -9,7 +9,7 @@
 563 本番の既定は 1 組ずつ・向きも順に。生成の設定は 5 回目・6 回目のまま（温度 0・seed 0・medium・最大トークン・vLLM の起動の形）
 564 vLLM のログから数だけを取り出す（起動の内訳・速さ）。文の行は取り出さない
 565 job_main（ジョブの入口）が、出力・記録・比べた結果・ログの数を書く（推論先 local_http・hf_jobs で同じ流れ）
-566 本番の画面から呼ばれない・ジョブに渡すコードの一覧に、流れのモジュールがそろっている
+566 本番は src/explain_service.py だけを通して流れを使う・ジョブに渡すコードの一覧に、流れのモジュールがそろっている
 """
 import hashlib
 import json
@@ -211,7 +211,7 @@ def test_t562_records_have_no_text(runs, specs):
         for i in range(0, max(1, len(t) - 7)):
             assert t[i:i + 8] not in s
     allowed = {"stage", "id", "t_send", "t_first", "t_first_content", "t_end", "prompt_tokens", "completion_tokens", "reasoning_tokens",
-               "finish_reason", "error"}
+               "finish_reason", "error", "timings"}
     for m in rec.values():
         for p in m["pairs"]:
             assert set(p) == {"pair", "t_start", "t_end", "machine", "requests", "counts"}
@@ -306,11 +306,11 @@ def test_t565_job_main(server, specs, tmp_path):
 
 # ── 566 本番から呼ばれない・ジョブに渡す一覧 ───────────────────────────────────────────────────
 def test_t566_isolation():
-    for path in ("app.py",):
-        assert "explain_pipeline" not in open(os.path.join(ROOT, path), encoding="utf-8").read()
+    # 指示書81: 本番は src/explain_service.py だけを通して流れを使う（app.py は直に読まない）
+    assert "explain_pipeline" not in open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
     for name in os.listdir(os.path.join(ROOT, "src")):
-        if name.endswith(".py"):
+        if name.endswith(".py") and name != "explain_service.py":
             assert "explain_pipeline" not in open(os.path.join(ROOT, "src", name), encoding="utf-8").read(), name
     d = os.path.join(ROOT, "scripts", "explain_pipeline")
     assert set(HJ.CODE) >= {os.path.join("scripts", "explain_pipeline", n) for n in os.listdir(d)
-                            if n.endswith(".py") and n not in ("hf_job.py", "synthetic.py")}
+                            if n.endswith(".py") and n not in ("hf_job.py", "synthetic.py", "runtime.py", "hfjobs.py")}

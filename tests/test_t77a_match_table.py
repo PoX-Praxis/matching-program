@@ -348,7 +348,9 @@ def test_t525_threshold_and_disagreement(items, record):
 def test_t526_pins_and_isolation():
     req = open(os.path.join(ROOT, "requirements-bench.txt"), encoding="utf-8").read().split()
     assert req == ["fugashi==1.5.2", "unidic-lite==1.0.8"]
-    assert "fugashi" not in open(os.path.join(ROOT, "requirements.txt"), encoding="utf-8").read()
+    # 指示書81: 説明の生成の流れを本番（Render）で動かすので、本番の requirements.txt にも同じ版で入れた
+    prod = open(os.path.join(ROOT, "requirements.txt"), encoding="utf-8").read().split()
+    assert "fugashi==1.5.2" in prod and "unidic-lite==1.0.8" in prod
     ci = open(os.path.join(ROOT, ".github", "workflows", "tests.yml"), encoding="utf-8").read()
     assert "pip install -r requirements-bench.txt" in ci
     v = MT.tool_versions()

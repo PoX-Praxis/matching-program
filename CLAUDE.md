@@ -59,6 +59,11 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 流れ：fields → atoms → prompts（`docs/prompts/explanation_label_v0.3.txt` 02ec1ca8…・`explanation_select_v0.1.txt` 19e818fb…。直さない）→ checks（C8）→ card。KAORU×PA の 5・6 回目の出力を流すと、プロンプト 4 つ・カード 2 枚が一字同じ
   - 推論先：`endpoint.py`（local_http）・`hf_job.py`（hf_jobs。非公開のジョブで vLLM を起こし 127.0.0.1 に送る。設定は 5・6 回目のまま、同時の数 `--max-num-seqs 8` だけ足す）。記録は数と時刻だけ、vLLM のログは数だけ取り出す
   - 架空の組は `synthetic.py`（synthetic_v1 から 3 組）。KAORU×PA の組の JSON と出力は `local/t80/` だけ
+- [ ] 指示書81（説明の生成を本番につなぐ・PC で同じ状態を作れる準備）順1 を実装した。順2（`deploy/local_inference/` の一式）・順3（HF Jobs で KAORU×PA を 1 回・報告して止まる）はこの後。表示のフラグは切ったまま（KAORU が画面を見るまで）
+  - 設定は `config/explain_runtime.toml` だけ（HF Jobs と PC が読む）：モデル ggml-org/gpt-oss-120b-GGUF・f5999036…・MXFP4 sha256 582bd40f…／llama.cpp b1b770d（build 12359）・公式の入れ物 ghcr.io/ggml-org/llama.cpp@sha256:a8cf841e…／温度 0・seed 0・medium・同時 1・候補 A。機械ごとに変えてよいのは置き場所だけ（POX_EXPLAIN_N_GPU_LAYERS・POX_EXPLAIN_N_CPU_MOE）。版の鍵（p81:…）に置き場所と推論先は入れない
+  - 本番：`src/explain_service.py`・予定 `src/explain_queue.py`（表 explanation_queue・explanation_batches）。POX_EXPLAIN_BACKEND=hf_jobs（1 日 1 回。ジョブの口を公開し、llama-server の鍵で守る）／local_http（PC。すぐ作る・止まっていれば予定に残す）。未設定なら作らない。許可リストの組だけ。いまの入力・いまの版の説明だけを出す
+  - 流れのカード（`X.is_pipeline`）には形の決まり（句 40 字・R1/R2 の述語・閉じた語彙）を当てず、安全の確かめだけを当てる。fugashi・unidic-lite を本番の requirements.txt にも入れた（流れを Render で動かすため）
+  - 運営のルート `/ops/explanations/drain`・`status`（鍵 POX_EXPLAIN_DRAIN_TOKEN。enqueue・verify）。カードごとの版の記録は向きのレコードの meta_json
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

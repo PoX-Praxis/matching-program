@@ -1,0 +1,49 @@
+# 説明の生成の設定（指示書81 §2-2）。HF Jobs と PC の両方が読む、唯一の設定。
+# 機械ごとに変えてよいのは [placement] だけ（GPU のメモリで決まる）。PC では環境変数で上書きする
+# （POX_EXPLAIN_N_GPU_LAYERS・POX_EXPLAIN_N_CPU_MOE）。ほかの項目を変えたら、説明の版（version_key）が変わる。
+
+[model]
+name = "gpt-oss-120b"
+repo = "ggml-org/gpt-oss-120b-GGUF"                     # llama.cpp の開発元が公式の重みから作った GGUF（MXFP4）
+revision = "f59990363fbbb67f01bce03e5e7bf0929e3e320b"
+file = "gpt-oss-120b-MXFP4.gguf"
+sha256 = "582bd40f6886200101f4c4ed9f25f3fe80cc14c86e9e2b37746cd8904a0c622d"
+bytes = 63387346208
+base_repo = "openai/gpt-oss-120b"                       # もとの公式の重み（Apache-2.0）
+base_revision = "b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
+
+[engine]
+name = "llama.cpp"
+version = "v1.0.0"
+build = 12359
+commit = "b1b770d90d94cad9e9ea5b993bdbc383a522fb28"
+# llama.cpp の公式の入れ物（CUDA 12.8.1。タグ server-cuda12-v1.0.0-b12359-b1b770d）。HF Jobs も PC も、この digest を使う
+image = "ghcr.io/ggml-org/llama.cpp@sha256:a8cf841eef4e9d6ea28bb4d88eea1004032a2bf0d1302bff7b8d2100e801ed16"
+image_tag = "server-cuda12-v1.0.0-b12359-b1b770d"
+port = 8080
+
+[generation]
+temperature = 0
+top_p = 1
+seed = 0
+reasoning_effort = "medium"
+max_tokens = 30000          # 出す長さの上限（1 件）
+ctx_size = 40960            # 文脈の長さ
+parallel = 1                # 同時 1（報告80：同時に送ると出力が変わる）
+
+[placement]                 # 機械ごとに変えてよい唯一の項目
+n_gpu_layers = 999          # GPU に載せる層（999＝全部）
+n_cpu_moe = 0               # 主メモリに置く専門家（MoE）の層の数（0＝全部 GPU）
+
+[prompts]
+label_sha256 = "02ec1ca8362431e8caafd0dd59c62e461e532e53ec5632f4d16beb268c7e9f6e"    # prompt_label_v0.3
+select_sha256 = "19e818fb98ac905b4e59803c39b6310df0e3c38997e0976206bb6382b8b2022b"   # prompt_select_v0.1
+
+[pipeline]
+cells = "A"                 # 切る候補（EXPLAIN_CELLS=A）。B・C の候補を作るコードは残し、ここで切る
+
+[hf_jobs]
+flavor = "h200"
+price_per_hour = 5.0        # Jobs の料金表（2026-11-24）
+timeout = "50m"             # ジョブの時間の上限（止め忘れの備え）
+ready_timeout_seconds = 1800

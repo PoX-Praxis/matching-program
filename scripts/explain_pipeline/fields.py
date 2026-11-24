@@ -27,7 +27,7 @@ def v5_fields(d, P):
     out = []
     for i, p in enumerate(d.get("purposes") or [], 1):
         needs = [{"text": str(x.get("文") or ""), "type": str(x.get("型") or ""), "must": bool(x.get("必須"))} for x in p.get("必要像") or []]
-        kind = G.purpose_kind_rule(needs)
+        kind = p.get("種類") if p.get("種類") in ("補完", "共鳴") else G.purpose_kind_rule(needs)   # 本人が選んだ種類（指示書70 §5）。無ければ規則
         out.append({"欄": f"{P}.purpose.p{i}", "目的の種類": kind, "文": clean(p.get("向かう先"))})
         out.append({"欄": f"{P}.means.p{i}", "文": clean(p.get("手段"))})
         for k, x in enumerate(p.get("必要像") or [], 1):

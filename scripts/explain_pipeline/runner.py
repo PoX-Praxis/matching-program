@@ -3,7 +3,8 @@
 - 向きを同時に（direction_parallel）：ラベルの段の N_by_O と O_by_N を同時に送り、両方が返ってから選ぶ段へ進む
 - 組どうしを同時に（pair_concurrency）：別の組の流れを、この数まで同時に動かす（1 なら 1 組ずつ）
 - 選ぶ・まとめるの段は、組の中ではいまのまま（ラベルの後に A_need、その後に B_need）
-- 本番の既定は DEFAULTS（向きも組も 1 つずつ）。同時に送る形を既定にするかは KAORU が決める（§2 で確かめるまで変えない）
+- 本番の既定は DEFAULTS（向きも組も 1 つずつ）。指示書80 §2（報告 80）：vLLM v0.33.0 では、二つの向きを同時に送ると
+  出力が変わった（4 組すべて）。だから同時に送る形（direction_parallel・pair_concurrency>1）は使わない。比べるためだけに残す
 - 記録（records）には数・時刻・番号だけを入れる。文（プロンプト・出力・部品の文）は outputs にだけ入れる"""
 import threading
 import time

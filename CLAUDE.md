@@ -53,6 +53,10 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 1 組 約 9.7 分＝起動 43 %・ラベルの段 48 %・選ぶ・まとめるの段 7 %。時間はほぼ出力のトークン数で決まる（毎秒約 99）
   - ラベルの段の JSON は fails_if 46 %・key 31 %。見積もり：B・C を外すと JSON −32 %、二回に分けると −37 %、キーを短くすると −3 %（考える部分の減りは分からない）
   - 記録に足りないもの：vLLM のログ（起動の内訳・速さ）・リクエストごとの時刻と最初のトークンまでの時間・機械の段の時間。KAORU×PA の記録と数の表は `local/` だけ
+- [ ] 指示書80（出力を変えずに速くする）順1 は実装した（`scripts/explain_pipeline/`・テスト 558〜566）。順2（1 回のジョブで a 順に・b 組の中で同時・c 組どうしも同時 を比べる）は報告して止まる。同時に送る形を本番の既定にするかは KAORU が決める（既定は 1 組ずつ・向きも順に）
+  - 流れ：fields → atoms → prompts（`docs/prompts/explanation_label_v0.3.txt` 02ec1ca8…・`explanation_select_v0.1.txt` 19e818fb…。直さない）→ checks（C8）→ card。KAORU×PA の 5・6 回目の出力を流すと、プロンプト 4 つ・カード 2 枚が一字同じ
+  - 推論先：`endpoint.py`（local_http）・`hf_job.py`（hf_jobs。非公開のジョブで vLLM を起こし 127.0.0.1 に送る。設定は 5・6 回目のまま、同時の数 `--max-num-seqs 8` だけ足す）。記録は数と時刻だけ、vLLM のログは数だけ取り出す
+  - 架空の組は `synthetic.py`（synthetic_v1 から 3 組）。KAORU×PA の組の JSON と出力は `local/t80/` だけ
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

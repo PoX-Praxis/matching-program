@@ -59,7 +59,8 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 流れ：fields → atoms → prompts（`docs/prompts/explanation_label_v0.3.txt` 02ec1ca8…・`explanation_select_v0.1.txt` 19e818fb…。直さない）→ checks（C8）→ card。KAORU×PA の 5・6 回目の出力を流すと、プロンプト 4 つ・カード 2 枚が一字同じ
   - 推論先：`endpoint.py`（local_http）・`hf_job.py`（hf_jobs。非公開のジョブで vLLM を起こし 127.0.0.1 に送る。設定は 5・6 回目のまま、同時の数 `--max-num-seqs 8` だけ足す）。記録は数と時刻だけ、vLLM のログは数だけ取り出す
   - 架空の組は `synthetic.py`（synthetic_v1 から 3 組）。KAORU×PA の組の JSON と出力は `local/t80/` だけ
-- [ ] 指示書81（説明の生成を本番につなぐ・PC で同じ状態を作れる準備）順1・順2 を終えた（PR #222・順2 の PR）。順3（HF Jobs で KAORU×PA を 1 回・報告して止まる）はこの後。表示のフラグは切ったまま（KAORU が画面を見るまで）
+- [ ] 指示書81（説明の生成を本番につなぐ・PC で同じ状態を作れる準備）は順3 まで終えて止まった（`docs/reports/81.md`・PR #222・#223）。KAORU が画面を見る。順4（表示のフラグ）は KAORU の許可の後。表示のフラグは切ったまま
+  - 順3：本番と同じ流れ・hf_jobs・H200 で KAORU×PA を 1 回（入力は手元の公開の欄）。起動 246 秒・1 組 164 秒・約 $0.57。PA の求めている相手の ① は、部品の番号のような数が入って安全の確かめで出さなかった
   - PC の一式は `deploy/local_inference/`（README の手順 1〜8・get_model・start_server・check_server・nudge_pox・autostart・.env.example）。12/6 以降に KAORU が使う
   - HF Jobs の公開した口は Authorization を通さない。鍵は X-Api-Key にも入れる（llama-server は両方を見る）
   - 設定は `config/explain_runtime.toml` だけ（HF Jobs と PC が読む）：モデル ggml-org/gpt-oss-120b-GGUF・f5999036…・MXFP4 sha256 582bd40f…／llama.cpp b1b770d（build 12359）・公式の入れ物 ghcr.io/ggml-org/llama.cpp@sha256:a8cf841e…／温度 0・seed 0・medium・同時 1・候補 A。機械ごとに変えてよいのは置き場所だけ（POX_EXPLAIN_N_GPU_LAYERS・POX_EXPLAIN_N_CPU_MOE）。版の鍵（p81:…）に置き場所と推論先は入れない

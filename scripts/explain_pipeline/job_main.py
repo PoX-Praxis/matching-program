@@ -37,8 +37,12 @@ def token_counts(endpoint, outputs, records):
             o = outs[pr["pair"]]
             for rq in pr["requests"]:
                 src = o["label" if rq["stage"] == "label" else "select"][rq["id"]]
-                rq["content_tokens"] = endpoint.count_tokens(src["text"]) if src.get("text") else 0
-                rq["reasoning_tokens_counted"] = endpoint.count_tokens(src["reasoning"]) if src.get("reasoning") else 0
+                for key, part in (("content_tokens", "text"), ("reasoning_tokens_counted", "reasoning")):
+                    try:
+                        rq[key] = endpoint.count_tokens(src[part]) if src.get(part) else 0
+                    except Exception as e:          # 数えられなくても、記録は残す
+                        rq[key] = None
+                        rq.setdefault("count_error", type(e).__name__)
 
 
 def main(argv=None):
@@ -77,6 +81,7 @@ def main(argv=None):
             "finish_stop", sum(1 for p in rm["pairs"] for q in p["requests"] if q["finish_reason"] == "stop"),
             "errors", sum(1 for p in rm["pairs"] for q in p["requests"] if q["error"]))
         json.dump(outputs, open(os.path.join(a.out, "outputs.json"), "w", encoding="utf-8"), ensure_ascii=False)
+        json.dump(records, open(os.path.join(a.out, "records.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     token_counts(ep, outputs, records)
     cmp = RN.compare(outputs) if "a" in outputs else {}
     for pair, by in cmp.items():

@@ -49,6 +49,10 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 表は `docs/match_tables_v0.3.2-dev.md`・`data/match_tables/v0.3.2-dev/`（読みは §0''' と `readings.json`。語は足していない）。照合は `match(..., version="v0.3.2-dev")`（読みは `_v032()` のときだけ）
   - 計測は `scripts/t78_measure.py`（記録 `data/explanation_bench/runs/78_match_tables_v0.3.2-dev.json`）。v0.3.1-dev は凍結のまま
   - 前からある読みの穴 N1〜N3（「〜たら」を過去と読む・「〜したいです」が希望の関門に当たらない・「〜んでいる」が継続にならない）は直していない
+- [ ] 指示書79（説明の生成の時間を、過去の記録から測る）は報告して止まった（`docs/reports/79.md`）。走らせ直していない（費用 0）。速くする手の順番は KAORU と Claude が決める
+  - 1 組 約 9.7 分＝起動 43 %・ラベルの段 48 %・選ぶ・まとめるの段 7 %。時間はほぼ出力のトークン数で決まる（毎秒約 99）
+  - ラベルの段の JSON は fails_if 46 %・key 31 %。見積もり：B・C を外すと JSON −32 %、二回に分けると −37 %、キーを短くすると −3 %（考える部分の減りは分からない）
+  - 記録に足りないもの：vLLM のログ（起動の内訳・速さ）・リクエストごとの時刻と最初のトークンまでの時間・機械の段の時間。KAORU×PA の記録と数の表は `local/` だけ
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

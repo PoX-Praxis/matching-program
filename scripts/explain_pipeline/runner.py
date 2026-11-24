@@ -26,14 +26,19 @@ LABEL_IDS = tuple(d[0] for d in PR.LABEL_DIRS)
 SELECT_IDS = tuple(d[0] for d in PR.SELECT_DIRS)
 
 
+TIMING_KEYS = ("prompt_n", "prompt_ms", "predicted_n", "predicted_ms", "predicted_per_second")   # llama.cpp の応答の時間（数だけ）
+
+
 def _req_record(stage, pid, r, origin, err=None):
+    tm = (r or {}).get("timings") or {}
     u = (r or {}).get("usage") or {}
     det = u.get("completion_tokens_details") or {}
     rel = (lambda t: None if t is None else round(t - origin, 3))
     return {"stage": stage, "id": pid, "t_send": rel((r or {}).get("t_send")), "t_first": rel((r or {}).get("t_first")),
             "t_first_content": rel((r or {}).get("t_first_content")), "t_end": rel((r or {}).get("t_end")),
             "prompt_tokens": u.get("prompt_tokens"), "completion_tokens": u.get("completion_tokens"),
-            "reasoning_tokens": det.get("reasoning_tokens"), "finish_reason": (r or {}).get("finish_reason"), "error": err}
+            "reasoning_tokens": det.get("reasoning_tokens"), "finish_reason": (r or {}).get("finish_reason"), "error": err,
+            "timings": {k: tm[k] for k in TIMING_KEYS if k in tm} or None}
 
 
 def _call(endpoint, stage, pid, prompt, max_tokens, origin, clock):
@@ -45,7 +50,8 @@ def _call(endpoint, stage, pid, prompt, max_tokens, origin, clock):
         return {"text": None, "reasoning": None}, {**_req_record(stage, pid, {"t_send": t, "t_end": clock()}, origin), "error": type(e).__name__}
 
 
-def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, origin=0.0, clock=time.time):
+def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, origin=0.0, clock=time.time, cells=("A", "B", "C"),
+             label_sha=None, select_sha=None):
     """1 組。spec: {"id", "a", "b", "people": {"A": {"name", "tag"}, "B": …}, "names": [表示名…]}。
     返り値: (outputs, record)。outputs には文、record には数と時刻だけ。"""
     rec = {"pair": spec["id"], "t_start": round(clock() - origin, 3), "machine": {}, "requests": [], "counts": {}}
@@ -60,7 +66,7 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
     def prep():
         F, META = FL.pair_fields(spec["a"], spec["b"])
         atoms = AT.build_atoms(F, META)
-        lp, cands, info = PR.label_prompts(atoms)
+        lp, cands, info = PR.label_prompts(atoms, cells)
         return F, META, atoms, lp, cands, info
 
     F, META, atoms, lp, cands, info = machine("prep", prep)
@@ -97,7 +103,8 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
         sel = {pid: CD.select(out["select"][pid]["text"], meta[pid], atoms, spec.get("names") or ()) for pid in SELECT_IDS}
         people = {w: {**spec["people"][w], "has_purposes": FL.has_purposes(spec["a" if w == "A" else "b"])} for w in ("A", "B")}
         fix = {}
-        cs = {w: CD.make_card(w, people, F, META, atoms, labels, sel, meta, pairs, PR.LABEL_SHA256, PR.SELECT_SHA256, fix) for w in ("A", "B")}
+        cs = {w: CD.make_card(w, people, F, META, atoms, labels, sel, meta, pairs, label_sha or PR.LABEL_SHA256,
+                              select_sha or PR.SELECT_SHA256, fix, generation=spec.get("generation")) for w in ("A", "B")}
         return sel, cs, fix
 
     sel, out["cards"], fix = machine("card", cards)

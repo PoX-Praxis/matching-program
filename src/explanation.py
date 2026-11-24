@@ -25,6 +25,10 @@ SHOWN_STATUSES = ("explained", "open")                # ① と組を出す目�
 RELATION_RULE_VERSION = "rel-v0.4"                    # 指示書72: R1・R2 の述語を広げた（仕様 §14 v0.6）
 FORBIDDEN_VERSION = "forbid-v0.4"
 QUOTE_MAX = 40
+# 説明の生成の流れ（指示書81。ラベル v0.3 → 選ぶ・まとめる v0.1）で作ったカードの印: generation.prompt1_sha がこの値。
+# このカードには、仕様 v0.4 の形の決まり（句の長さ・R1／R2 の述語・① の閉じた語彙・{O} が必ずある）を当てない。
+# 安全の確かめ（引用の実在・目的への所属・向き・連絡先・禁止の語・名前・「あなた」・組に無い数値・根拠の印）は当てる
+PIPELINE_PROMPT1_SHA = "02ec1ca8362431e8caafd0dd59c62e461e532e53ec5632f4d16beb268c7e9f6e"
 
 V, T = "⟦V⟧", "⟦T⟧"                      # 記号のままの HTML の中の呼び方（見る人・相手）
 
@@ -125,21 +129,27 @@ def _forbidden(text):
     return [w for w in FORBIDDEN_WORDS if w in text] + (["連絡先・URL"] if CONTACT.search(text) else [])
 
 
-def _check_meaning(meaning, kept, purpose):
-    """① の確かめ（仕様 §6 の 4・5・6・7・8・§12-4 の 11）。戻り値: 理由の一覧（空なら通る）。"""
+def is_pipeline(card):
+    """説明の生成の流れ（指示書81）で作ったカードか。"""
+    return ((card or {}).get("generation") or {}).get("prompt1_sha") == PIPELINE_PROMPT1_SHA
+
+
+def _check_meaning(meaning, kept, purpose, pipeline=False):
+    """① の確かめ（仕様 §6 の 4・5・6・7・8・§12-4 の 11）。戻り値: 理由の一覧（空なら通る）。
+    pipeline=True（指示書81 のカード）: 形の決まり（{O} が必ずある・閉じた語彙）は当てない。安全の確かめは当てる。"""
     why = []
     text, cites = meaning["text"], meaning["cites"]
     if not cites or any(c not in kept for c in cites):
         why.append("① の根拠の印が、確かめ済みの組を指していない")
     if "あなた" in text:
         why.append("① に「あなた」がある（呼び方は {N}・{O} だけ）")
-    if "{O}" not in text:
+    if "{O}" not in text and not pipeline:
         why.append("① に {O} が無い")
     bad = _forbidden(text)
     if bad:
         why.append(f"① に禁止の語がある（{'・'.join(bad)}）")
     sentences = [s for s in re.split(r"(?<=。)", text) if s.strip()]
-    if not sentences or any(not s.endswith(MEANING_END) for s in sentences):
+    if not sentences or (not pipeline and any(not s.endswith(MEANING_END) for s in sentences)):
         why.append("① の文の終わりが閉じた語彙に無い")
     quotes = "".join(e["need_quote"] + e["offer_quote"] for i, e in enumerate(purpose["elements"]) if i in cites)
     digits = set(re.findall(r"[0-9０-９]+", text.replace("{N}", "").replace("{O}", "")))
@@ -157,6 +167,7 @@ def check(card, names=()):
     - not_covered の目的に ① があれば、① を出さない
     """
     src = {c["ref"]: c["text"] for c in card.get("citations", [])}
+    pipe = is_pipeline(card)                     # 指示書81 のカード: 形の決まりを当てない（安全の確かめは当てる）
     problems = []
     out = json.loads(json.dumps(card))
     for key, n_side, o_side in (("purposes", "viewer", "target"), ("reverse_purposes", "target", "viewer")):
@@ -169,13 +180,13 @@ def check(card, names=()):
             kept, elements = {}, []
             for i, e in enumerate(p["elements"]):
                 why = []
-                if not _belongs(e["need_ref"], p["ref"]):
+                if not (_belongs(e["need_ref"], p["ref"]) or (pipe and e["need_ref"] == p["ref"])):   # 流れのカードは目的の文そのものも要素
                     why.append("ほかの目的の要素（補充しない）")
                 o_side_ref, o_kind, _ = _side_parts(e["offer_ref"])
                 if o_side_ref != o_side or o_kind not in ("offer", "state", "interest"):
                     why.append("相手の文の参照が違う")
                 for q, ref in ((e["need_quote"], e["need_ref"]), (e["offer_quote"], e["offer_ref"])):
-                    if len(q) > QUOTE_MAX:
+                    if len(q) > QUOTE_MAX and not pipe:
                         why.append(f"句が {QUOTE_MAX} 字を超える")
                     if ref not in src or q not in src[ref]:
                         why.append("引用が原文に無い")
@@ -183,16 +194,16 @@ def check(card, names=()):
                         why.append("句に連絡先・URL がある")
                 if e["relation"] not in RELATIONS:
                     why.append("ラベルが R1〜R4 に無い")
-                elif e["relation"] == "R1" and not R1_PRED.search(e["offer_quote"]):
+                elif e["relation"] == "R1" and not pipe and not R1_PRED.search(e["offer_quote"]):
                     why.append("R1 なのに経験の表現が無い")
-                elif e["relation"] == "R2" and not R2_PRED.search(e["offer_quote"]):
+                elif e["relation"] == "R2" and not pipe and not R2_PRED.search(e["offer_quote"]):
                     why.append("R2 なのに申告の表現が無い")
                 if why:
                     problems.append(f"{tag}: 組 {i} を出さない（{'・'.join(dict.fromkeys(why))}）")
                     continue
                 kept[i] = len(elements)
                 elements.append(e)
-            unknown = [u for u in p["unknown"] if _belongs(u["need_ref"], p["ref"]) and len(u["need_quote"]) <= QUOTE_MAX
+            unknown = [u for u in p["unknown"] if _belongs(u["need_ref"], p["ref"]) and (pipe or len(u["need_quote"]) <= QUOTE_MAX)
                        and u["need_ref"] in src and u["need_quote"] in src[u["need_ref"]]]
             if len(unknown) != len(p["unknown"]):
                 problems.append(f"{tag}: 分からないことの一部を出さない（引用・目的・句の長さ）")
@@ -210,7 +221,7 @@ def check(card, names=()):
                 if p["meaning"] is None:
                     why.append("① が無い")
                 else:
-                    why += _check_meaning(p["meaning"], kept, p)
+                    why += _check_meaning(p["meaning"], kept, p, pipeline=pipe)
                     why += [f"① に名前がある（{n}）" for n in names if n and n in p["meaning"]["text"]]
                 if why:
                     problems.append(f"{tag}: この目的の説明を出さない（{'・'.join(why)}）")

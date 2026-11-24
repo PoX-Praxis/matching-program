@@ -45,8 +45,9 @@ def atom_lines(atoms, num, role, r):
     return [f"{num[a['id']]}〔{role[a['who']]}{a['field'][1:].split('#')[0]}・{role_text(a)}〕{a['text']}" for a in atoms if role[a["who"]] == r]
 
 
-def label_prompts(atoms):
-    """ラベルの段のプロンプト 2 つ。返り値: (prompts {向き: 文}, cands {番号: 候補}, info {向き: 数})。"""
+def label_prompts(atoms, cells=("A", "B", "C")):
+    """ラベルの段のプロンプト 2 つ。返り値: (prompts {向き: 文}, cands {番号: 候補}, info {向き: 数})。
+    cells: 並べる候補の種類（本番は A だけ。指示書81 §1。B・C を作るコードは残し、ここで切る）。"""
     tpl = template(LABEL_FILE, LABEL_SHA256)
     role = {"A": "N", "B": "O"}
     num = numbering(atoms, role)
@@ -56,6 +57,8 @@ def label_prompts(atoms):
         cs, info[pid] = AT.candidates(atoms, x, y)
         rows = []
         for cell in ("A", "B", "C"):
+            if cell not in cells:
+                continue
             for left, right in cs[cell]:
                 c += 1
                 cid = f"C{c:03d}"

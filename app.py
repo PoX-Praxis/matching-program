@@ -145,6 +145,11 @@ _xg_boot = _xg.startup_check()        # 本番で fixed・local なら起動し�
 if _xg_boot["generates"]:             # 版を上げたとき: 古い版の説明に印をつけるだけ（全体を作り直さない。§3）
     _xs.mark_superseded(_xg.version_key(_xg.get_backend()), db_path=os.environ.get("POX_DB", "pox.db"))
 print(f"[explanation] backend={_xg_boot['backend']} daily_limit={_xs.daily_limit()}")
+# 説明の生成の流れを本番につなぐ（指示書81）。POX_EXPLAIN_BACKEND が hf_jobs・local_http のときだけ作る（未設定なら作らない）。
+# 設定のファイル・プロンプトの sha256・必要な環境変数が無ければ起動しない。ログには有無と版の頭だけを出す
+import explain_service as _xsv
+_xsv_boot = _xsv.startup_check()
+print(f"[explain] {' '.join(f'{k}={v}' for k, v in _xsv_boot.items())}")
 print(f"[explanation] mode={_xs_boot['mode']} digest_key={_xs_boot['key']} digest_key_prev={_xs_boot['key_prev']} "
       f"import_route={'開いている' if _xs.ops_token_ok(os.environ.get(_xs.OPS_TOKEN_ENV)) else '閉じている'}")
 
@@ -2727,6 +2732,11 @@ def _approved_is_stale(row):
         saved = json.loads(row.get("card_as_of") or "null")
         if not saved or not str((saved.get("viewer") or {}).get("profile") or "").startswith("h:"):
             return False
+        if X_explanation.is_pipeline(json.loads(row.get("card_json") or "null") or {}):     # 指示書81 の説明: 入力の内容ハッシュで比べる
+            n_in, o_in = _explain_input(row["from_subject"]), _explain_input(row["to_subject"])
+            if not n_in or not o_in:
+                return True
+            return saved["viewer"]["profile"] != _xsv.tag(n_in) or saved["target"]["profile"] != _xsv.tag(o_in)
         n_person, o_person = _explanation_person(row["from_subject"]), _explanation_person(row["to_subject"])
         if not n_person or not o_person:
             return True
@@ -2763,6 +2773,51 @@ def ops_explanations_import():
         return jsonify({"error": "形が違います"}), 400
     app.logger.warning(f"[explanation-import] received={res['received']} saved={res['saved']} dropped={res['dropped']}")
     return jsonify(res), 200
+
+
+@app.post("/ops/explanations/drain")
+def ops_explanations_drain():
+    """予定の組をいま作る（指示書81）。PC が戻ったとき（自動で立ち上げる設定から）や、運営が呼ぶ。
+    - 鍵 POX_EXPLAIN_DRAIN_TOKEN（32 文字以上）を X-Explain-Drain-Token で渡す。無い・合わないときは 404
+    - {"verify": true} は、許可リストの組を作り直して、保存してあるものと比べるだけ（保存しない。§4-1 の 7）
+    - {"enqueue": true} は、許可リストの組を先に予定に積む（すでにいる人の組を、はじめて作るとき）
+    - 裏で動かす。結果は /ops/explanations/status で見る（数と番号だけ）"""
+    if not _xsv.drain_token_ok(request.headers.get(_xsv.DRAIN_HEADER)):
+        abort(404)
+    if not _xsv.backend():
+        return jsonify({"started": False, "backend": "off"}), 200
+    body = request.get_json(force=True, silent=True) or {}
+    verify = body.get("verify") is True
+    queued = 0
+    if body.get("enqueue") is True and not verify:
+        import explain_queue as _xq
+        queued = sum(1 for pair in _xs.allowlist(DB) if _xq.enqueue(*sorted(pair), db_path=DB))
+
+    def job():
+        res = _xsv.drain(_explain_ctx(), db_path=DB, verify=verify, keepalive=os.environ.get("RENDER_EXTERNAL_URL"))
+        if verify and not res.get("busy"):
+            _explain_last_verify.clear()
+            _explain_last_verify.update(res)
+        app.logger.warning(f"[explain] drain verify={verify} pairs={res.get('pairs')} made={res.get('made')} reason={res.get('reason')}")
+    if app.config.get("TESTING"):
+        job()
+    else:
+        threading.Thread(target=job, daemon=True).start()
+    return jsonify({"started": True, "verify": verify, "queued": queued}), 202
+
+
+_explain_last_verify = {}
+
+
+@app.get("/ops/explanations/status")
+def ops_explanations_status():
+    """予定の数・最後の回・最後の確かめ（verify）の結果（数と番号だけ。文・鍵は出さない）。鍵は drain と同じ。"""
+    if not _xsv.drain_token_ok(request.headers.get(_xsv.DRAIN_HEADER)):
+        abort(404)
+    import explain_queue as _xq
+    return jsonify({"backend": _xsv.backend() or "off", "queue": _xq.counts(db_path=DB),
+                    "last_batch": _xq.last_batch_started(_xsv.backend() or "", db_path=DB),
+                    "verify": {k: v for k, v in _explain_last_verify.items()}}), 200
 
 
 # ── 接続の説明の生成（指示書69 段階2）──────────────────────────────────────────────────
@@ -2921,7 +2976,69 @@ def _explanation_direction(need, offer):
 
 
 def _explanation_direction_of():
+    if _xsv.backend():                     # 指示書81: 作った向きのうち、いまの入力・いまの版のものだけ（その場では作らない）
+        return _xsv.direction_getter(_explain_ctx(), db_path=DB)
     return _explanation_direction if _xg.backend_name() in ("fixed", "local") else None
+
+
+# ── 説明の生成の流れの入力（指示書81）──────────────────────────────────────────────────
+def _explain_input(sid):
+    """説明の生成の流れに渡す人の入力（指示書81。KAORU×PA の試しの欄と同じ形）。同意していない人は None。
+    - v5 の人：公開の閾値を過ぎた、生きている目的ごとの必要像（文・必須・型）・目的の種類・公開の与え像・関心・現状・
+      意志（なぜ）・背景・経験。「縛られているもの」は本人が説明への使用を選んだときだけ
+    - v4 の人：公開の必要像（1 文・必須ではない）と現状
+    数値・生テキスト・根拠・要約文・一行紹介は入れない。"""
+    if not _explanation_consented(sid):
+        return None
+    import v5
+    doc = v5.get_doc(sid, db_path=DB)
+    pv = get_profile_view(sid, db_path=DB) or {}
+    bound_ok = bool(doc) and _explanation_bound_allowed(sid)
+    state = {"持っているもの": _text_of(pv.get("state_have")), "できること_型": _text_of(pv.get("state_can_type")),
+             "未分類": _text_of(pv.get("state_unsorted")), "縛られているもの": _text_of(pv.get("state_bound")) if bound_ok else ""}
+    if not doc:
+        n = get_public_necessity(sid)
+        text = str((n or {}).get("necessity_text") or "").strip()
+        if not text and not any(state.values()):
+            return None
+        return {"schema_version": "v4", "必要像": [{"文": text, "必須": False}] if text else [], "現状": state}
+    live = {n["purpose_id"]: n for n in v5.live_necessities_v5(sid, db_path=DB)}
+    purposes = []
+    for p in doc.get("purposes") or []:
+        n = live.get(p.get("purpose_id"))
+        if not n or not _public_since_passed(n.get("created_at")):
+            continue
+        needs = [{"文": str(x.get("文") or "").strip(), "必須": bool(x.get("必須")), "型": str(x.get("型") or "")}
+                 for x in (n.get("sentences") or []) if str(x.get("文") or "").strip()]
+        if needs:
+            purposes.append({"purpose_id": p["purpose_id"], "向かう先": str(p.get("向かう先") or ""), "手段": str(p.get("手段") or ""),
+                             "必要像": needs, "種類": v5.purpose_kind_of(p)})
+    off = v5.latest_offer(sid, db_path=DB) or {}
+    offers = [{"文": str(x.get("文") or "").strip(), "型": str(x.get("型") or "")} for x in (off.get("sentences") or [])
+              if str(x.get("文") or "").strip()] if _offer_public(off.get("created_at")) else []
+    sm = doc.get("supporting_material") or {}
+    return {"schema_version": "v5", "purposes": purposes, "与え像": offers, "関心": [{"文": t} for t in _texts(doc.get("関心"))],
+            "現状": state, "supporting_material": {k: str(sm.get(k) or "") for k in ("意志_なぜ", "背景", "経験")}}
+
+
+def _explain_ctx():
+    return _xsv.Context(_explain_input, _plain_name)
+
+
+def _explain_kick():
+    """local_http：予定が入ったら、すぐ作る（裏で。テストでは同じスレッドで）。止まっていれば予定に残る。"""
+    if _xsv.backend() != "local_http":
+        return
+
+    def job():
+        try:
+            _xsv.drain(_explain_ctx(), db_path=DB)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[explain] 作れなかった（予定に残す）: {type(e).__name__}")
+    if app.config.get("TESTING"):
+        job()
+    else:
+        threading.Thread(target=job, daemon=True).start()
 
 
 def _explanation_on_profile_changed(sid):
@@ -2945,7 +3062,15 @@ def _explanation_on_profile_changed(sid):
 
 
 def _explanation_trigger(sid):
-    """きっかけを裏で動かす（テストでは同じスレッドで）。失敗しても登録・保存は成立済み。"""
+    """きっかけを裏で動かす（テストでは同じスレッドで）。失敗しても登録・保存は成立済み。
+    指示書81: 推論先（POX_EXPLAIN_BACKEND）があれば、その人の許可リストの組を予定に積む（local_http はすぐ作る）。"""
+    if _xsv.backend():
+        try:
+            if _xsv.enqueue_for(sid, db_path=DB):
+                _explain_kick()
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"[explain] 予定に積めなかった（登録は成立済み）: {type(e).__name__}")
+        return
     if _xg.backend_name() not in ("fixed", "local"):
         return
 
@@ -4777,6 +4902,10 @@ def api_community_update(community_id):
 
 def _to_profile(seeker: dict) -> str:
     return "。".join(seeker[k] for k in ("意志", "求めている", "能力") if seeker.get(k))
+
+
+# 説明の予定を裏で見る（指示書81）。推論先（POX_EXPLAIN_BACKEND）が設定されているときだけ。間隔の中で、作るときに作る
+_xsv.start_scheduler(_explain_ctx(), db_path=DB, keepalive=os.environ.get("RENDER_EXTERNAL_URL"))
 
 
 if __name__ == "__main__":

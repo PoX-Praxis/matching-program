@@ -316,6 +316,30 @@ _SQLITE_DDL = [
         meta_json         TEXT,
         PRIMARY KEY (need_subject, offer_subject, as_of_digest)
     )""",
+    # 説明を作る予定と、まとめて作る回（指示書81 §3。src/explain_queue.py と同じ定義。文は持たない）
+    """CREATE TABLE IF NOT EXISTS explanation_queue (
+        pair_key      TEXT PRIMARY KEY,
+        a_subject     TEXT NOT NULL,
+        b_subject     TEXT NOT NULL,
+        status        TEXT NOT NULL,
+        requested_at  TEXT NOT NULL,
+        started_at    TEXT,
+        finished_at   TEXT,
+        attempts      INTEGER NOT NULL DEFAULT 0,
+        again         INTEGER NOT NULL DEFAULT 0,
+        reason        TEXT,
+        inputs_digest TEXT,
+        record_json   TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS explanation_batches (
+        id          TEXT PRIMARY KEY,
+        backend     TEXT NOT NULL,
+        started_at  TEXT NOT NULL,
+        finished_at TEXT,
+        pairs       INTEGER NOT NULL DEFAULT 0,
+        made        INTEGER NOT NULL DEFAULT 0,
+        record_json TEXT
+    )""",
     # 説明の生成の記録（指示書69 §3。1 日の上限を数える。文は残さない）
     """CREATE TABLE IF NOT EXISTS explanation_generation_log (
         id            TEXT PRIMARY KEY,
@@ -697,6 +721,30 @@ _PG_DDL = [
         superseded        INTEGER NOT NULL DEFAULT 0,
         meta_json         TEXT,
         PRIMARY KEY (need_subject, offer_subject, as_of_digest)
+    )""",
+    # 説明を作る予定と、まとめて作る回（指示書81 §3。src/explain_queue.py と同じ定義。文は持たない）
+    """CREATE TABLE IF NOT EXISTS explanation_queue (
+        pair_key      TEXT PRIMARY KEY,
+        a_subject     TEXT NOT NULL,
+        b_subject     TEXT NOT NULL,
+        status        TEXT NOT NULL,
+        requested_at  TEXT NOT NULL,
+        started_at    TEXT,
+        finished_at   TEXT,
+        attempts      INTEGER NOT NULL DEFAULT 0,
+        again         INTEGER NOT NULL DEFAULT 0,
+        reason        TEXT,
+        inputs_digest TEXT,
+        record_json   TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS explanation_batches (
+        id          TEXT PRIMARY KEY,
+        backend     TEXT NOT NULL,
+        started_at  TEXT NOT NULL,
+        finished_at TEXT,
+        pairs       INTEGER NOT NULL DEFAULT 0,
+        made        INTEGER NOT NULL DEFAULT 0,
+        record_json TEXT
     )""",
     # 説明の生成の記録（指示書69 §3。1 日の上限を数える。文は残さない）
     """CREATE TABLE IF NOT EXISTS explanation_generation_log (

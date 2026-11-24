@@ -284,11 +284,12 @@ def has_gen_key(gen_key, db_path="pox.db"):
 
 def mark_superseded(current_version_key, db_path="pox.db"):
     """プロンプト・モデルの版を上げたとき: 古い版で作った説明に印をつけるだけ（全体を作り直さない）。印の数を返す。"""
+    # 説明の生成の流れ（指示書81）の向き（版の鍵が p81: で始まる）は、ここでは触らない（版が合うものだけを出すので、印は要らない）
     with _connect(db_path) as con:
         n = con.execute("SELECT COUNT(*) FROM explanation_directions WHERE source='generated' AND superseded=0 "
-                        "AND version_key<>%s", (current_version_key,)).fetchone()[0]
-        con.execute("UPDATE explanation_directions SET superseded=1 WHERE source='generated' AND version_key<>%s",
-                    (current_version_key,))
+                        "AND version_key<>%s AND version_key NOT LIKE 'p81:%%'", (current_version_key,)).fetchone()[0]
+        con.execute("UPDATE explanation_directions SET superseded=1 WHERE source='generated' AND version_key<>%s "
+                    "AND version_key NOT LIKE 'p81:%%'", (current_version_key,))
     return n
 
 

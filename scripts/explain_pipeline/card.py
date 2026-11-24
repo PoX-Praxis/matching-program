@@ -197,8 +197,9 @@ def purposes_from(sel, meta, pairs, base, atoms, META, viewer_who, need_title, c
     return out
 
 
-def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, label_sha, select_sha, counter=None):
-    """people: {"A": {"name", "tag", "has_purposes"}, "B": …}。sel: {"A_need": select の結果, "B_need": …}。"""
+def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, label_sha, select_sha, counter=None, generation=None):
+    """people: {"A": {"name", "tag", "has_purposes"}, "B": …}。sel: {"A_need": select の結果, "B_need": …}。
+    generation: カードの generation の model・revision・decoding（無ければ 5・6 回目の値）。"""
     target_who = "B" if viewer_who == "A" else "A"
     fwd_lab, rev_lab = ("N_by_O", "O_by_N") if viewer_who == "A" else ("O_by_N", "N_by_O")
     fwd_sel, rev_sel = f"{viewer_who}_need", f"{target_who}_need"
@@ -211,7 +212,9 @@ def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, labe
             "show_reason": None,
             "as_of": {"viewer": {"profile": tag[viewer_who], "necessity": nec[viewer_who]},
                       "target": {"profile": tag[target_who], "necessity": nec[target_who]}},
-            "generation": {"prompt1_sha": label_sha, "prompt2_sha": None, "model": MODEL, "revision": REVISION, "decoding": dict(DECODING)},
+            "generation": {"prompt1_sha": label_sha, "prompt2_sha": None, "model": (generation or {}).get("model", MODEL),
+                           "revision": (generation or {}).get("revision", REVISION),
+                           "decoding": dict((generation or {}).get("decoding") or DECODING)},
             "target_has_purposes": people[target_who]["has_purposes"], "purposes": base_f, "reverse_purposes": base_r,
             "citations": citations(F, viewer_who)}
     card["purposes"] = purposes_from(sel[fwd_sel], meta[fwd_sel], pairs, base_f, atoms, META, viewer_who,

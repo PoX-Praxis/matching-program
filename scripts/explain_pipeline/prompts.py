@@ -13,6 +13,16 @@ SELECT_FILE_V01 = os.path.join(_ROOT, "docs", "prompts", "explanation_select_v0.
 LABEL_SHA256 = "02ec1ca8362431e8caafd0dd59c62e461e532e53ec5632f4d16beb268c7e9f6e"   # prompt_label_v0.3（直さない）
 SELECT_SHA256 = "b767abf2c302810b807289562a0f2050399b5af8490a13ab3f69f9bc0d223e70"  # prompt_select_v0.2（v0.1 に「まとめる」の 2 行）
 SELECT_SHA256_V01 = "19e818fb98ac905b4e59803c39b6310df0e3c38997e0976206bb6382b8b2022b"  # prompt_select_v0.1（直さない）
+SELECT_FILES = {SELECT_SHA256: SELECT_FILE, SELECT_SHA256_V01: SELECT_FILE_V01}   # 版の設定の sha256 → ファイル（explain-v06 は v0.1）
+
+
+def select_file(sha):
+    """選ぶ段のプロンプトのファイル（設定の sha256 から）。知らない sha256 なら ValueError。"""
+    if sha not in SELECT_FILES:
+        raise ValueError("知らない選ぶ段のプロンプト")
+    return SELECT_FILES[sha]
+
+
 BOUND_USE = ("resolves",)       # 目的の欄が無い人の縛り（足りないもの）× 相手の力：説明に使うラベル（指示書81 追補1 §3-3）
 USE = ("same_kind", "relational", "partial", "same_interest")     # 選ぶ段に渡すラベル（確かめの後）
 # ラベルの段の向き：(番号, 向きの文, 求める側, 相手)。一人目（A）が N、二人目（B）が O

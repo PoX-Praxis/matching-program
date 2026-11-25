@@ -2809,6 +2809,40 @@ def ops_explanations_drain():
 _explain_last_verify = {}
 
 
+@app.post("/ops/explanations/replay")
+def ops_explanations_replay():
+    """保存した出力を入れる（指示書81 追補3）。鍵は drain と同じ。許可リストの組だけ。モデルは動かさない。
+    body: {"a", "b"（記録の一人目・二人目）, "expected"（v06 の記録：入力・部品・候補・プロンプトのハッシュ）,
+           "outputs"（ラベル・選ぶ段の出力）, "source_sha256"（元の記録の sha256）, "store"（true のときだけ入れる）}
+    いまの二人の入力から描いたものが記録と一つでも違えば、違う位置と種類だけを返し、入れない。応答に文は出さない。"""
+    if not _xsv.drain_token_ok(request.headers.get(_xsv.DRAIN_HEADER)):
+        abort(404)
+    raw = request.get_data(cache=False)
+    if len(raw) > 8 * 1024 * 1024:
+        return jsonify({"error": "大きすぎます"}), 413
+    try:
+        body = json.loads(raw.decode("utf-8"))
+        expected, outputs = body["expected"], body["outputs"]
+        a, b = (str(body["a"]), str(body["b"])) if body.get("a") or body.get("b") else (None, None)
+    except (UnicodeDecodeError, ValueError, KeyError, TypeError):
+        return jsonify({"error": "形が違います"}), 400
+    allow = _xs.allowlist(DB)
+    if a is None:                                  # 組を書かないとき：許可リストの組が 1 つだけなら、その組（記録の一人目は入力のハッシュで決める）
+        if len(allow) != 1:
+            return jsonify({"error": "組を書いてください（許可リストの組が 1 つではありません）"}), 400
+        a, b = sorted(next(iter(allow)))
+        a, b = _xsv.order_by_record(a, b, _explain_ctx(), expected)
+    if frozenset((a, b)) not in allow:
+        return jsonify({"error": "許可リストの組ではありません"}), 403
+    try:
+        res = _xsv.replay(a, b, _explain_ctx(), expected, outputs, source_sha256=body.get("source_sha256"),
+                          store_it=body.get("store") is True, db_path=DB)
+    except (KeyError, TypeError, ValueError) as e:
+        return jsonify({"error": "形が違います", "kind": type(e).__name__}), 400
+    app.logger.warning(f"[explain-replay] same={res.get('same')} stored={res.get('stored')} diffs={len(res.get('diffs') or [])}")
+    return jsonify(res), 200
+
+
 @app.get("/ops/explanations/status")
 def ops_explanations_status():
     """予定の数・最後の回・最後の確かめ（verify）の結果（数と番号だけ。文・鍵は出さない）。鍵は drain と同じ。"""

@@ -2809,6 +2809,35 @@ def ops_explanations_drain():
 _explain_last_verify = {}
 
 
+@app.post("/ops/explanations/export")
+def ops_explanations_export():
+    """運営が手元で画面を描くための写し（KAORU の許可の 1 回の生成・2026-11-25）。鍵は drain と同じ。許可リストの組だけ。
+    いまの版・いまの入力の、生成した向き 2 つと、二人の説明の入力・呼び方を返す（文を含む。運営の手元だけで使う）。
+    組を書かなければ、許可リストの組が 1 つのときその組。ログには数だけ。モデルは動かさない。"""
+    if not _xsv.drain_token_ok(request.headers.get(_xsv.DRAIN_HEADER)):
+        abort(404)
+    body = request.get_json(force=True, silent=True) or {}
+    allow = _xs.allowlist(DB)
+    if body.get("a") or body.get("b"):
+        a, b = str(body.get("a")), str(body.get("b"))
+    elif len(allow) == 1:
+        a, b = sorted(next(iter(allow)))
+    else:
+        return jsonify({"error": "組を書いてください（許可リストの組が 1 つではありません）"}), 400
+    if frozenset((a, b)) not in allow:
+        return jsonify({"error": "許可リストの組ではありません"}), 403
+    ctx, cfg = _explain_ctx(), _xsv.runtime()
+    dirs = []
+    for need, offer in ((a, b), (b, a)):
+        row = _xsv.stored_meta(need, offer, ctx, cfg, DB)
+        if row:
+            dirs.append({"need": need, "offer": offer, "direction": row["direction"], "need_has_purposes": row["need_has_purposes"],
+                         "version_key": row["version_key"], "meta": row["meta"]})
+    app.logger.warning(f"[explain-export] directions={len(dirs)}")
+    return jsonify({"version_key": _xsv.version_key(cfg), "directions": dirs,
+                    "people": {s: {"input": ctx.inputs_of(s), "name": ctx.name_of(s)} for s in (a, b)}}), 200
+
+
 @app.post("/ops/explanations/replay")
 def ops_explanations_replay():
     """保存した出力を入れる（指示書81 追補3）。鍵は drain と同じ。許可リストの組だけ。モデルは動かさない。

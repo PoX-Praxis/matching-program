@@ -81,6 +81,9 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 同じ後段（追補1）に通すと、v06 の ① は 2/2 が出る。81 は 0/2（文の終わりの確かめ あり）・1/2（なし）。悪くなったのは 81 の出力の側（言い切り・ラベルの語・組の選びが v06 と同じ 0）
   - 手元の一式は `local/t81_addendum2/`（鍵の照合を外すのと型の ① は手元だけ。本番は変えていない）。画面写しは `local/kaoru_pa_screen/t81_addendum2/`
   - 決定ログ 2026-11-24 はまだ受け取っていない（プロジェクトのファイルがこの環境から開けない）
+- [ ] 指示書82（記録をリポジトリにそろえる・Issue の写し）は PR を出して止まった（`docs/reports/82.md`）。マージは KAORU が決める
+  - 決定ログの追記 6 つ（11-15・17・18・19・24・25）と引き継ぎ書 11-22 は未受領。届いたら 8 字の照合をしてから `docs/decisions/`・`docs/handoff/` に置く（中身は変えない）
+  - Issue の写しは `docs/reports/issues_snapshot_<日付>.md`。作り直しは `scripts/ops/issues_snapshot.py`（KAORU が頼んだときだけ。新しい日付のファイル・古いものは残す）。Issue は閉じない・ラベルもコメントも変えない
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

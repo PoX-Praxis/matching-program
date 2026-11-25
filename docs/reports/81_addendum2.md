@@ -73,6 +73,9 @@
 
 ## 7. ファイルの場所（手元だけ・コミットしない）
 
+- PR #226（文書だけ。テストは前のまま）
+
+
 - 作る：`local/t81_addendum2/build.py`・`common.py`（カードは `cards/`、数は `summary.json`）
 - 描く：`local/t81_addendum2/serve_a2.py`・`run_a2.py`
 - 画面写し（PC の幅）：`local/kaoru_pa_screen/t81_addendum2/`

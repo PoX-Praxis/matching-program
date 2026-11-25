@@ -149,6 +149,7 @@ ALLOWED_UNAUTH_WRITES = {
     "/ledger/admin/purge-accounts",                        # X-Anchor-Token（一回限りのアカウント整理・使用後に閉じる）
     "/ops/explanations/import",                            # X-Ops-Import-Token（説明の取り込み・指示書68 案 B・使用後に閉じる）
     "/ops/explanations/drain",                             # X-Explain-Drain-Token（説明の予定を作る・PC が戻ったとき。指示書81）
+    "/ops/explanations/replay",                            # X-Explain-Drain-Token（保存した出力を入れる・記録と同じときだけ。指示書81 追補3）
     "/seekers",                                            # 410（閉鎖済みの旧登録）
     "/api/community/<community_id>/intent/propose", "/api/community/<community_id>/declare",
     "/api/intent/<intent_id>/agree", "/api/intent/<intent_id>/complete",

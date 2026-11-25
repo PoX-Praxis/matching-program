@@ -1,5 +1,8 @@
-"""推論先 hf_jobs（指示書81 §2・§3）：Hugging Face Jobs のジョブで、決めた入れ物（llama.cpp の公式の入れ物・digest で固定）の
-llama-server を起こし、口（ポート）を公開して、local_http と同じ形で呼ぶ。終わったらジョブを止める。
+"""推論先 hf_jobs（指示書81 §2・§3・追補3）：Hugging Face Jobs のジョブで、版の入れ物（digest で固定）の推論サーバーを起こし、
+口（ポート）を公開して、local_http と同じ形で呼ぶ。終わったらジョブを止める。
+- p81：llama.cpp の公式の入れ物の llama-server（下の job_script_llamacpp）
+- explain-v06：vLLM v0.33.0 の入れ物（6 回目と同じ digest・同じ起動の引数・VLLM_BATCH_INVARIANT=1）。Jobs の公開した口は
+  Authorization を通さないので、口には鍵（X-Api-Key）を確かめる小さな中継を置き、vLLM は入れ物の中の 127.0.0.1:8000 で動かす
 
 - ジョブの中で、決めた revision のモデルのファイルを取り、sha256 を確かめる（違えば止まる）
 - 口は公開する（Jobs の口の鍵は HF のトークンなので、PoX の側から呼べる鍵を別に持つ）。llama-server の鍵（--api-key）は
@@ -53,7 +56,77 @@ class JobsApi:
         return self._req("POST", f"/api/jobs/{self.namespace}/{job_id}/cancel")
 
 
+VLLM_INNER_PORT = 8000
+# 鍵を確かめる中継（標準ライブラリだけ）。X-Api-Key か Authorization: Bearer が鍵と同じときだけ、127.0.0.1 の vLLM に渡す
+PROXY_PY = r"""
+import hmac, http.server, os, sys, urllib.error, urllib.request
+KEY = os.environ["POX_LLAMA_KEY"]
+UP = "http://127.0.0.1:" + sys.argv[2]
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+    def _go(self):
+        got = self.headers.get("X-Api-Key") or ""
+        auth = self.headers.get("Authorization") or ""
+        if not got and auth.startswith("Bearer "):
+            got = auth[7:]
+        if not hmac.compare_digest(got.encode(), KEY.encode()):
+            self.send_response(401); self.send_header("Content-Length", "0"); self.end_headers(); return
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n) if n else None
+        req = urllib.request.Request(UP + self.path, data=body, method=self.command,
+                                     headers={"Content-Type": self.headers.get("Content-Type") or "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=3600) as r:
+                code, ct, data = r.status, r.headers.get("Content-Type"), r.read()
+        except urllib.error.HTTPError as e:
+            code, ct, data = e.code, e.headers.get("Content-Type"), e.read()
+        except Exception:
+            self.send_response(503); self.send_header("Content-Length", "0"); self.end_headers(); return
+        self.send_response(code); self.send_header("Content-Type", ct or "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    do_GET = do_POST = _go
+http.server.ThreadingHTTPServer(("0.0.0.0", int(sys.argv[1])), H).serve_forever()
+"""
+
+
+def vllm_serve_args(cfg, port=VLLM_INNER_PORT):
+    """vLLM の起動の引数（6 回目と同じ。版の設定から作る）。"""
+    m, e = cfg["model"], cfg["engine"]
+    args = ["vllm", "serve", m["repo"], "--revision", m["revision"], "--served-model-name", m.get("name", "gpt-oss-120b"),
+            "--host", "127.0.0.1", "--port", str(port), "--max-model-len", str(e["max_model_len"]), "--seed", str(cfg["generation"]["seed"]),
+            "--gpu-memory-utilization", str(e.get("gpu_memory_utilization", 0.90))]
+    if not e["prefix_caching"]:
+        args.append("--no-enable-prefix-caching")
+    args += ["--max-num-seqs", str(e["max_num_seqs"])]
+    return args
+
+
 def job_script(cfg):
+    """ジョブの中で動かす bash（版のエンジンで分ける）。"""
+    return job_script_vllm(cfg) if RT.is_vllm(cfg) else job_script_llamacpp(cfg)
+
+
+def job_script_vllm(cfg):
+    """vLLM の版を確かめ、鍵の中継を口に置き、vLLM を起こす。vLLM の出力は入れ物の中のファイルにだけ書く。"""
+    e = cfg["engine"]
+    env = "VLLM_BATCH_INVARIANT=1 " if e["batch_invariant"] else ""
+    serve = " ".join(shlex.quote(a) for a in vllm_serve_args(cfg))
+    return f"""set -euo pipefail
+echo "[x] start"
+python3 -c 'import sys, vllm; v = vllm.__version__; print("[x] vllm", v); sys.exit(0 if v == {e["version"]!r} else 1)'
+(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1 | sed 's/^/[x] gpu /') || true
+cat > /tmp/proxy.py <<'PY'
+{PROXY_PY.strip()}
+PY
+python3 /tmp/proxy.py {int(e["port"])} {VLLM_INNER_PORT} > /tmp/proxy.log 2>&1 &
+set +e
+{env}{serve} > /tmp/server.log 2>&1
+echo "[x] server exited rc=$? error_lines=$(grep -ci error /tmp/server.log)"
+"""
+
+
+def job_script_llamacpp(cfg):
     """ジョブの中で動かす bash。モデルを取って確かめ、llama-server を起こす。"""
     args = " ".join(shlex.quote(a) for a in RT.server_args(cfg, MODEL_PATH, host="0.0.0.0"))
     m = cfg["model"]

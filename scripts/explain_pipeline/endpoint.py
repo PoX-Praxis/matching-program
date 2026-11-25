@@ -115,8 +115,20 @@ def make(kind="local_http", **kw):
 
 
 def from_runtime(cfg, base_url, api_key, timeout=1800):
-    """本番の推論先（llama.cpp の llama-server）。設定（config/explain_runtime.toml）の生成の値で送る。stream は使わない。"""
+    """本番の推論先。版の設定の生成の値で送る。stream は使わない。
+    p81：llama.cpp の llama-server（chat_template_kwargs も送る）。explain-v06：vLLM（6 回目と同じ形：reasoning_effort だけ）。"""
     g = cfg["generation"]
+    engine = "vllm" if str(cfg["engine"].get("name", "")).lower() == "vllm" else "llamacpp"
     return LocalHttp(base_url=base_url, model=cfg["model"].get("name", MODEL), timeout=timeout, clock=time.time, api_key=api_key,
-                     stream=False, engine="llamacpp",
+                     stream=False, engine=engine,
                      decoding={"temperature": g["temperature"], "top_p": g["top_p"], "seed": g["seed"], "reasoning_effort": g["reasoning_effort"]})
+
+
+def engine_version(ep, timeout=10):
+    """推論先のエンジンの版（vLLM の /version）。読めなければ None。"""
+    try:
+        req = urllib.request.Request(ep.base_url + "/version", headers=ep._headers())
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return str(json.load(r).get("version") or "") or None
+    except Exception:  # noqa: BLE001
+        return None

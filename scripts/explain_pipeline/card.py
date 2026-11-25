@@ -231,6 +231,13 @@ def purposes_from(sel, meta, pairs, base, atoms, META, viewer_who, need_title, c
     return out
 
 
+def need_title(F, META, who):
+    """目的の欄が無い人の目的の見出し：求めている相手の文（仕様 §4-6。v0.4 のカードと同じ）。画面は「〇〇が求めている相手『…』」と
+    出すので、ここに「〇〇さんが求めている相手」を入れると二重になる（指示書81 追補3）。文が 2 つ以上なら「／」でつなぐ。"""
+    p = next((p for p in AT.purposes_of(F, META, who) if not p["field"]), None)
+    return "／".join(F[f].strip().rstrip("。") for f in (p or {}).get("needs", []) if F.get(f, "").strip())
+
+
 def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, label_sha, select_sha, counter=None, generation=None,
               bound_for=()):
     """people: {"A": {"name", "tag", "has_purposes"}, "B": …}。sel: {"A_need": select の結果, "B_need": …}。
@@ -256,9 +263,9 @@ def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, labe
             "citations": citations(F, viewer_who, has_bound)}
     bt = {w: f"{people[w]['name']} さんの縛られているものから見た、{people['B' if w == 'A' else 'A']['name']} さん" for w in ("A", "B")}
     card["purposes"] = purposes_from(sel[fwd_sel], meta[fwd_sel], pairs, base_f, atoms, META, viewer_who,
-                                     f"{people[viewer_who]['name']} さんが求めている相手", counter, bt[viewer_who])
+                                     need_title(F, META, viewer_who), counter, bt[viewer_who])
     card["reverse_purposes"] = purposes_from(sel[rev_sel], meta[rev_sel], pairs, base_r, atoms, META, viewer_who,
-                                             f"{people[target_who]['name']} さんが求めている相手", counter, bt[target_who])
+                                             need_title(F, META, target_who), counter, bt[target_who])
     card["generation"] = {**card["generation"], "prompt2_sha": select_sha}
     card["output_digest"] = X.output_digest(card)
     return card

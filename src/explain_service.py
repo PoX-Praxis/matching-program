@@ -10,6 +10,11 @@
 - 作れていない組は、画面に出さない（「準備中」とも出さない）。表示はいまの二人の読む欄（入力）と、いまの版のものだけ
 - 記録（予定の行・まとめて作る回・向きのレコードの meta）には、数と時刻と番号と版だけを残す。文は残さない
 - 再現性の合格（決定ログ 2026-11-24）：同じ入力・同じ版で作り直したとき、pair_digest と目的の状態が同じこと（verify）
+- 版（指示書81 追補3）：本番の既定は explain-v06（vLLM v0.33.0・条件 B・候補 A・B・C・選ぶ段 v0.1）。p81（llama.cpp）は
+  POX_EXPLAIN_VERSION=p81 で選ぶ。HF Jobs のジョブ（費用がかかる）は、POX_EXPLAIN_JOBS_PERMITTED=1 のときだけ起動する
+  （決定ログ 2026-11-24：KAORU が明示に許可したときだけ）。無ければ予定に残す
+- 保存した出力を入れる（replay）：v06 の記録と、いまの二人の入力から描いたもの（入力・部品と候補・プロンプト）が同じときだけ、
+  保存したラベル・選ぶ段の出力からカードを作り、版の鍵で入れる。違えば違う位置と種類だけを返し、入れない
 """
 import hashlib
 import hmac
@@ -37,6 +42,7 @@ HF_TOKEN_ENV, HF_NS_ENV = "POX_HF_TOKEN", "POX_HF_NAMESPACE"
 GPU_ENV = "POX_EXPLAIN_GPU"                                # PC の GPU の名前（版の記録用。local_http のとき）
 INTERVAL_ENV = "POX_EXPLAIN_INTERVAL_HOURS"                # hf_jobs の間隔（既定 24 時間）
 DRAIN_TOKEN_ENV, DRAIN_HEADER, TOKEN_MIN = "POX_EXPLAIN_DRAIN_TOKEN", "X-Explain-Drain-Token", 32
+JOBS_OK_ENV = "POX_EXPLAIN_JOBS_PERMITTED"               # HF Jobs のジョブを起動してよいか（KAORU の許可。"1" のときだけ）
 FLAVOR_GPU = {"h200": "NVIDIA H200", "h100": "NVIDIA H100 80GB", "a100-large": "NVIDIA A100 80GB", "l40sx1": "NVIDIA L40S"}
 PIPELINE_MARK = "p81"
 _LOCK = threading.Lock()
@@ -49,12 +55,16 @@ def backend():
 
 
 def runtime():
-    """設定（config/explain_runtime.toml）。一度読んだら使い回す。"""
+    """選んだ版（POX_EXPLAIN_VERSION。既定 explain-v06）の設定。一度読んだら使い回す（版を変えたら読み直す）。"""
     global _CFG
-    if _CFG is None:
-        from explain_pipeline import runtime as RT
+    from explain_pipeline import runtime as RT
+    if _CFG is None or RT.version_id(_CFG) != RT.version_of():
         _CFG = RT.load()
     return _CFG
+
+
+def jobs_permitted():
+    return (os.environ.get(JOBS_OK_ENV) or "").strip() == "1"
 
 
 def version_key(cfg=None):
@@ -71,17 +81,18 @@ def startup_check():
     try:
         cfg = runtime()
         from explain_pipeline import prompts as PR
-        if (cfg["prompts"]["label_sha256"], cfg["prompts"]["select_sha256"]) != (PR.LABEL_SHA256, PR.SELECT_SHA256):
-            raise ValueError("設定のプロンプトの sha256 が docs/prompts/ と違う")
+        if cfg["prompts"]["label_sha256"] != PR.LABEL_SHA256:
+            raise ValueError("設定のラベルの段のプロンプトの sha256 が docs/prompts/ と違う")
         PR.template(PR.LABEL_FILE, PR.LABEL_SHA256)
-        PR.template(PR.SELECT_FILE, PR.SELECT_SHA256)
+        PR.template(PR.select_file(cfg["prompts"]["select_sha256"]), cfg["prompts"]["select_sha256"])
     except Exception as e:  # noqa: BLE001
         raise SystemExit(f"[FATAL] {BACKEND_ENV}={b} ですが、説明の生成の設定が読めません（{type(e).__name__}: {e}）。")
     need = {"hf_jobs": (HF_TOKEN_ENV,), "local_http": (ENDPOINT_ENV, ENDPOINT_KEY_ENV)}[b]
     missing = [n for n in need if not (os.environ.get(n) or "").strip()]
     if missing:
         raise SystemExit(f"[FATAL] {BACKEND_ENV}={b} ですが {', '.join(missing)} が未設定です（Render の環境変数）。")
-    return {"backend": b, "version": version_key(cfg)[:16], "cells": cfg["pipeline"]["cells"],
+    return {"backend": b, "version": version_key(cfg)[:20], "cells": cfg["pipeline"]["cells"],
+            "jobs": "許可あり" if jobs_permitted() else "許可なし（起動しない）",
             "drain_route": "開いている" if drain_token_ok(os.environ.get(DRAIN_TOKEN_ENV)) else "閉じている"}
 
 
@@ -118,7 +129,8 @@ def as_of(need_person, offer_person):
 def generation(cfg):
     m = cfg["model"]
     from explain_pipeline import runtime as RT
-    return {"model": f"{m['repo']}/{m['file']}", "revision": m["revision"], "decoding": RT.decoding(cfg)}
+    model = m["repo"] if RT.is_vllm(cfg) else f"{m['repo']}/{m['file']}"
+    return {"model": model, "revision": m["revision"], "decoding": RT.decoding(cfg)}
 
 
 class Context:
@@ -161,8 +173,8 @@ def make_pair(a, b, ctx, ep, cfg):
             "people": {"A": {"name": nx, "tag": tag(px)}, "B": {"name": ny, "tag": tag(py)}}, "generation": generation(cfg)}
     t0 = time.time()
     out, rec = RN.run_pair(spec, ep, direction_parallel=False, max_tokens=int(cfg["generation"]["max_tokens"]), origin=t0,
-                           clock=time.time, cells=RT.cells(cfg), label_sha=PR.LABEL_SHA256, select_sha=PR.SELECT_SHA256,
-                           bound_for_no_purpose=RT.bound_for_no_purpose(cfg))
+                           clock=time.time, cells=RT.cells(cfg), label_sha=cfg["prompts"]["label_sha256"],
+                           select_sha=cfg["prompts"]["select_sha256"], bound_for_no_purpose=RT.bound_for_no_purpose(cfg))
     errors = [q["error"] for q in rec["requests"] if q["error"]]
     if errors:
         return {"status": "pending", "reason": errors[0]}          # 推論先に届かない・切れた：予定に残す
@@ -308,8 +320,15 @@ def drain(ctx, db_path="pox.db", verify=False, backend_name=None, session_factor
                 if not ep.healthy():
                     rec.update(made=0, reason="endpoint_down")             # PC が止まっている：予定に残す（戻ったら作る）
                     return rec
+                from explain_pipeline import runtime as RT
+                if RT.is_vllm(cfg) and EP.engine_version(ep) != str(cfg["engine"]["version"]):
+                    rec.update(made=0, reason="engine_mismatch")           # 版のエンジン（vLLM の版）と違う推論先では作らない
+                    return rec
                 made, results = _run_items(items, ctx, ep, cfg, b, os.environ.get(GPU_ENV) or None, None, verify, db_path)
             else:
+                if not jobs_permitted():                                    # 費用のかかるジョブは、KAORU の許可があるときだけ
+                    rec.update(made=0, reason="jobs_not_permitted")
+                    return rec
                 sess = (session_factory or _hf_session)(cfg)
                 with sess as ep:
                     gpu = FLAVOR_GPU.get((cfg.get("hf_jobs") or {}).get("flavor"))
@@ -389,3 +408,133 @@ def start_scheduler(ctx, db_path="pox.db", every=600, keepalive=None):
     th = threading.Thread(target=loop, daemon=True, name="explain-scheduler")
     th.start()
     return th
+
+
+# ── 保存した出力を入れる（指示書81 追補3）──────────────────────────────────────────────────
+REPLAY_SOURCE = "saved_outputs"
+
+
+def _sha(t):
+    return hashlib.sha256(str(t).encode("utf-8")).hexdigest()
+
+
+def _line_hashes(t):
+    return [_sha(x)[:16] for x in str(t).split("\n")]
+
+
+def drawn(a, b, ctx, cfg, label_outputs=None):
+    """いまの二人の入力から、版の設定で描いたもの（数・番号・ハッシュだけ）。label_outputs（ラベルの段の出力）があれば、
+    選ぶ段のプロンプトも描く。返り値: (描いたもの, 内部の材料)。"""
+    from explain_pipeline import atoms as AT
+    from explain_pipeline import checks as CK
+    from explain_pipeline import fields as FL
+    from explain_pipeline import prompts as PR
+    from explain_pipeline import runtime as RT
+    pa, pb = ctx.inputs_of(a), ctx.inputs_of(b)
+    if not pa or not pb:
+        return None, None
+    F, META = FL.pair_fields(pa, pb)
+    atoms = AT.build_atoms(F, META)
+    lp, cands, _ = PR.label_prompts(atoms, RT.cells(cfg))
+    d = {"inputs_sha256": {"A": _sha(_canon(pa)), "B": _sha(_canon(pb))},
+         "atoms": [x["id"] for x in atoms],
+         "cands": [[c["pair"], c["dir"], c["cell"], c["left"], c["right"]] for c in sorted(cands.values(), key=lambda c: c["pair"])],
+         "label_prompts": {k: {"sha256": _sha(v), "chars": len(v), "lines": _line_hashes(v)} for k, v in lp.items()}}
+    mat = {"F": F, "META": META, "atoms": atoms, "cands": cands}
+    if label_outputs is not None:
+        labels = CK.check_labels(label_outputs, cands, {x["id"]: x for x in atoms})
+        ssha = cfg["prompts"]["select_sha256"]
+        sp, _, _ = PR.select_prompts(atoms, labels, F, META, (), file=PR.select_file(ssha), sha=ssha)
+        d["select_prompts"] = {k: {"sha256": _sha(v), "chars": len(v), "lines": _line_hashes(v)} for k, v in sp.items()}
+    return d, mat
+
+
+def order_by_record(a, b, ctx, expected):
+    """記録の一人目（A）・二人目（B）に合う順。入力のハッシュが記録と合う向きがあればその順、無ければ (a, b) のまま。"""
+    want = (expected or {}).get("inputs_sha256") or {}
+    for x, y in ((a, b), (b, a)):
+        px, py = ctx.inputs_of(x), ctx.inputs_of(y)
+        if px and py and _sha(_canon(px)) == want.get("A") and _sha(_canon(py)) == want.get("B"):
+            return x, y
+    return a, b
+
+
+def compare_drawn(got, want):
+    """描いたものと v06 の記録を比べる。違う位置と種類だけを返す（文は返さない）。"""
+    diffs = []
+    for w in ("A", "B"):
+        if got["inputs_sha256"][w] != want["inputs_sha256"][w]:
+            diffs.append({"kind": "入力", "who": w})
+    if got["atoms"] != want["atoms"]:
+        ga, wa = got["atoms"], want["atoms"]
+        diffs.append({"kind": "部品", "count": [len(wa), len(ga)],
+                      "first_index": next((i for i in range(min(len(ga), len(wa))) if ga[i] != wa[i]), min(len(ga), len(wa)))})
+    gc, wc = {c[0]: c for c in got["cands"]}, {c[0]: c for c in want["cands"]}
+    if gc != wc:
+        counts = lambda cs: {f"{d}.{cell}": sum(1 for c in cs.values() if c[1] == d and c[2] == cell)  # noqa: E731
+                             for d in ("N_by_O", "O_by_N") for cell in "ABC"}
+        diffs.append({"kind": "候補", "count_want": counts(wc), "count_got": counts(gc),
+                      "ids": sorted(k for k in set(gc) | set(wc) if gc.get(k) != wc.get(k))[:50]})
+    for stage in ("label_prompts", "select_prompts"):
+        for pid, w in (want.get(stage) or {}).items():
+            g = (got.get(stage) or {}).get(pid)
+            if g is None:
+                diffs.append({"kind": stage, "id": pid, "why": "描けない"})
+            elif g["sha256"] != w["sha256"]:
+                gl, wl = g["lines"], w["lines"]
+                diffs.append({"kind": stage, "id": pid, "chars": [w["chars"], g["chars"]], "lines": [len(wl), len(gl)],
+                              "diff_lines": [i + 1 for i in range(max(len(gl), len(wl)))
+                                             if i >= len(gl) or i >= len(wl) or gl[i] != wl[i]][:50]})
+    return diffs
+
+
+class _Replay:
+    """保存した出力を、流れの順（ラベル N_by_O・O_by_N → 選ぶ A_need・B_need）に返す推論先。"""
+
+    def __init__(self, outputs):
+        self.seq = [outputs["label"]["N_by_O"], outputs["label"]["O_by_N"], outputs["select"]["A_need"], outputs["select"]["B_need"]]
+        self.i = 0
+
+    def complete(self, prompt, max_tokens):
+        t = time.time()
+        text = self.seq[self.i]
+        self.i += 1
+        return {"text": text, "reasoning": None, "finish_reason": "stop", "usage": None, "timings": None,
+                "t_send": t, "t_first": t, "t_first_content": t, "t_end": t}
+
+
+def replay(a, b, ctx, expected, outputs, source_sha256=None, store_it=False, db_path="pox.db", cfg=None):
+    """v06 の記録（expected）と、いまの入力から描いたものを比べ、同じなら（store_it のとき）保存した出力からカードを作って入れる。
+    a が記録の一人目（A）。返り値は数・番号・種類だけ。"""
+    from explain_pipeline import runner as RN
+    from explain_pipeline import runtime as RT
+    cfg = cfg or runtime()
+    label_out = {k: outputs["label"][k] for k in ("N_by_O", "O_by_N")}
+    got, _ = drawn(a, b, ctx, cfg, label_out)
+    if got is None:
+        return {"same": False, "diffs": [{"kind": "入力", "why": "読めない"}], "stored": False}
+    diffs = compare_drawn(got, expected)
+    out = {"version": RT.version_id(cfg), "same": not diffs, "diffs": diffs, "stored": False,
+           "counts": {"atoms": len(got["atoms"]), "cands": len(got["cands"]),
+                      "prompts": {k: len(got.get(k) or {}) for k in ("label_prompts", "select_prompts")}}}
+    if diffs or not store_it:
+        return out
+    pa, pb = ctx.inputs_of(a), ctx.inputs_of(b)
+    na, nb = ctx.name_of(a) or "", ctx.name_of(b) or ""
+    spec = {"id": Q.pair_key(a, b), "a": pa, "b": pb, "names": [n for n in (na, nb) if n],
+            "people": {"A": {"name": na, "tag": tag(pa)}, "B": {"name": nb, "tag": tag(pb)}}, "generation": generation(cfg)}
+    ep = _Replay(outputs)
+    res_out, rec = RN.run_pair(spec, ep, max_tokens=int(cfg["generation"]["max_tokens"]), cells=RT.cells(cfg),
+                               label_sha=cfg["prompts"]["label_sha256"], select_sha=cfg["prompts"]["select_sha256"],
+                               bound_for_no_purpose=RT.bound_for_no_purpose(cfg))
+    if ep.i != 4:
+        out.update(same=False, diffs=[{"kind": "出力の数", "used": ep.i}])
+        return out
+    rec.pop("pair", None)
+    res = {"status": "done", "cards": {a: res_out["cards"]["A"], b: res_out["cards"]["B"]}, "record": rec,
+           "people": {a: pa, b: pb}, "order": (a, b)}
+    store(res, cfg, _version_record(cfg, REPLAY_SOURCE, None, {"source": REPLAY_SOURCE, "source_sha256": dict(source_sha256 or {})}),
+          db_path=db_path)
+    out.update(stored=True, version_key=version_key(cfg)[:20], statuses={w: statuses(c) for w, c in (("A", res["cards"][a]), ("B", res["cards"][b]))},
+               form_fixes=rec["counts"].get("form_fixes"))
+    return out

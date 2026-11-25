@@ -89,7 +89,8 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
 
     def check():
         labels = CK.check_labels({pid: out["label"][pid]["text"] for pid in LABEL_IDS}, cands, A)
-        sp, pairs, meta = PR.select_prompts(atoms, labels, F, META, bound_for)
+        ssha = select_sha or PR.SELECT_SHA256                              # 版の選ぶ段（explain-v06 は v0.1・p81 は v0.2）
+        sp, pairs, meta = PR.select_prompts(atoms, labels, F, META, bound_for, file=PR.select_file(ssha), sha=ssha)
         return labels, sp, pairs, meta
 
     labels, sp, pairs, meta = machine("check", check)

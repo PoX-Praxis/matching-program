@@ -89,6 +89,17 @@ def llama():
     srv.shutdown()
 
 
+@pytest.fixture(autouse=True)
+def _version_p81(monkeypatch):
+    """このファイルは版 p81（llama.cpp）を確かめる（指示書81 追補3 で本番の既定は explain-v06 になった。p81 は残す）。
+    偽の Jobs の API を使うので、ジョブの許可（POX_EXPLAIN_JOBS_PERMITTED）は入れておく。"""
+    monkeypatch.setenv(RT.VERSION_ENV, "p81")
+    monkeypatch.setenv(XSV.JOBS_OK_ENV, "1")
+    XSV._CFG = None
+    yield
+    XSV._CFG = None
+
+
 @pytest.fixture
 def cfg(monkeypatch):
     for n in (*RT.PLACEMENT_ENV.values(), RT.CELLS_ENV):

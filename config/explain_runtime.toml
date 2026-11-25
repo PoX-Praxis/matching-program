@@ -1,6 +1,10 @@
-# 説明の生成の設定（指示書81 §2-2）。HF Jobs と PC の両方が読む、唯一の設定。
+# 説明の生成の版 p81 の設定（指示書81 §2-2）。HF Jobs と PC の両方が読む。本番の既定は explain-v06（config/explain_v06.toml。
+# 指示書81 追補3）。この版は POX_EXPLAIN_VERSION=p81 で選ぶ（残す）。
 # 機械ごとに変えてよいのは [placement] だけ（GPU のメモリで決まる）。PC では環境変数で上書きする
 # （POX_EXPLAIN_N_GPU_LAYERS・POX_EXPLAIN_N_CPU_MOE）。ほかの項目を変えたら、説明の版（version_key）が変わる。
+
+[version]
+id = "p81"
 
 [model]
 name = "gpt-oss-120b"

@@ -166,6 +166,7 @@ async function refreshConnectState() {
 
 /* 接続の説明（指示書68 画面1）。off なら false（今と同じ欄を出す）。ok・approved なら描いて true。none なら出さずに true。 */
 let explainDigest = null;
+let explainMeaningPurposes = [];            // つながる意味がある自分の目的（申し出の目的を、最初にこれにする。指示書81 追補1 §3-4）
 let explainShown = false;                   // 説明（ok・approved）を出したか。やり取りは説明が添えられた申請だけ
 async function loadExplanation() {
   const $ = id => document.getElementById(id);
@@ -184,6 +185,7 @@ async function loadExplanation() {
     explainShown = true;
     if (d.status === "ok") {
       explainDigest = d.card_digest;
+      explainMeaningPurposes = Array.isArray(d.meaning_purposes) ? d.meaning_purposes : [];
       PoXExplain.wireSupplement($("explainBody"), {
         note: "あなたの文の言い換えについての補足です（400 字まで）。運営だけが読み、相手には届きません。",   // 報告74 の確認 5
         onSend: sendSelfSupplement });
@@ -264,6 +266,8 @@ async function loadMyPurposes() {
     if (!r.ok) return;
     const ps = (await r.json()).purposes || [];
     sel.innerHTML = ps.map(p => `<option value="${escHtml(p.purpose_id)}">${escHtml(p.label || "目的")}</option>`).join("");
+    const pre = explainMeaningPurposes.find(id => ps.some(p => p.purpose_id === id));
+    if (pre) sel.value = pre;               // つながる意味がある目的を、最初に選ばれた状態に
     document.getElementById("purposeRow").style.display = ps.length > 1 ? "" : "none";
   } catch (e) { /* 目的の指定なしで申し出る */ }
 }

@@ -331,9 +331,12 @@ def test_t575_pipeline_check_profile(cfg, llama, dbp, people, monkeypatch):
     assert shown
     long = json.loads(json.dumps(card))
     p = next(p for p in long["purposes"] + long["reverse_purposes"] if p["status"] in X.SHOWN_STATUSES and p["elements"])
-    p["meaning"]["text"] = "{O}の経験は、{N}の目的に関われるかもしれない"          # 閉じた語彙でなくても通る（形の決まりは当てない）
+    p["meaning"]["text"] = "経験が、目的の進め方の力になれる可能性があります。"     # 閉じた語彙・{O} が無くても通る（形の決まりは当てない）
     checked, problems = X.check(long, names=("架空P1", "架空P2"))
     assert not [x for x in problems if p["ref"] in x]
+    p["meaning"]["text"] = "{O}の経験は、{N}の目的に関われるかもしれない"          # 文の終わりは「可能性があります。」だけ（指示書81 追補1 §3-2）
+    _, problems = X.check(long, names=("架空P1", "架空P2"))
+    assert any(p["ref"] in x and "可能性があります" in x for x in problems)
     p["meaning"]["text"] = "{O}は最適な相手です。"                                # 禁止の語は当てる（安全の確かめ）
     _, problems = X.check(long, names=("架空P1", "架空P2"))
     assert any(p["ref"] in x and "禁止の語" in x for x in problems)

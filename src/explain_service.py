@@ -161,7 +161,8 @@ def make_pair(a, b, ctx, ep, cfg):
             "people": {"A": {"name": nx, "tag": tag(px)}, "B": {"name": ny, "tag": tag(py)}}, "generation": generation(cfg)}
     t0 = time.time()
     out, rec = RN.run_pair(spec, ep, direction_parallel=False, max_tokens=int(cfg["generation"]["max_tokens"]), origin=t0,
-                           clock=time.time, cells=RT.cells(cfg), label_sha=PR.LABEL_SHA256, select_sha=PR.SELECT_SHA256)
+                           clock=time.time, cells=RT.cells(cfg), label_sha=PR.LABEL_SHA256, select_sha=PR.SELECT_SHA256,
+                           bound_for_no_purpose=RT.bound_for_no_purpose(cfg))
     errors = [q["error"] for q in rec["requests"] if q["error"]]
     if errors:
         return {"status": "pending", "reason": errors[0]}          # 推論先に届かない・切れた：予定に残す

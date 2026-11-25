@@ -17,6 +17,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 PATH = os.path.join(_ROOT, "config", "explain_runtime.toml")
 PLACEMENT_ENV = {"n_gpu_layers": "POX_EXPLAIN_N_GPU_LAYERS", "n_cpu_moe": "POX_EXPLAIN_N_CPU_MOE"}
 CELLS_ENV = "EXPLAIN_CELLS"
+BOUND_ENV = "EXPLAIN_BOUND_FOR_NO_PURPOSE"      # 目的の欄が無い人の縛りの目的（指示書81 追補1 §3-3。既定は切る）
 REQUIRED = {"model": ("repo", "revision", "file", "sha256"), "engine": ("commit", "image", "port"),
             "generation": ("temperature", "top_p", "seed", "reasoning_effort", "max_tokens", "ctx_size", "parallel"),
             "placement": ("n_gpu_layers", "n_cpu_moe"), "prompts": ("label_sha256", "select_sha256"), "pipeline": ("cells",)}
@@ -43,6 +44,9 @@ def load(path=PATH, env=None):
     cfg["pipeline"]["cells"] = "".join(c for c in "ABC" if c in cells.upper())
     if not cfg["pipeline"]["cells"]:
         raise ValueError("候補の種類が空")
+    raw = (env.get(BOUND_ENV) or "").strip().lower()
+    cfg["pipeline"]["bound_for_no_purpose"] = (raw in ("1", "true", "on", "yes") if raw
+                                               else bool(cfg["pipeline"].get("bound_for_no_purpose", False)))
     if int(cfg["generation"]["parallel"]) != 1:
         raise ValueError("同時の数は 1（報告80）")
     cfg["_path_sha256"] = file_sha256(path)
@@ -51,6 +55,10 @@ def load(path=PATH, env=None):
 
 def cells(cfg):
     return tuple(cfg["pipeline"]["cells"])
+
+
+def bound_for_no_purpose(cfg):
+    return bool(cfg["pipeline"].get("bound_for_no_purpose", False))
 
 
 def model_url(cfg):
@@ -89,7 +97,8 @@ def version_key(cfg, schema_version=None, relation_rule_version=None):
     m, e = cfg["model"], cfg["engine"]
     return "p81:" + _canon({"model": [m["repo"], m["revision"], m["file"], m["sha256"]], "engine": [e["commit"], image_digest(cfg)],
                             "generation": decoding(cfg), "prompts": [cfg["prompts"]["label_sha256"], cfg["prompts"]["select_sha256"]],
-                            "cells": cfg["pipeline"]["cells"], "card": [schema_version, relation_rule_version]})
+                            "cells": cfg["pipeline"]["cells"], "bound": bound_for_no_purpose(cfg),
+                            "card": [schema_version, relation_rule_version]})
 
 
 def version_record(cfg, backend, gpu=None, code_commit=None, extra=None):
@@ -99,7 +108,7 @@ def version_record(cfg, backend, gpu=None, code_commit=None, extra=None):
            "engine": {"name": e.get("name", "llama.cpp"), "commit": e["commit"], "build": e.get("build"), "image": e["image"]},
            "gpu": gpu, "placement": dict(cfg["placement"]), "generation": decoding(cfg),
            "prompts": {"label": cfg["prompts"]["label_sha256"], "select": cfg["prompts"]["select_sha256"]},
-           "cells": cfg["pipeline"]["cells"], "backend": backend, "config_sha256": cfg.get("_path_sha256"),
+           "cells": cfg["pipeline"]["cells"], "bound_for_no_purpose": bound_for_no_purpose(cfg), "backend": backend, "config_sha256": cfg.get("_path_sha256"),
            "code_commit": code_commit, "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     rec.update(extra or {})
     return rec

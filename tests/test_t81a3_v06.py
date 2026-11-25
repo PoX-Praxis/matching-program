@@ -6,6 +6,7 @@
 588 ジョブの許可：POX_EXPLAIN_JOBS_PERMITTED=1 が無ければ、HF Jobs のジョブを起動しない（予定に残す）
 589 保存した出力を入れる：記録と同じなら入れる（版の鍵 explain-v06・元の記録の sha256）。違えば違う位置と種類だけを返し、入れない
 590 目的の欄が無い人の見出し：「〇〇が求めている相手『〇〇さんが求めている相手』」の二重にしない（求めている相手の文を出す）
+591 運営の写し（/ops/explanations/export）：鍵と許可リストの組だけ。いまの版・いまの入力の向き 2 つと入力を返す
 """
 import json
 import os
@@ -304,6 +305,33 @@ def test_t589_route(monkeypatch):
     d = r.get_json()
     assert r.status_code == 200 and d["same"] and d["stored"]
     assert spec["a"]["purposes"][0]["向かう先"][:8] not in r.get_data(as_text=True)               # 応答に文は出さない
+
+
+# ── 591 運営の写し ─────────────────────────────────────────────────────────────────────
+def test_t591_export(monkeypatch):
+    import app as appmod
+    import schema
+    appmod.DB = os.path.join(tempfile.mkdtemp(), "t.db")
+    schema.init(appmod.DB)
+    appmod.app.config["TESTING"] = True
+    spec = SY.pairs()[0]
+    monkeypatch.setattr(appmod, "_explain_input", {"x1": spec["a"], "x2": spec["b"]}.get)
+    monkeypatch.setenv("POX_EXPLANATION_ALLOWLIST", "x1+x2")
+    monkeypatch.setattr(S, "_resolve_subject", lambda h, db_path="pox.db": h)
+    c = appmod.app.test_client()
+    assert c.post("/ops/explanations/export", json={}).status_code == 404
+    monkeypatch.setenv(XSV.DRAIN_TOKEN_ENV, DRAIN)
+    h = {XSV.DRAIN_HEADER: DRAIN}
+    assert c.post("/ops/explanations/export", json={"a": "x1", "b": "x3"}, headers=h).status_code == 403
+    d = c.post("/ops/explanations/export", json={}, headers=h).get_json()
+    assert d["directions"] == [] and set(d["people"]) == {"x1", "x2"}                        # まだ作っていない
+    expected, outputs = _saved(spec, XSV.runtime())
+    XSV.replay("x1", "x2", _ctx(spec), expected, outputs, store_it=True, db_path=appmod.DB)
+    d = c.post("/ops/explanations/export", json={}, headers=h).get_json()
+    assert len(d["directions"]) == 2 and all(x["version_key"] == d["version_key"] for x in d["directions"])
+    assert d["people"]["x1"]["input"] == spec["a"] and d["directions"][0]["meta"]["record"]["counts"]["cands"]
+    monkeypatch.setenv(RT.VERSION_ENV, "p81")                                                  # ほかの版の向きは返さない
+    assert c.post("/ops/explanations/export", json={}, headers=h).get_json()["directions"] == []
 
 
 # ── 590 目的の欄が無い人の見出し ──────────────────────────────────────────────────────────

@@ -70,6 +70,13 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 本番：`src/explain_service.py`・予定 `src/explain_queue.py`（表 explanation_queue・explanation_batches）。POX_EXPLAIN_BACKEND=hf_jobs（1 日 1 回。ジョブの口を公開し、llama-server の鍵で守る）／local_http（PC。すぐ作る・止まっていれば予定に残す）。未設定なら作らない。許可リストの組だけ。いまの入力・いまの版の説明だけを出す
   - 流れのカード（`X.is_pipeline`）には形の決まり（句 40 字・R1/R2 の述語・閉じた語彙）を当てず、安全の確かめだけを当てる。fugashi・unidic-lite を本番の requirements.txt にも入れた（流れを Render で動かすため）
   - 運営のルート `/ops/explanations/drain`・`status`（鍵 POX_EXPLAIN_DRAIN_TOKEN。enqueue・verify）。カードごとの版の記録は向きのレコードの meta_json
+- [ ] 指示書81 追補1（走らせない決まり・画面のギャップを直す）は順1 まで終えて止まった（`docs/reports/81_addendum1.md`）。ジョブは起動していない。順2 は KAORU の明示の許可の後
+  - 決定ログ 2026-11-24 は未受領（`docs/decisions/` にまだ無い。届いたら置く）
+  - §2（費用 0）：llama.cpp と vLLM（harmony）が描くプロンプトは 24 件すべて一字同じ（トークン数も同じ・Reasoning: medium）。違いは重みの形（注意・埋め込み・出力が BF16→Q8_0）
+  - 選ぶ段は `docs/prompts/explanation_select_v0.2.txt`（b767abf2…。v0.1 は残す）。流れのカードの ① は「可能性があります。」で終わる文だけ。禁止の語 forbid-v0.5（同種・ラベルの英語の名前）
+  - ① の番号（部品・組・候補。括弧ごと）は `card.strip_ids` で消し、数を記録の form_fixes.ids_removed に。言い切りの数は meaning_end_ng
+  - 縛りのスイッチ `EXPLAIN_BOUND_FOR_NO_PURPOSE`（設定 `[pipeline] bound_for_no_purpose`。既定は切る。版の鍵に入る）
+  - 申し出の画面は、カードの route の meaning_purposes で目的を最初に選ぶ
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

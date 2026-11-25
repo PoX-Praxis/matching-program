@@ -2809,6 +2809,29 @@ def ops_explanations_drain():
 _explain_last_verify = {}
 
 
+@app.post("/ops/explanations/input")
+def ops_explanations_input():
+    """本番のいまの説明の入力（生成に渡す形）を返す、読み取りだけの口（KAORU の指示・2026-11-25 の B）。鍵は drain と同じ。
+    許可リストの組だけ（組を書かなければ、許可リストの組が 1 つのときその組）。縛られているものは、本人が「説明に使う」を
+    選んだ分だけ（_explain_input のまま）。モデルを動かさない・本番に書き込まない。ログには数だけ。"""
+    if not _xsv.drain_token_ok(request.headers.get(_xsv.DRAIN_HEADER)):
+        abort(404)
+    body = request.get_json(force=True, silent=True) or {}
+    allow = _xs.allowlist(DB)
+    if body.get("a") or body.get("b"):
+        a, b = str(body.get("a")), str(body.get("b"))
+    elif len(allow) == 1:
+        a, b = sorted(next(iter(allow)))
+    else:
+        return jsonify({"error": "組を書いてください（許可リストの組が 1 つではありません）"}), 400
+    if frozenset((a, b)) not in allow:
+        return jsonify({"error": "許可リストの組ではありません"}), 403
+    ctx = _explain_ctx()
+    people = {s: {"input": ctx.inputs_of(s), "name": ctx.name_of(s)} for s in (a, b)}
+    app.logger.warning(f"[explain-input] people={sum(1 for v in people.values() if v['input'])}")
+    return jsonify({"order": [a, b], "people": people}), 200
+
+
 @app.post("/ops/explanations/export")
 def ops_explanations_export():
     """運営が手元で画面を描くための写し（KAORU の許可の 1 回の生成・2026-11-25）。鍵は drain と同じ。許可リストの組だけ。

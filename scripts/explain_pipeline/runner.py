@@ -51,8 +51,9 @@ def _call(endpoint, stage, pid, prompt, max_tokens, origin, clock):
 
 
 def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, origin=0.0, clock=time.time, cells=("A", "B", "C"),
-             label_sha=None, select_sha=None):
+             label_sha=None, select_sha=None, bound_for_no_purpose=False):
     """1 組。spec: {"id", "a", "b", "people": {"A": {"name", "tag"}, "B": …}, "names": [表示名…]}。
+    bound_for_no_purpose: 目的の欄が無い人の縛りの目的を足す（指示書81 追補1 §3-3。既定は切る）。
     返り値: (outputs, record)。outputs には文、record には数と時刻だけ。"""
     rec = {"pair": spec["id"], "t_start": round(clock() - origin, 3), "machine": {}, "requests": [], "counts": {}}
 
@@ -66,10 +67,11 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
     def prep():
         F, META = FL.pair_fields(spec["a"], spec["b"])
         atoms = AT.build_atoms(F, META)
-        lp, cands, info = PR.label_prompts(atoms, cells)
-        return F, META, atoms, lp, cands, info
+        bf = tuple(w for w in ("A", "B") if bound_for_no_purpose and not any(p["field"] for p in AT.purposes_of(F, META, w)))
+        lp, cands, info = PR.label_prompts(atoms, cells, bf)
+        return F, META, atoms, lp, cands, info, bf
 
-    F, META, atoms, lp, cands, info = machine("prep", prep)
+    F, META, atoms, lp, cands, info, bound_for = machine("prep", prep)
     rec["counts"].update({"atoms": len(atoms), "cands": {pid: info[pid]["cells"] for pid in LABEL_IDS}})
     out = {"label": {}, "select": {}, "cards": {}}
     # ラベルの段
@@ -87,7 +89,7 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
 
     def check():
         labels = CK.check_labels({pid: out["label"][pid]["text"] for pid in LABEL_IDS}, cands, A)
-        sp, pairs, meta = PR.select_prompts(atoms, labels, F, META)
+        sp, pairs, meta = PR.select_prompts(atoms, labels, F, META, bound_for)
         return labels, sp, pairs, meta
 
     labels, sp, pairs, meta = machine("check", check)
@@ -104,13 +106,15 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
         people = {w: {**spec["people"][w], "has_purposes": FL.has_purposes(spec["a" if w == "A" else "b"])} for w in ("A", "B")}
         fix = {}
         cs = {w: CD.make_card(w, people, F, META, atoms, labels, sel, meta, pairs, label_sha or PR.LABEL_SHA256,
-                              select_sha or PR.SELECT_SHA256, fix, generation=spec.get("generation")) for w in ("A", "B")}
+                              select_sha or PR.SELECT_SHA256, fix, generation=spec.get("generation"), bound_for=bound_for)
+              for w in ("A", "B")}
         return sel, cs, fix
 
     sel, out["cards"], fix = machine("card", cards)
     rec["counts"]["chosen"] = {pid: sum(len(s["chosen"]) for s in sel[pid].values()) for pid in SELECT_IDS}
     rec["counts"]["select_ok"] = {pid: sum(1 for s in sel[pid].values() if s["ok"]) for pid in SELECT_IDS}
-    rec["counts"]["form_fixes"] = fix
+    rec["counts"]["form_fixes"] = fix            # bare_no・add_period・ids_removed（消した番号の数）・meaning_end_ng
+    rec["counts"]["bound_for"] = list(bound_for)
     rec["t_end"] = round(clock() - origin, 3)
     return out, rec
 

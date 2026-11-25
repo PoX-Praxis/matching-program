@@ -3121,7 +3121,29 @@ def explanation_card_route():
     if not view:
         return jsonify({"status": "none"}), 200
     return jsonify({"status": "ok", "html": view["html"], "card_digest": view["card"]["output_digest"],
-                    "target_name": view["names"]["target"]}), 200
+                    "target_name": view["names"]["target"], "meaning_purposes": _meaning_purpose_ids(me, view["card"])}), 200
+
+
+def _meaning_purpose_ids(me, card):
+    """見る人の目的のうち、確かめを通った「つながる意味」（①）がある目的の purpose_id（指示書81 追補1 §3-4）。
+    申し出の画面で、最初に選ばれた状態にする。流れのカードだけ（目的 p{n} は、説明の入力の n 番目の目的）。"""
+    import re
+    try:
+        if not X_explanation.is_pipeline(card):
+            return []
+        kept, _ = X_explanation.check(card, names=())
+        inp = _explain_input(me) or {}
+        ids = [p.get("purpose_id") for p in inp.get("purposes") or []]
+        out = []
+        for p in kept.get("purposes") or []:
+            m = re.fullmatch(r"viewer\.purpose\.p([0-9]+)", p.get("ref") or "")
+            if m and p.get("status") in X_explanation.SHOWN_STATUSES and p.get("meaning") and 0 < int(m.group(1)) <= len(ids):
+                pid = ids[int(m.group(1)) - 1]
+                if pid and pid not in out:
+                    out.append(pid)
+        return out
+    except Exception:  # noqa: BLE001
+        return []
 
 
 @app.get("/api/explanations/list")

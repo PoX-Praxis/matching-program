@@ -10,6 +10,7 @@ import re
 import sys
 
 from . import atoms as AT
+from . import prompts as PR
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if os.path.join(_ROOT, "src") not in sys.path:
@@ -23,6 +24,10 @@ REL6 = {"経験": "R1", "申告": "R2", "能力": "R2", "資源": "R3", "関心"
 SHOWN_LINKS = ("same_kind", "relational", "same_interest")
 STATE_NAME = {"state.have": "持っているもの", "state.can_type": "できること_型", "state.bound": "縛られているもの", "state.unsorted": "未分類"}
 BARE = re.compile(r"(?<![A-Za-z{])([NO])(?![A-Za-z}])")
+# ① に紛れた部品・組・候補の番号（N01・O18・P012・C031・{O}18。括弧ごと）を消す（指示書81 追補1 §3-1）
+_ID = r"(?:\{[NO]\}|[NOPC])[0-9０-９]{2,3}"
+ID_BRACKETS = re.compile(r"[（(［\[〔【]\s*" + _ID + r"(?:\s*[・、,，/／]\s*" + _ID + r")*\s*[）)］\]〕】]")
+ID_BARE = re.compile(r"(?<![A-Za-z0-9])" + _ID + r"(?:\s*[・、,，/／]\s*" + _ID + r")*(?![0-9０-９])")
 
 
 def card_ref(fk, viewer_who):
@@ -41,29 +46,33 @@ def card_ref(fk, viewer_who):
     return f"{side}.state.{ {'experience': '経験', 'why': 'なぜ', 'background': '背景'}.get(f, f) }"
 
 
-def citations(F, viewer_who):
+def citations(F, viewer_who, bound_for=()):
+    """bound_for の人の縛られているものも入れる（縛りの目的があるときだけ。指示書81 追補1 §3-3）。"""
     out = []
     for fk, t in F.items():
         f = fk.split(".", 1)[1]
-        if f.startswith(("necessity", "purpose", "offer", "interest")) or f in ("state.have", "state.can_type", "experience"):
+        if (f.startswith(("necessity", "purpose", "offer", "interest")) or f in ("state.have", "state.can_type", "experience")
+                or (f == "state.bound" and fk[0] in bound_for)):
             out.append({"ref": card_ref(fk, viewer_who), "text": t})
     return out
 
 
-def base_purposes(need_who, viewer_who, pid, labels, atoms, F, META):
-    """need_who の目的 × 相手の文（ラベルの向き pid）。目的の状態を、確かめの後のラベルの A の組で決める（5 回目）。"""
+def base_purposes(need_who, viewer_who, pid, labels, atoms, F, META, bound_for=()):
+    """need_who の目的 × 相手の文（ラベルの向き pid）。目的の状態を、確かめの後のラベルの A の組で決める（5 回目）。
+    縛りの目的（bound_for。指示書81 追補1 §3-3）は B の組で、resolves だけを使う。"""
     A = {a["id"]: a for a in atoms}
     out = []
-    for order, p in enumerate(AT.purposes_of(F, META, need_who)):
-        side_ids = AT.side_ids_of(atoms, need_who, p)
+    for order, p in enumerate(PR.purposes(atoms, F, META, need_who, bound_for)):
+        side_ids = p["side_ids"]
+        shown = PR.BOUND_USE if p.get("bound") else SHOWN_LINKS
         mine = [v for v in labels.values() if v["cand"]["dir"] == pid and v["cand"]["left"] in side_ids]
         elements = []
         for v in sorted(mine, key=lambda v: v["cand"]["pair"]):
-            if v["cand"]["cell"] != "A":
+            if v["cand"]["cell"] != p["cell"]:
                 continue
             L, R = A[v["cand"]["left"]], A[v["cand"]["right"]]
             rel = "R4" if v["final"] == "same_interest" else REL5.get(R.get("basis"))
-            if v["final"] in SHOWN_LINKS and rel:
+            if v["final"] in shown and rel:
                 elements.append({"need_ref": card_ref(L["field"], viewer_who), "must": bool(META.get(L["field"].split("#")[0], {}).get("必須")),
                                  "need_quote": L["text"], "offer_ref": card_ref(R["field"], viewer_who), "offer_quote": R["text"], "relation": rel})
         covered = {e["need_ref"] for e in elements}
@@ -78,7 +87,7 @@ def base_purposes(need_who, viewer_who, pid, labels, atoms, F, META):
             a = A[aid]
             if not a["field"].startswith(f"{need_who}.necessity."):
                 continue
-            if not any(v["cand"]["left"] == aid and v["final"] in SHOWN_LINKS for v in mine):
+            if not any(v["cand"]["left"] == aid and v["final"] in shown for v in mine):
                 unknown.append({"need_ref": card_ref(a["field"], viewer_who), "need_quote": a["text"]})
         side = "viewer" if need_who == viewer_who else "target"
         out.append({"ref": f"{side}.purpose.p{p['n']}", "order": order, "number": order + 1, "title": p["title"], "kind": p["kind"],
@@ -146,9 +155,29 @@ def select(raw, meta, atoms, names):
     return res
 
 
+def strip_ids(t, counter=None):
+    """① の中の部品・組・候補の番号を、括弧ごと機械で消す。消した数を counter["ids_removed"] に足す（数だけ）。"""
+    t = str(t or "")
+    n = 0
+    for rx in (ID_BRACKETS, ID_BARE):
+        n += sum(len(re.findall(_ID, m)) for m in rx.findall(t))
+        t = rx.sub("", t)
+    if n:
+        t = re.sub(r"[ 　]{2,}", " ", t)
+        t = re.sub(r"[ 　]+(?=[、。，．）)])", "", t)
+        t = re.sub(r"(?<=[（(])[ 　]+", "", t)
+        t = re.sub(r"[、，]{2,}", "、", t)
+        t = re.sub(r"(^|(?<=。))[ 　、，]+", "", t)
+        t = re.sub(r"[、，]+(?=[。])", "", t)
+        t = re.sub(r"[（(]\s*[）)]", "", t)
+    if counter is not None:
+        counter["ids_removed"] = counter.get("ids_removed", 0) + n
+    return t
+
+
 def fix_form(t, counter=None):
-    """形だけの機械の直し：括弧のない N・O を {N}・{O} に、文末に「。」が無ければ足す。"""
-    t = str(t or "").strip()
+    """形だけの機械の直し：番号を消す（strip_ids）・括弧のない N・O を {N}・{O} に、文末に「。」が無ければ足す。"""
+    t = strip_ids(t, counter).strip()
     n = len(BARE.findall(t))
     if counter is not None:
         counter["bare_no"] = counter.get("bare_no", 0) + n
@@ -167,7 +196,7 @@ def element(pair, atoms_by_id, META, viewer_who):
             "need_quote": L["text"], "offer_ref": card_ref(R["field"], viewer_who), "offer_quote": R["text"], "relation": rel}
 
 
-def purposes_from(sel, meta, pairs, base, atoms, META, viewer_who, need_title, counter=None):
+def purposes_from(sel, meta, pairs, base, atoms, META, viewer_who, need_title, counter=None, bound_title=""):
     """目的の状態は base のまま。要素・① の文・分からないことを、選ぶ段の結果から入れる（6 回目）。"""
     A = {a["id"]: a for a in atoms}
     out = []
@@ -177,6 +206,8 @@ def purposes_from(sel, meta, pairs, base, atoms, META, viewer_who, need_title, c
         s = sel[order[i]]
         if order[i] == "N.need":
             q["title"] = need_title
+        if order[i] == "N.bound":
+            q["title"] = bound_title
         if s["ok"] and s["chosen"]:
             q["elements"] = [element(pairs[c], A, META, viewer_who) for c in s["chosen"]]
             idx = {c: k for k, c in enumerate(s["chosen"])}
@@ -186,6 +217,9 @@ def purposes_from(sel, meta, pairs, base, atoms, META, viewer_who, need_title, c
                     if idx[str(c)] not in cites:
                         cites.append(idx[str(c)])
             q["meaning"] = {"text": "".join(fix_form(m.get("text"), counter) for m in s["meaning"]), "cites": cites or [0]}
+            ends = [x for x in re.split(r"(?<=。)", q["meaning"]["text"]) if x.strip()]
+            if counter is not None and any(not x.strip().endswith(X.PIPELINE_MEANING_END) for x in ends):
+                counter["meaning_end_ng"] = counter.get("meaning_end_ng", 0) + 1     # 確かめ（X.check）で出さない
         else:
             q["elements"] = []
             msg = "この目的については、組を選べませんでした。" if not s["ok"] else (str(s["why_not"] or "").strip() or "この目的については、選べる組がありませんでした。")
@@ -197,14 +231,17 @@ def purposes_from(sel, meta, pairs, base, atoms, META, viewer_who, need_title, c
     return out
 
 
-def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, label_sha, select_sha, counter=None, generation=None):
+def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, label_sha, select_sha, counter=None, generation=None,
+              bound_for=()):
     """people: {"A": {"name", "tag", "has_purposes"}, "B": …}。sel: {"A_need": select の結果, "B_need": …}。
-    generation: カードの generation の model・revision・decoding（無ければ 5・6 回目の値）。"""
+    generation: カードの generation の model・revision・decoding（無ければ 5・6 回目の値）。
+    bound_for: 縛りの目的を足す人（目的の欄が無い人。スイッチを入れたときだけ。指示書81 追補1 §3-3）。"""
     target_who = "B" if viewer_who == "A" else "A"
     fwd_lab, rev_lab = ("N_by_O", "O_by_N") if viewer_who == "A" else ("O_by_N", "N_by_O")
     fwd_sel, rev_sel = f"{viewer_who}_need", f"{target_who}_need"
-    base_f = base_purposes(viewer_who, viewer_who, fwd_lab, labels, atoms, F, META)
-    base_r = base_purposes(target_who, viewer_who, rev_lab, labels, atoms, F, META)
+    base_f = base_purposes(viewer_who, viewer_who, fwd_lab, labels, atoms, F, META, bound_for)
+    base_r = base_purposes(target_who, viewer_who, rev_lab, labels, atoms, F, META, bound_for)
+    has_bound = tuple(w for w in bound_for if any(p.get("bound") for p in PR.purposes(atoms, F, META, w, bound_for)))
     tag = {w: people[w]["tag"] for w in ("A", "B")}
     nec = {w: (tag[w] if people[w]["has_purposes"] else None) for w in ("A", "B")}
     card = {"schema_version": X.SCHEMA_VERSION, "relation_rule_version": X.RELATION_RULE_VERSION,
@@ -216,11 +253,12 @@ def make_card(viewer_who, people, F, META, atoms, labels, sel, meta, pairs, labe
                            "revision": (generation or {}).get("revision", REVISION),
                            "decoding": dict((generation or {}).get("decoding") or DECODING)},
             "target_has_purposes": people[target_who]["has_purposes"], "purposes": base_f, "reverse_purposes": base_r,
-            "citations": citations(F, viewer_who)}
+            "citations": citations(F, viewer_who, has_bound)}
+    bt = {w: f"{people[w]['name']} さんの縛られているものから見た、{people['B' if w == 'A' else 'A']['name']} さん" for w in ("A", "B")}
     card["purposes"] = purposes_from(sel[fwd_sel], meta[fwd_sel], pairs, base_f, atoms, META, viewer_who,
-                                     f"{people[viewer_who]['name']} さんが求めている相手", counter)
+                                     f"{people[viewer_who]['name']} さんが求めている相手", counter, bt[viewer_who])
     card["reverse_purposes"] = purposes_from(sel[rev_sel], meta[rev_sel], pairs, base_r, atoms, META, viewer_who,
-                                             f"{people[target_who]['name']} さんが求めている相手", counter)
+                                             f"{people[target_who]['name']} さんが求めている相手", counter, bt[target_who])
     card["generation"] = {**card["generation"], "prompt2_sha": select_sha}
     card["output_digest"] = X.output_digest(card)
     return card

@@ -23,7 +23,7 @@ SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 SCHEMA_VERSION = "expl-v0.7"                          # 指示書73 順3: 目的の status に open を足した（v0.4 のファイルも残す）
 SHOWN_STATUSES = ("explained", "open")                # ① と組を出す目的の状態（指示書73 §1）
 RELATION_RULE_VERSION = "rel-v0.4"                    # 指示書72: R1・R2 の述語を広げた（仕様 §14 v0.6）
-FORBIDDEN_VERSION = "forbid-v0.4"
+FORBIDDEN_VERSION = "forbid-v0.5"                      # 指示書81 追補1: 「同種」とラベルの英語の名前を足した
 QUOTE_MAX = 40
 # 説明の生成の流れ（指示書81。ラベル v0.3 → 選ぶ・まとめる v0.1）で作ったカードの印: generation.prompt1_sha がこの値。
 # このカードには、仕様 v0.4 の形の決まり（句の長さ・R1／R2 の述語・① の閉じた語彙・{O} が必ずある）を当てない。
@@ -51,6 +51,12 @@ R1_PRED = re.compile(
 R2_PRED = re.compile(r"(?:でき|関われ|手伝え)(?:る|ます)(?!ように|かも)")
 # 禁止の語（仕様 §6-6。版ごとに管理する）
 FORBIDDEN_WORDS = ("相性", "おすすめ", "オススメ", "間違いなく", "最適", "今すぐ", "してください", "しましょう", "満たせる")
+# ラベルの語（指示書81 追補1 §3-2）。英語の名前は大文字・小文字を区別しない
+LABEL_WORDS = ("同種", "same_kind", "relational", "partial", "same_interest", "topic_only", "irrelevant", "unclear",
+               "resolves", "eases", "worsens", "constrains")
+FORBIDDEN_WORDS = FORBIDDEN_WORDS + LABEL_WORDS
+# 流れのカード（指示書81 追補1 §3-2）の ① の各文の終わり（言い方を根拠より強くしない）
+PIPELINE_MEANING_END = "可能性があります。"
 CONTACT = re.compile(r"https?://|www\.|[\w.+-]+@[\w-]+\.[\w.-]+|\d{2,4}-\d{2,4}-\d{3,4}")
 # ① の閉じた語彙（仕様 §4-3・§12-4 の 11）: どの文も「〜可能性があります。」で終わる
 MEANING_END = ("になれる可能性があります。", "に関われる可能性があります。")
@@ -126,7 +132,8 @@ def _belongs(need_ref, purpose_ref):
 
 
 def _forbidden(text):
-    return [w for w in FORBIDDEN_WORDS if w in text] + (["連絡先・URL"] if CONTACT.search(text) else [])
+    low = text.lower()
+    return [w for w in FORBIDDEN_WORDS if w in text or (w.isascii() and w in low)] + (["連絡先・URL"] if CONTACT.search(text) else [])
 
 
 def is_pipeline(card):
@@ -151,6 +158,8 @@ def _check_meaning(meaning, kept, purpose, pipeline=False):
     sentences = [s for s in re.split(r"(?<=。)", text) if s.strip()]
     if not sentences or (not pipeline and any(not s.endswith(MEANING_END) for s in sentences)):
         why.append("① の文の終わりが閉じた語彙に無い")
+    elif pipeline and any(not s.strip().endswith(PIPELINE_MEANING_END) for s in sentences):
+        why.append("① の文の終わりが「可能性があります。」でない")
     quotes = "".join(e["need_quote"] + e["offer_quote"] for i, e in enumerate(purpose["elements"]) if i in cites)
     digits = set(re.findall(r"[0-9０-９]+", text.replace("{N}", "").replace("{O}", "")))
     if any(d not in quotes and d not in purpose["title"] for d in digits):
@@ -180,7 +189,9 @@ def check(card, names=()):
             kept, elements = {}, []
             for i, e in enumerate(p["elements"]):
                 why = []
-                if not (_belongs(e["need_ref"], p["ref"]) or (pipe and e["need_ref"] == p["ref"])):   # 流れのカードは目的の文そのものも要素
+                # 流れのカードは、目的の文そのもの・（目的の欄が無い人の）縛られているもの（指示書81 追補1 §3-3）も要素
+                own_bound = pipe and e["need_ref"] == f"{p['ref'].split('.')[0]}.state.縛られているもの"
+                if not (_belongs(e["need_ref"], p["ref"]) or (pipe and e["need_ref"] == p["ref"]) or own_bound):
                     why.append("ほかの目的の要素（補充しない）")
                 o_side_ref, o_kind, _ = _side_parts(e["offer_ref"])
                 if o_side_ref != o_side or o_kind not in ("offer", "state", "interest"):

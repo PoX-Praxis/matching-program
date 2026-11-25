@@ -37,10 +37,11 @@ n_cpu_moe = 0               # 主メモリに置く専門家（MoE）の層の�
 
 [prompts]
 label_sha256 = "02ec1ca8362431e8caafd0dd59c62e461e532e53ec5632f4d16beb268c7e9f6e"    # prompt_label_v0.3
-select_sha256 = "19e818fb98ac905b4e59803c39b6310df0e3c38997e0976206bb6382b8b2022b"   # prompt_select_v0.1
+select_sha256 = "b767abf2c302810b807289562a0f2050399b5af8490a13ab3f69f9bc0d223e70"   # prompt_select_v0.2（指示書81 追補1 §3-2。v0.1 は 19e818fb…）
 
 [pipeline]
 cells = "A"                 # 切る候補（EXPLAIN_CELLS=A）。B・C の候補を作るコードは残し、ここで切る
+bound_for_no_purpose = false  # 目的の欄が無い人の縛り（足りないもの）× 相手の力（resolves だけ）。EXPLAIN_BOUND_FOR_NO_PURPOSE で入れる
 
 [hf_jobs]
 flavor = "h200"

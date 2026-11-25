@@ -55,7 +55,7 @@ def fake_answer(prompt):
         for block in re.split(r"\n\n(?=## 目的 )", prompt[prompt.find("## 目的 "):]):
             pid = PURPOSE.search(block).group(1)
             ps = PAIR.findall(block)
-            out.append({"purpose_id": pid, "chosen": ps[:1], "meaning": [{"text": "{O}の経験は、{N}の目的に関われます", "cites": ps[:1]}] if ps else [],
+            out.append({"purpose_id": pid, "chosen": ps[:1], "meaning": [{"text": "{O}の経験は、{N}の目的に関われる可能性があります", "cites": ps[:1]}] if ps else [],
                         "unknown": [], "why_not": None if ps else "組がありません。"})
         return "選ぶ組を考えた。" * 2, json.dumps({"purposes": out}, ensure_ascii=False)
     return "", "了解"
@@ -128,7 +128,9 @@ def runs(server, specs):
 def test_t558_prompts_unchanged(tmp_path):
     for path, sha in ((PR.LABEL_FILE, PR.LABEL_SHA256), (PR.SELECT_FILE, PR.SELECT_SHA256)):
         assert hashlib.sha256(open(path, "rb").read()).hexdigest() == sha
-    assert PR.LABEL_SHA256.startswith("02ec1ca8") and PR.SELECT_SHA256.startswith("19e818fb")
+    assert PR.LABEL_SHA256.startswith("02ec1ca8") and PR.SELECT_SHA256.startswith("b767abf2")   # select v0.2（指示書81 追補1）
+    assert hashlib.sha256(open(PR.SELECT_FILE_V01, "rb").read()).hexdigest() == PR.SELECT_SHA256_V01   # v0.1 は残す
+    assert PR.SELECT_SHA256_V01.startswith("19e818fb")
     assert PR.placeholders(PR.LABEL_FILE) == ["@@CANDS@@", "@@DIRECTION@@", "@@N_ATOMS@@", "@@O_ATOMS@@"]
     assert PR.placeholders(PR.SELECT_FILE) == ["@@N_ATOMS@@", "@@O_ATOMS@@", "@@PURPOSES_AND_PAIRS@@"]
     bad = tmp_path / "p.txt"

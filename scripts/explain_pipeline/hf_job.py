@@ -32,7 +32,7 @@ SERVE_ENV = "VLLM_BATCH_INVARIANT=1"
 CODE = [os.path.join("scripts", "explain_pipeline", f) for f in
         ("__init__.py", "fields.py", "atoms.py", "prompts.py", "checks.py", "card.py", "endpoint.py", "runner.py", "vllm_log.py", "job_main.py")]
 CODE += [os.path.join("src", f) for f in ("match_table.py", "explanation.py", "explanation_gen.py")]
-CODE += [os.path.join("docs", "prompts", f) for f in ("explanation_label_v0.3.txt", "explanation_select_v0.1.txt")]
+CODE += [os.path.join("docs", "prompts", f) for f in ("explanation_label_v0.3.txt", "explanation_select_v0.1.txt", "explanation_select_v0.2.txt")]
 DATA_DIRS = [os.path.join("data", "match_tables")]
 
 

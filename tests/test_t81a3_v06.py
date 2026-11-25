@@ -7,6 +7,7 @@
 589 保存した出力を入れる：記録と同じなら入れる（版の鍵 explain-v06・元の記録の sha256）。違えば違う位置と種類だけを返し、入れない
 590 目的の欄が無い人の見出し：「〇〇が求めている相手『〇〇さんが求めている相手』」の二重にしない（求めている相手の文を出す）
 591 運営の写し（/ops/explanations/export）：鍵と許可リストの組だけ。いまの版・いまの入力の向き 2 つと入力を返す
+592 入力の口（/ops/explanations/input）：鍵と許可リストの組だけ。説明の入力（生成に渡す形）を返す。書き込まない・モデルを動かさない
 """
 import json
 import os
@@ -332,6 +333,39 @@ def test_t591_export(monkeypatch):
     assert d["people"]["x1"]["input"] == spec["a"] and d["directions"][0]["meta"]["record"]["counts"]["cands"]
     monkeypatch.setenv(RT.VERSION_ENV, "p81")                                                  # ほかの版の向きは返さない
     assert c.post("/ops/explanations/export", json={}, headers=h).get_json()["directions"] == []
+
+
+# ── 592 入力の口 ───────────────────────────────────────────────────────────────────────
+def test_t592_input_route(monkeypatch):
+    import app as appmod
+    import schema
+    import sqlite3
+    appmod.DB = os.path.join(tempfile.mkdtemp(), "t.db")
+    schema.init(appmod.DB)
+    appmod.app.config["TESTING"] = True
+    spec = SY.pairs()[0]
+    monkeypatch.setattr(appmod, "_explain_input", {"x1": spec["a"], "x2": spec["b"]}.get)
+    monkeypatch.setattr(appmod, "_plain_name", {"x1": "架空P1", "x2": "架空P2"}.get)
+    monkeypatch.setenv("POX_EXPLANATION_ALLOWLIST", "x1+x2")
+    monkeypatch.setattr(S, "_resolve_subject", lambda h, db_path="pox.db": h)
+    called = []
+    monkeypatch.setattr(XSV, "drain", lambda *a, **k: called.append("drain"))
+    monkeypatch.setattr(XSV, "replay", lambda *a, **k: called.append("replay"))
+    c = appmod.app.test_client()
+    assert c.post("/ops/explanations/input", json={}).status_code == 404                      # 鍵が無ければ閉じている
+    monkeypatch.setenv(XSV.DRAIN_TOKEN_ENV, DRAIN)
+    h = {XSV.DRAIN_HEADER: DRAIN}
+    assert c.post("/ops/explanations/input", json={}, headers={XSV.DRAIN_HEADER: "x" * 40}).status_code == 404
+    assert c.post("/ops/explanations/input", json={"a": "x1", "b": "x3"}, headers=h).status_code == 403
+    def counts():
+        con = sqlite3.connect(appmod.DB)
+        names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        return {n: con.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0] for n in names}
+    before = counts()
+    d = c.post("/ops/explanations/input", json={}, headers=h).get_json()
+    assert d["order"] == ["x1", "x2"] and d["people"]["x1"]["input"] == spec["a"] and d["people"]["x2"]["input"] == spec["b"]
+    assert d["people"]["x2"]["name"] == "架空P2"
+    assert counts() == before and not called                                                    # 書き込まない・作らない
 
 
 # ── 590 目的の欄が無い人の見出し ──────────────────────────────────────────────────────────

@@ -81,6 +81,10 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 同じ後段（追補1）に通すと、v06 の ① は 2/2 が出る。81 は 0/2（文の終わりの確かめ あり）・1/2（なし）。悪くなったのは 81 の出力の側（言い切り・ラベルの語・組の選びが v06 と同じ 0）
   - 手元の一式は `local/t81_addendum2/`（鍵の照合を外すのと型の ① は手元だけ。本番は変えていない）。画面写しは `local/kaoru_pa_screen/t81_addendum2/`
   - 決定ログ 2026-11-24 はまだ受け取っていない（プロジェクトのファイルがこの環境から開けない）
+- [ ] 指示書81 追補3（v06 の条件を本番の版 explain-v06 にする）は本番の比べで止まった（`docs/reports/81_addendum3.md` §3-2）。本番の既定は explain-v06（PR #228）。p81 は `POX_EXPLAIN_VERSION=p81`
+  - 本番の入力が v06 の記録と違う（入力 2/2・部品 69→57・候補 178→88・B・C が 0）。保存出力は入れていない。どうするかは KAORU が決める
+  - 比べて入れる口は `/ops/explanations/replay`（drain の鍵・モデルは動かさない）。送る中身（記録と出力）は `local/t81_addendum3/request.json` だけ
+  - HF Jobs のジョブは `POX_EXPLAIN_JOBS_PERMITTED=1` のときだけ起動する
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

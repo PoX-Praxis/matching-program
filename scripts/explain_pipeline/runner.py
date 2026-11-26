@@ -51,9 +51,10 @@ def _call(endpoint, stage, pid, prompt, max_tokens, origin, clock):
 
 
 def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, origin=0.0, clock=time.time, cells=("A", "B", "C"),
-             label_sha=None, select_sha=None, bound_for_no_purpose=False):
+             label_sha=None, select_sha=None, bound_for_no_purpose=False, strip_label_words=False):
     """1 組。spec: {"id", "a", "b", "people": {"A": {"name", "tag"}, "B": …}, "names": [表示名…]}。
     bound_for_no_purpose: 目的の欄が無い人の縛りの目的を足す（指示書81 追補1 §3-3。既定は切る）。
+    strip_label_words: ① からラベルの語を機械で消してから確かめる（2026-11-26。既定は切る）。
     返り値: (outputs, record)。outputs には文、record には数と時刻だけ。"""
     rec = {"pair": spec["id"], "t_start": round(clock() - origin, 3), "machine": {}, "requests": [], "counts": {}}
 
@@ -103,9 +104,10 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
         rec["requests"].append(rr)
 
     def cards():
-        sel = {pid: CD.select(out["select"][pid]["text"], meta[pid], atoms, spec.get("names") or ()) for pid in SELECT_IDS}
-        people = {w: {**spec["people"][w], "has_purposes": FL.has_purposes(spec["a" if w == "A" else "b"])} for w in ("A", "B")}
         fix = {}
+        sel = {pid: CD.select(out["select"][pid]["text"], meta[pid], atoms, spec.get("names") or (), strip_labels=strip_label_words,
+                              counter=fix) for pid in SELECT_IDS}
+        people = {w: {**spec["people"][w], "has_purposes": FL.has_purposes(spec["a" if w == "A" else "b"])} for w in ("A", "B")}
         cs = {w: CD.make_card(w, people, F, META, atoms, labels, sel, meta, pairs, label_sha or PR.LABEL_SHA256,
                               select_sha or PR.SELECT_SHA256, fix, generation=spec.get("generation"), bound_for=bound_for)
               for w in ("A", "B")}
@@ -114,7 +116,7 @@ def run_pair(spec, endpoint, direction_parallel=False, max_tokens=MAX_TOKENS, or
     sel, out["cards"], fix = machine("card", cards)
     rec["counts"]["chosen"] = {pid: sum(len(s["chosen"]) for s in sel[pid].values()) for pid in SELECT_IDS}
     rec["counts"]["select_ok"] = {pid: sum(1 for s in sel[pid].values() if s["ok"]) for pid in SELECT_IDS}
-    rec["counts"]["form_fixes"] = fix            # bare_no・add_period・ids_removed（消した番号の数）・meaning_end_ng
+    rec["counts"]["form_fixes"] = fix            # bare_no・add_period・ids_removed（消した番号の数）・meaning_end_ng・label_words_removed
     rec["counts"]["bound_for"] = list(bound_for)
     rec["t_end"] = round(clock() - origin, 3)
     return out, rec

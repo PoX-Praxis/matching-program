@@ -174,7 +174,8 @@ def make_pair(a, b, ctx, ep, cfg):
     t0 = time.time()
     out, rec = RN.run_pair(spec, ep, direction_parallel=False, max_tokens=int(cfg["generation"]["max_tokens"]), origin=t0,
                            clock=time.time, cells=RT.cells(cfg), label_sha=cfg["prompts"]["label_sha256"],
-                           select_sha=cfg["prompts"]["select_sha256"], bound_for_no_purpose=RT.bound_for_no_purpose(cfg))
+                           select_sha=cfg["prompts"]["select_sha256"], bound_for_no_purpose=RT.bound_for_no_purpose(cfg),
+                           strip_label_words=RT.strip_label_words(cfg))
     errors = [q["error"] for q in rec["requests"] if q["error"]]
     if errors:
         return {"status": "pending", "reason": errors[0]}          # 推論先に届かない・切れた：予定に残す
@@ -526,7 +527,8 @@ def replay(a, b, ctx, expected, outputs, source_sha256=None, store_it=False, db_
     ep = _Replay(outputs)
     res_out, rec = RN.run_pair(spec, ep, max_tokens=int(cfg["generation"]["max_tokens"]), cells=RT.cells(cfg),
                                label_sha=cfg["prompts"]["label_sha256"], select_sha=cfg["prompts"]["select_sha256"],
-                               bound_for_no_purpose=RT.bound_for_no_purpose(cfg))
+                               bound_for_no_purpose=RT.bound_for_no_purpose(cfg),
+                           strip_label_words=RT.strip_label_words(cfg))
     if ep.i != 4:
         out.update(same=False, diffs=[{"kind": "出力の数", "used": ep.i}])
         return out

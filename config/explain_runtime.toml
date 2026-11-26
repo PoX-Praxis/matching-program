@@ -46,6 +46,7 @@ select_sha256 = "b767abf2c302810b807289562a0f2050399b5af8490a13ab3f69f9bc0d223e7
 [pipeline]
 cells = "A"                 # 切る候補（EXPLAIN_CELLS=A）。B・C の候補を作るコードは残し、ここで切る
 bound_for_no_purpose = false  # 目的の欄が無い人の縛り（足りないもの）× 相手の力（resolves だけ）。EXPLAIN_BOUND_FOR_NO_PURPOSE で入れる
+strip_label_words = false     # ① からラベルの語を機械で消す（2026-11-26）。EXPLAIN_STRIP_LABEL_WORDS で入れる。切のときの版の鍵は前と同じ
 
 [hf_jobs]
 flavor = "h200"

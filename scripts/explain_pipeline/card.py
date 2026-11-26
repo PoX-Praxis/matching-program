@@ -28,6 +28,15 @@ BARE = re.compile(r"(?<![A-Za-z{])([NO])(?![A-Za-z}])")
 _ID = r"(?:\{[NO]\}|[NOPC])[0-9０-９]{2,3}"
 ID_BRACKETS = re.compile(r"[（(［\[〔【]\s*" + _ID + r"(?:\s*[・、,，/／]\s*" + _ID + r")*\s*[）)］\]〕】]")
 ID_BARE = re.compile(r"(?<![A-Za-z0-9])" + _ID + r"(?:\s*[・、,，/／]\s*" + _ID + r")*(?![0-9０-９])")
+# ① に入ったラベルの語（forbid-v0.5 のラベルの語だけ。2026-11-26）を機械で消す。語の前後の対のかっこ・かぎかっこごと消し、
+# 語（かぎかっこで囲んだ語を含む）のすぐ後ろの助詞 1 字（の・な・で・に・と・が・は・を・も）まで消す。読点などは残す。
+# 英語の名前は大文字・小文字を区別せず、ほかの英字に続く・続かれるときは語と見なさない。文は書き直さない
+LABEL_PARTICLES = "のなでにとがはをも"
+_LW = "(?:" + "|".join(re.escape(w) for w in sorted(X.LABEL_WORDS, key=len, reverse=True)) + ")"
+_LW_B = r"(?<![A-Za-z0-9_])" + _LW + r"(?![A-Za-z0-9_])"
+# かっこ書き（（…）・(…)）は前の語への添え書きなので、後ろの助詞は前の語のもの：かっこごと消し、助詞は残す
+LABEL_WORD_RE = re.compile(r"（" + _LW_B + r"）|\(" + _LW_B + r"\)|(?:「" + _LW_B + r"」|『" + _LW_B + r"』|“" + _LW_B + r"”|" + _LW_B + r")"
+                           + "[" + LABEL_PARTICLES + "]?", re.I)
 
 
 def card_ref(fk, viewer_who):
@@ -117,8 +126,9 @@ def bad_text(t, names):
     return out
 
 
-def select(raw, meta, atoms, names):
-    """選ぶ段のプロンプト 1 つの出力 → 目的ごとの {chosen, meaning, unknown, why_not, ok, why}。"""
+def select(raw, meta, atoms, names, strip_labels=False, counter=None):
+    """選ぶ段のプロンプト 1 つの出力 → 目的ごとの {chosen, meaning, unknown, why_not, ok, why}。
+    strip_labels（既定は切・2026-11-26）：確かめの前に、① と why_not からラベルの語を機械で消す（目的ごとの数を label_words_removed に）。"""
     A = {a["id"]: a for a in atoms}
     inv = {v: k for k, v in meta["num"].items()}
     v = parse_or_none(raw)
@@ -138,6 +148,13 @@ def select(raw, meta, atoms, names):
         if any(c not in p["pairs"] for c in chosen):
             why.append("chosen に入力の組に無い番号")
         meaning = [m for m in (it or {}).get("meaning") or [] if isinstance(m, dict)]
+        removed = {}
+        if strip_labels:
+            meaning = [{**m, "text": strip_label_words(m.get("text"), removed)} for m in meaning]
+            if it is not None and it.get("why_not"):
+                it = {**it, "why_not": strip_label_words(it.get("why_not"), removed)}
+            if counter is not None:
+                counter["label_words_removed"] = counter.get("label_words_removed", 0) + removed.get("label_words_removed", 0)
         for m in meaning:
             if any(str(c) not in chosen for c in m.get("cites") or []) or not m.get("cites"):
                 why.append("cites が chosen の外・空")
@@ -151,8 +168,21 @@ def select(raw, meta, atoms, names):
             else:
                 unk_bad += 1
         res[p["purpose_id"]] = {"chosen": chosen, "meaning": meaning, "unknown": unk, "unknown_bad": unk_bad,
-                                "why_not": (it or {}).get("why_not"), "ok": not why, "why": sorted(set(why)), "n_pairs": len(p["pairs"])}
+                                "why_not": (it or {}).get("why_not"), "ok": not why, "why": sorted(set(why)), "n_pairs": len(p["pairs"]),
+                                "label_words_removed": removed.get("label_words_removed", 0)}
     return res
+
+
+def _tidy(t):
+    """消した後に残る空白・読点の重なり・空のかっこを詰める（語は足さない）。"""
+    t = re.sub(r"[ 　]{2,}", " ", t)
+    t = re.sub(r"[ 　]+(?=[、。，．）)])", "", t)
+    t = re.sub(r"(?<=[（(])[ 　]+", "", t)
+    t = re.sub(r"[、，]{2,}", "、", t)
+    t = re.sub(r"(^|(?<=。))[ 　、，]+", "", t)
+    t = re.sub(r"[、，]+(?=[。])", "", t)
+    t = re.sub(r"[（(]\s*[）)]", "", t)
+    return t
 
 
 def strip_ids(t, counter=None):
@@ -163,15 +193,20 @@ def strip_ids(t, counter=None):
         n += sum(len(re.findall(_ID, m)) for m in rx.findall(t))
         t = rx.sub("", t)
     if n:
-        t = re.sub(r"[ 　]{2,}", " ", t)
-        t = re.sub(r"[ 　]+(?=[、。，．）)])", "", t)
-        t = re.sub(r"(?<=[（(])[ 　]+", "", t)
-        t = re.sub(r"[、，]{2,}", "、", t)
-        t = re.sub(r"(^|(?<=。))[ 　、，]+", "", t)
-        t = re.sub(r"[、，]+(?=[。])", "", t)
-        t = re.sub(r"[（(]\s*[）)]", "", t)
+        t = _tidy(t)
     if counter is not None:
         counter["ids_removed"] = counter.get("ids_removed", 0) + n
+    return t
+
+
+def strip_label_words(t, counter=None):
+    """① の中のラベルの語（X.LABEL_WORDS）を機械で消す（LABEL_WORD_RE の規則）。消した数を counter["label_words_removed"] に足す。"""
+    t = str(t or "")
+    n = len(LABEL_WORD_RE.findall(t))
+    if n:
+        t = _tidy(LABEL_WORD_RE.sub("", t))
+    if counter is not None:
+        counter["label_words_removed"] = counter.get("label_words_removed", 0) + n
     return t
 
 

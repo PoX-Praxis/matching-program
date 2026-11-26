@@ -38,6 +38,7 @@ select_sha256 = "19e818fb98ac905b4e59803c39b6310df0e3c38997e0976206bb6382b8b2022
 [pipeline]
 cells = "ABC"               # 候補 A・B・C（両方向）
 bound_for_no_purpose = false
+strip_label_words = false     # ① からラベルの語を機械で消す（2026-11-26）。EXPLAIN_STRIP_LABEL_WORDS で入れる。切のときの版の鍵は前と同じ
 
 [hf_jobs]
 flavor = "h200"

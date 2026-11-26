@@ -8,6 +8,8 @@
 590 目的の欄が無い人の見出し：「〇〇が求めている相手『〇〇さんが求めている相手』」の二重にしない（求めている相手の文を出す）
 591 運営の写し（/ops/explanations/export）：鍵と許可リストの組だけ。いまの版・いまの入力の向き 2 つと入力を返す
 592 入力の口（/ops/explanations/input）：鍵と許可リストの組だけ。説明の入力（生成に渡す形）を返す。書き込まない・モデルを動かさない
+593 vLLM のジョブの起動スクリプトを、bash で本当に動かす（vllm の代わりの小さなコマンドと、版だけを持つ偽の vllm モジュール）。
+    2026-11-25 の失敗（版の確かめの行が SyntaxError）が起きないこと・版が違えば起動しないこと・動いた時間の上限（timeout）
 """
 import json
 import os
@@ -162,7 +164,7 @@ def test_t587_vllm_job(tmp_path):
     for a in ("--served-model-name gpt-oss-120b", "--host 127.0.0.1 --port 8000", "--max-model-len 40960", "--seed 0",
               "--gpu-memory-utilization 0.9", "--no-enable-prefix-caching", "--max-num-seqs 1"):
         assert a in serve
-    assert "== '0.33.0'" in script and "> /tmp/server.log" in script
+    assert '== "0.33.0"' in script and "> /tmp/server.log" in script                          # 版は二重引用符（593 で bash で動かす）
     # 中継：鍵が無い・違うなら 401。X-Api-Key か Bearer が同じなら上流に渡す
     up = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
     threading.Thread(target=up.serve_forever, daemon=True).start()
@@ -385,3 +387,61 @@ def test_t590_no_purpose_heading():
                            X.T, X.V, {}, reverse=True, has_purposes=False)
     head = html[:html.index("</h4>")]
     assert head.count("求めている相手") == 1 and f"『{X._e(rp['title'])}』" in head
+
+
+# ── 593 vLLM のジョブの起動スクリプトを bash で動かす ─────────────────────────────────────────
+def _fake_env(tmp_path, version):
+    bin_dir, mod_dir = tmp_path / "bin", tmp_path / "py" / "vllm"
+    bin_dir.mkdir()
+    mod_dir.mkdir(parents=True)
+    (mod_dir / "__init__.py").write_text(f"__version__ = {version!r}\n", encoding="utf-8")
+    stub = bin_dir / "vllm"                     # vllm の代わり：引数と VLLM_BATCH_INVARIANT を書いて、すぐ終わる
+    stub.write_text(f'#!/bin/bash\necho "BI=$VLLM_BATCH_INVARIANT $*" > {tmp_path}/served.txt\nexit 0\n', encoding="utf-8")
+    stub.chmod(0o755)
+    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "PYTHONPATH": str(tmp_path / "py"), HJ.KEY_ENV: "k" * 40}
+
+
+def _run_script(script, env):
+    import signal
+    p = subprocess.Popen(["bash", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         start_new_session=True)
+    try:
+        out, _ = p.communicate(timeout=60)
+    finally:
+        try:
+            os.killpg(p.pid, signal.SIGTERM)     # 裏で動かした鍵の中継も止める
+        except ProcessLookupError:
+            pass
+    return p.returncode, out
+
+
+def test_t593_vllm_job_script_runs(tmp_path):
+    cfg = RT.load()
+    cfg["engine"]["port"] = _free_port()
+    script = HJ.job_script(cfg)
+    assert subprocess.run(["bash", "-n", "-c", script]).returncode == 0                       # 文法
+    rc, out = _run_script(script, _fake_env(tmp_path, "0.33.0"))
+    assert rc == 0 and "[x] start" in out and "[x] vllm 0.33.0" in out and "[x] server exited rc=0" in out
+    assert "SyntaxError" not in out
+    served = (tmp_path / "served.txt").read_text(encoding="utf-8")
+    assert served.startswith("BI=1 serve openai/gpt-oss-120b") and "--no-enable-prefix-caching" in served and "--max-num-seqs 1" in served
+    assert "timeout" not in script.split("vllm serve")[0].splitlines()[-1]                     # 上限は既定では付けない
+
+
+def test_t593_wrong_version_stops(tmp_path):
+    cfg = RT.load()
+    cfg["engine"]["port"] = _free_port()
+    rc, out = _run_script(HJ.job_script(cfg), _fake_env(tmp_path, "0.34.0"))
+    assert rc != 0 and "[x] vllm 0.34.0" in out and "SyntaxError" not in out
+    assert not (tmp_path / "served.txt").exists() and "server exited" not in out              # 版が違えば起動しない
+
+
+def test_t593_run_cap(tmp_path):
+    cfg = RT.load()
+    cfg["engine"]["port"] = _free_port()
+    cfg["hf_jobs"]["max_run_seconds"] = 3300
+    script = HJ.job_script(cfg)
+    line = next(x for x in script.splitlines() if "vllm serve" in x)
+    assert line.startswith("VLLM_BATCH_INVARIANT=1 timeout 3300 vllm serve ")
+    rc, out = _run_script(script, _fake_env(tmp_path, "0.33.0"))
+    assert rc == 0 and "[x] server exited rc=0" in out and (tmp_path / "served.txt").read_text(encoding="utf-8").startswith("BI=1 serve")

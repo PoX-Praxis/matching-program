@@ -112,16 +112,22 @@ def job_script_vllm(cfg):
     e = cfg["engine"]
     env = "VLLM_BATCH_INVARIANT=1 " if e["batch_invariant"] else ""
     serve = " ".join(shlex.quote(a) for a in vllm_serve_args(cfg))
+    # 版の確かめ（2026-11-25 の失敗：版の文字列の引用符が bash の中で外れて SyntaxError になった）。
+    # Python の文は shlex.quote で 1 つの引数にし、版の文字列は json.dumps で二重引用符にする
+    check = f'import sys, vllm; v = vllm.__version__; print("[x] vllm", v); sys.exit(0 if v == {json.dumps(str(e["version"]))} else 1)'
+    # 動き出してからの時間の上限（任意。[hf_jobs] max_run_seconds）。この PC の側が止まっても、ジョブの中で止まる（費用の上限）
+    cap = int((cfg.get("hf_jobs") or {}).get("max_run_seconds") or 0)
+    limit = f"timeout {cap} " if cap > 0 else ""
     return f"""set -euo pipefail
 echo "[x] start"
-python3 -c 'import sys, vllm; v = vllm.__version__; print("[x] vllm", v); sys.exit(0 if v == {e["version"]!r} else 1)'
+python3 -c {shlex.quote(check)}
 (nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1 | sed 's/^/[x] gpu /') || true
 cat > /tmp/proxy.py <<'PY'
 {PROXY_PY.strip()}
 PY
 python3 /tmp/proxy.py {int(e["port"])} {VLLM_INNER_PORT} > /tmp/proxy.log 2>&1 &
 set +e
-{env}{serve} > /tmp/server.log 2>&1
+{env}{limit}{serve} > /tmp/server.log 2>&1
 echo "[x] server exited rc=$? error_lines=$(grep -ci error /tmp/server.log)"
 """
 

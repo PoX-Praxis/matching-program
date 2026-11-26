@@ -19,7 +19,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 PATH = os.path.join(_ROOT, "config", "explain_runtime.toml")             # p81
 VERSION_ENV = "POX_EXPLAIN_VERSION"
 DEFAULT_VERSION = "explain-v06"                                          # 本番の既定（指示書81 追補3）
-VERSIONS = {"explain-v06": os.path.join(_ROOT, "config", "explain_v06.toml"), "p81": PATH}
+VERSIONS = {"explain-v06": os.path.join(_ROOT, "config", "explain_v06.toml"), "p81": PATH,
+            "explain-v07": os.path.join(_ROOT, "config", "explain_v07.toml")}           # 指示書83（選ぶ段 v0.3。既定ではない）
 PLACEMENT_ENV = {"n_gpu_layers": "POX_EXPLAIN_N_GPU_LAYERS", "n_cpu_moe": "POX_EXPLAIN_N_CPU_MOE"}
 CELLS_ENV = "EXPLAIN_CELLS"
 BOUND_ENV = "EXPLAIN_BOUND_FOR_NO_PURPOSE"      # 目的の欄が無い人の縛りの目的（指示書81 追補1 §3-3。既定は切る）
@@ -135,10 +136,10 @@ def version_id(cfg):
 
 def version_key(cfg, schema_version=None, relation_rule_version=None):
     """説明の版の鍵。モデル・エンジン・入れ物・生成の設定・プロンプト・切る候補・カードの版。置き場所と推論先は入れない。
-    explain-v06 は「explain-v06:」、p81 は「p81:」で始まる。"""
+    vLLM の版は版の名前（explain-v06・explain-v07）で、p81 は「p81:」で始まる。"""
     m, e = cfg["model"], cfg["engine"]
     if is_vllm(cfg):
-        return "explain-v06:" + _canon({"model": [m["repo"], m["revision"]],
+        return f"{version_id(cfg)}:" + _canon({"model": [m["repo"], m["revision"]],
                                          "engine": ["vllm", e["version"], image_digest(cfg), bool(e["batch_invariant"]),
                                                     bool(e["prefix_caching"]), int(e["max_num_seqs"]), int(e["max_model_len"])],
                                          "generation": decoding(cfg),

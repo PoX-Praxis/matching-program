@@ -1,0 +1,49 @@
+# 説明の生成の版 explain-v07（指示書83）。explain-v06 との違いは、選ぶ段のプロンプト（v0.3）と、ラベルの語を消すスイッチ（入）だけ。
+# 本番の既定ではない（既定は explain-v06）。POX_EXPLAIN_VERSION=explain-v07 で選ぶ。
+# 以下は explain-v06 の説明（指示書81 追補3）：
+# KAORU×PA の 5 回目（ラベル）・6 回目（選ぶ・まとめる）と同じ条件：vLLM v0.33.0・条件 B（接頭辞の使い回しなし・同時 1・
+# VLLM_BATCH_INVARIANT=1）・温度 0・seed 0・reasoning_effort medium・候補 A・B・C の両方向・ラベル v0.3・選ぶ段 v0.1。
+# 後段（番号を消す・禁止の語・呼び方と句点・安全の確かめ）は追補1 のもの。81 の版（p81）は config/explain_runtime.toml に残す。
+
+[version]
+id = "explain-v07"
+
+[model]
+name = "gpt-oss-120b"
+repo = "openai/gpt-oss-120b"                            # 公式の重み（MXFP4 の専門家・BF16 のほか）
+revision = "b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
+
+[engine]
+name = "vllm"
+version = "0.33.0"
+image = "vllm/vllm-openai:v0.33.0@sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e"
+port = 8080                 # 公開する口（鍵を確かめる中継）。vLLM は入れ物の中の 127.0.0.1:8000
+batch_invariant = true      # VLLM_BATCH_INVARIANT=1
+prefix_caching = false      # --no-enable-prefix-caching
+max_num_seqs = 1            # 同時 1
+max_model_len = 40960
+gpu_memory_utilization = 0.90
+
+[generation]
+temperature = 0
+top_p = 1
+seed = 0
+reasoning_effort = "medium"
+max_tokens = 30000
+ctx_size = 40960
+parallel = 1
+
+[prompts]
+label_sha256 = "02ec1ca8362431e8caafd0dd59c62e461e532e53ec5632f4d16beb268c7e9f6e"    # prompt_label_v0.3
+select_sha256 = "ea02fa7db399cebb032b890549d11d91d6ccb5ddce7f03539e655a3bc07abc15"   # prompt_select_v0.3（指示書83。v0.1 ＋ 決まり 5 つ・お手本 4 つ）
+
+[pipeline]
+cells = "ABC"               # 候補 A・B・C（両方向）
+bound_for_no_purpose = false
+strip_label_words = true      # ① からラベルの語を機械で消す（#233）。explain-v07 では入
+
+[hf_jobs]
+flavor = "h200"
+price_per_hour = 5.0
+timeout = "50m"
+ready_timeout_seconds = 2400

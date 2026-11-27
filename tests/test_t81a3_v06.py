@@ -44,8 +44,9 @@ DRAIN = "d" * 40
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
-    for n in (RT.VERSION_ENV, XSV.JOBS_OK_ENV, RT.CELLS_ENV, RT.BOUND_ENV, *RT.PLACEMENT_ENV.values()):
+    for n in (RT.VERSION_ENV, XSV.JOBS_OK_ENV, XSV.MONTHLY_ENV, RT.CELLS_ENV, RT.BOUND_ENV, *RT.PLACEMENT_ENV.values()):
         monkeypatch.delenv(n, raising=False)
+    monkeypatch.setenv(RT.VERSION_ENV, "explain-v06")      # このファイルは版 explain-v06 を確かめる（指示書84 で既定は explain-v07。v06 は残す）
     XSV._CFG = None
     yield
     XSV._CFG = None
@@ -73,7 +74,8 @@ def _ctx(spec):
 # ── 585 版 ─────────────────────────────────────────────────────────────────────────────
 def test_t585_versions():
     v06 = RT.load()
-    assert RT.version_of() == RT.DEFAULT_VERSION == "explain-v06" and RT.version_id(v06) == "explain-v06"
+    assert RT.version_of({}) == RT.DEFAULT_VERSION == "explain-v07"                         # 指示書84：本番の既定は explain-v07
+    assert RT.version_of() == "explain-v06" and RT.version_id(v06) == "explain-v06"          # v06 は POX_EXPLAIN_VERSION で選べる
     e = v06["engine"]
     assert (e["name"], e["version"]) == ("vllm", "0.33.0") and e["image"].endswith(
         "@sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e")
@@ -197,6 +199,7 @@ def test_t588_jobs_need_permission(monkeypatch):
     import schema
     schema.init(db)
     monkeypatch.setenv(XSV.BACKEND_ENV, "hf_jobs")
+    monkeypatch.setenv("POX_EXPLANATION_ALLOWLIST", "x1+x2")                                # 作るのは許可リストの組だけ（指示書84）
     Q.enqueue("x1", "x2", db_path=db)
     called = []
 

@@ -162,8 +162,13 @@ def job_spec(cfg, key, name="pox-explain"):
 
 
 def max_cost(cfg):
+    """1 回のジョブの費用の上限の見積もり。動き出してからの上限（max_run_seconds）があれば、それで数える。"""
     h = cfg.get("hf_jobs") or {}
-    return round(job_spec(cfg, "x")["timeoutSeconds"] / 3600 * float(h.get("price_per_hour") or 0), 3)
+    secs = job_spec(cfg, "x")["timeoutSeconds"]
+    cap = int(h.get("max_run_seconds") or 0)
+    if cap > 0:
+        secs = min(secs, cap)
+    return round(secs / 3600 * float(h.get("price_per_hour") or 0), 3)
 
 
 class Session:
@@ -177,11 +182,16 @@ class Session:
         self.record = {"flavor": (cfg.get("hf_jobs") or {}).get("flavor"), "job_id": None, "stage": None}
 
     def __enter__(self):
+        """[hf_jobs] schedule_timeout_seconds があれば、割り当て待ち（RUNNING になるまで）と起動（RUNNING の後、口が返事を
+        するまで。ready_timeout_seconds）の上限を分け、費用の見積もりは動き出してからの時間で数える（指示書84）。
+        割り当て待ちが上限を超えたら、ジョブを取り消して止める（ほかの GPU には替えない）。無ければ前のまま（作った時から数える）。"""
         t0 = self.clock()
+        h = self.cfg.get("hf_jobs") or {}
+        sched = float(h.get("schedule_timeout_seconds") or 0)
+        limit = float(h.get("ready_timeout_seconds") or 1800)
         job = self.api.run(job_spec(self.cfg, self.key, self.name))
         self.job_id = self.record["job_id"] = job["id"]
-        limit = float((self.cfg.get("hf_jobs") or {}).get("ready_timeout_seconds") or 1800)
-        url = None
+        t_run = None
         try:
             while True:
                 job = self.api.inspect(self.job_id)
@@ -189,22 +199,35 @@ class Session:
                 self.record["stage"] = st.get("stage")
                 if st.get("stage") in DONE:
                     raise RuntimeError(f"ジョブが止まった（{st.get('stage')}）")
+                if st.get("stage") == "RUNNING" and t_run is None:
+                    t_run = self.clock()
+                    self.record["t_running"] = round(t_run - t0, 1)
                 urls = st.get("exposeUrls") or []
                 if st.get("stage") == "RUNNING" and urls:
-                    if self.record.get("t_running") is None:
-                        self.record["t_running"] = round(self.clock() - t0, 1)
-                    url = urls[0]
-                    self.endpoint = EP.from_runtime(self.cfg, url, self.key)
+                    self.endpoint = EP.from_runtime(self.cfg, urls[0], self.key)
                     if self.endpoint.healthy():
                         break
-                if self.clock() - t0 > limit:
+                if sched > 0:
+                    if t_run is None and self.clock() - t0 > sched:
+                        self.record["stopped"] = "scheduling_timeout"
+                        raise TimeoutError("割り当て待ちが上限を超えた")
+                    if t_run is not None and self.clock() - t_run > limit:
+                        self.record["stopped"] = "startup_timeout"
+                        raise TimeoutError("ジョブの口が返事をしない")
+                elif self.clock() - t0 > limit:
                     raise TimeoutError("ジョブの口が返事をしない")
                 self.sleep(self.poll)
         except BaseException:
             self._stop()
+            self._t0 = (t_run if t_run is not None else self.clock()) if sched > 0 else t0   # 割り当て待ちのあいだは数えない
+            self._cost()
             raise
         self.record["startup_seconds"] = round(self.clock() - t0, 1)
-        self._t0 = t0
+        if sched > 0:
+            self.record["startup_after_running"] = round(self.clock() - t_run, 1)
+            self._t0 = t_run
+        else:
+            self._t0 = t0
         return self.endpoint
 
     def _stop(self):
@@ -214,9 +237,12 @@ class Session:
             except Exception:  # noqa: BLE001 — 止められなくても、ジョブの時間の上限で止まる
                 self.record["cancel_failed"] = True
 
-    def __exit__(self, *exc):
-        self._stop()
+    def _cost(self):
         secs = self.clock() - getattr(self, "_t0", self.clock())
         price = float((self.cfg.get("hf_jobs") or {}).get("price_per_hour") or 0)
         self.record.update(seconds=round(secs, 1), cost_usd_est=round(secs / 3600 * price, 4))
+
+    def __exit__(self, *exc):
+        self._stop()
+        self._cost()
         return False

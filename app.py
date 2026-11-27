@@ -1009,6 +1009,10 @@ def _v4_async_job(profile_id, profile_input, necessity, *, is_fallback,
             store.set_generation_status(profile_id, GEN_ERROR, error=str(e)[:500])
         except Exception:
             pass
+    # v4 の人の登録・編集でも、許可リストの組を積む（指示書84 §1-5。前は v5 の確定のときだけ積んでいた）。
+    # v5 の人（全文ベクトルのためにここを通る）は _v5_sentence_job が積む
+    if not _is_v5_subject(profile_id):
+        _explanation_trigger(profile_id)
 
 
 SNAPSHOT_SCHEMA_VERSION = "v4.3"   # スナップショットに記録するスキーマ版（指示書12改訂 §3-1）
@@ -1378,8 +1382,8 @@ def _v5_sentence_job(pid, offer):
         _state_slot_job(pid)
     except Exception as e:  # noqa: BLE001
         app.logger.warning(f"[v5-sentences] 文単位ベクトルの作成に失敗（確定は成立済み）: {e}")
-        return
-    _explanation_trigger(pid)          # 接続の説明（指示書69 §3。off なら何もしない）
+    # 接続の説明（指示書69 §3。off なら何もしない）。説明の入力はベクトルを使わないので、ベクトルの作成に失敗しても積む（指示書84 §1-5）
+    _explanation_trigger(pid)
 
 
 def _state_slot_job(sid):
@@ -2790,15 +2794,15 @@ def ops_explanations_drain():
     verify = body.get("verify") is True
     queued = 0
     if body.get("enqueue") is True and not verify:
-        import explain_queue as _xq
-        queued = sum(1 for pair in _xs.allowlist(DB) if _xq.enqueue(*sorted(pair), db_path=DB))
+        queued = _xsv.enqueue_allowlist(db_path=DB)          # 許可リストの組だけ（指示書84 §1-2）
 
     def job():
         res = _xsv.drain(_explain_ctx(), db_path=DB, verify=verify, keepalive=os.environ.get("RENDER_EXTERNAL_URL"))
         if verify and not res.get("busy"):
             _explain_last_verify.clear()
             _explain_last_verify.update(res)
-        app.logger.warning(f"[explain] drain verify={verify} pairs={res.get('pairs')} made={res.get('made')} reason={res.get('reason')}")
+        app.logger.warning(f"[explain] drain verify={verify} pairs={res.get('pairs')} made={res.get('made')} reason={res.get('reason')} "
+                           f"jobs_today={(res.get('jobs') or {}).get('today')} stopped={(res.get('job') or {}).get('stopped')}")
     if app.config.get("TESTING"):
         job()
     else:
@@ -2903,6 +2907,7 @@ def ops_explanations_status():
     import explain_queue as _xq
     return jsonify({"backend": _xsv.backend() or "off", "queue": _xq.counts(db_path=DB),
                     "last_batch": _xq.last_batch_started(_xsv.backend() or "", db_path=DB),
+                    "jobs": _xsv.jobs_status(db_path=DB),
                     "verify": {k: v for k, v in _explain_last_verify.items()}}), 200
 
 
@@ -3152,7 +3157,7 @@ def _explanation_trigger(sid):
     指示書81: 推論先（POX_EXPLAIN_BACKEND）があれば、その人の許可リストの組を予定に積む（local_http はすぐ作る）。"""
     if _xsv.backend():
         try:
-            if _xsv.enqueue_for(sid, db_path=DB):
+            if _xsv.enqueue_for(sid, db_path=DB, ctx=_explain_ctx()):
                 _explain_kick()
         except Exception as e:  # noqa: BLE001
             app.logger.warning(f"[explain] 予定に積めなかった（登録は成立済み）: {type(e).__name__}")

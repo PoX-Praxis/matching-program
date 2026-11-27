@@ -340,6 +340,17 @@ _SQLITE_DDL = [
         made        INTEGER NOT NULL DEFAULT 0,
         record_json TEXT
     )""",
+    # 費用のかかるジョブを起動した記録（指示書84 §1-3。src/explain_queue.py と同じ定義。1 日・1 か月の上限を数える。文は持たない）
+    """CREATE TABLE IF NOT EXISTS explanation_job_launches (
+        id          TEXT PRIMARY KEY,
+        backend     TEXT NOT NULL,
+        launched_at TEXT NOT NULL,
+        day         TEXT NOT NULL,
+        month       TEXT NOT NULL,
+        batch_id    TEXT,
+        job_id      TEXT,
+        record_json TEXT
+    )""",
     # 説明の生成の記録（指示書69 §3。1 日の上限を数える。文は残さない）
     """CREATE TABLE IF NOT EXISTS explanation_generation_log (
         id            TEXT PRIMARY KEY,
@@ -744,6 +755,17 @@ _PG_DDL = [
         finished_at TEXT,
         pairs       INTEGER NOT NULL DEFAULT 0,
         made        INTEGER NOT NULL DEFAULT 0,
+        record_json TEXT
+    )""",
+    # 費用のかかるジョブを起動した記録（指示書84 §1-3。src/explain_queue.py と同じ定義。1 日・1 か月の上限を数える。文は持たない）
+    """CREATE TABLE IF NOT EXISTS explanation_job_launches (
+        id          TEXT PRIMARY KEY,
+        backend     TEXT NOT NULL,
+        launched_at TEXT NOT NULL,
+        day         TEXT NOT NULL,
+        month       TEXT NOT NULL,
+        batch_id    TEXT,
+        job_id      TEXT,
         record_json TEXT
     )""",
     # 説明の生成の記録（指示書69 §3。1 日の上限を数える。文は残さない）

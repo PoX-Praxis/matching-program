@@ -95,6 +95,8 @@ def _version_p81(monkeypatch):
     偽の Jobs の API を使うので、ジョブの許可（POX_EXPLAIN_JOBS_PERMITTED）は入れておく。"""
     monkeypatch.setenv(RT.VERSION_ENV, "p81")
     monkeypatch.setenv(XSV.JOBS_OK_ENV, "1")
+    monkeypatch.setenv(XSV.MONTHLY_ENV, "99")             # 偽の Jobs の API で何回も起こす（上限そのものは 596 で確かめる）
+    monkeypatch.setattr(XSV, "JOBS_PER_DAY", 99)
     XSV._CFG = None
     yield
     XSV._CFG = None

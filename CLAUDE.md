@@ -90,6 +90,12 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 版 explain-v07（`config/explain_v07.toml`）：v06 との違いは選ぶ段とラベルの語を消すスイッチ（入）。本番の既定は explain-v06 のまま
   - ラベルの語を消すスイッチ `EXPLAIN_STRIP_LABEL_WORDS`（設定 `[pipeline] strip_label_words`。切のときは版の鍵が前と同じ）
   - 順2（H200・1 回・約 $0.40）：ラベルの段は run_2026-11-26b の保存した出力。① は 2/3 目的で 1 文、分類の言葉 0。目的の欄が無い人の言い方は「関われる」でなく「補える」になった
+- [ ] 指示書84（explain-v07 を本番の既定にし、KAORU×PA の説明を本番で作る）は順1 の PR と環境変数の一覧を報告して止まった（`docs/reports/84.md`）。順2（マージ・環境変数）は KAORU。順3（drain 1 回）は KAORU の「入れた」の後。表示のフラグは入れない（順4 の 3 つがそろうまで）
+  - 既定の版は explain-v07（`POX_EXPLAIN_VERSION` が無いとき）。explain-v06・p81 は残す
+  - 生成は許可リスト（`POX_EXPLANATION_ALLOWLIST`。表示のフラグと同じ）の組だけ。許可リストに無い組・入力の無い人がいる組ではジョブを起こさない
+  - 費用の歯止め：`POX_EXPLAIN_JOBS_PERMITTED=1`・日本の暦で 1 日 1 回（コードに固定）・1 か月 `POX_EXPLAIN_JOBS_PER_MONTH` 回（無ければ 0＝起動しない）。起動の前に表 explanation_job_launches に書いて数える。v07 のジョブは割り当て待ち 2 時間で取り消し・動き出してから 55 分でジョブの中で止まる（1 回 約 $4.58 まで）
+  - 起動のきっかけ：登録・編集・同意は積むだけ／裏の見回り（入れ物が起きているあいだ・24 時間ごと）／運営の口 drain。定時（日本の朝 6:10・外から drain の口を呼ぶ）は案だけ
+  - v4 の人の登録・編集でも組を積む（前は積んでいなかった）。v5 の確定はベクトルに失敗しても積む。入力が変わらなければ積まない
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

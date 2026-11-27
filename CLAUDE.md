@@ -85,6 +85,11 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 本番の入力が v06 の記録と違う（入力 2/2・部品 69→57・候補 178→88・B・C が 0）。保存出力は入れていない。どうするかは KAORU が決める
   - 比べて入れる口は `/ops/explanations/replay`（drain の鍵・モデルは動かさない）。送る中身（記録と出力）は `local/t81_addendum3/request.json` だけ
   - HF Jobs のジョブは `POX_EXPLAIN_JOBS_PERMITTED=1` のときだけ起動する
+- [ ] 指示書83（選ぶ段 v0.3・版 explain-v07）は報告して止まった（`docs/reports/83.md`・PR #234）。マージ・本番の既定・次の実行は KAORU が決める
+  - 選ぶ段 v0.3：`docs/prompts/explanation_select_v0.3.txt`（ea02fa7d…。v0.1 がもと。目的ごとに 1 文・分類の言葉を書かない・目的の種類で言い方を分ける・架空のお手本 4 つ）
+  - 版 explain-v07（`config/explain_v07.toml`）：v06 との違いは選ぶ段とラベルの語を消すスイッチ（入）。本番の既定は explain-v06 のまま
+  - ラベルの語を消すスイッチ `EXPLAIN_STRIP_LABEL_WORDS`（設定 `[pipeline] strip_label_words`。切のときは版の鍵が前と同じ）
+  - 順2（H200・1 回・約 $0.40）：ラベルの段は run_2026-11-26b の保存した出力。① は 2/3 目的で 1 文、分類の言葉 0。目的の欄が無い人の言い方は「関われる」でなく「補える」になった
 - [ ] Render デプロイ後の動作確認（登録 → マイページ v4 表示）
 - [ ] Windows PC で Qwen3-Embedding ローカルサーバー起動
   - `py -m pip install -r requirements.txt`（`pip` でなく `py -m pip`）

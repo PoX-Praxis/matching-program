@@ -13,7 +13,10 @@ SELECT_FILE_V01 = os.path.join(_ROOT, "docs", "prompts", "explanation_select_v0.
 LABEL_SHA256 = "02ec1ca8362431e8caafd0dd59c62e461e532e53ec5632f4d16beb268c7e9f6e"   # prompt_label_v0.3（直さない）
 SELECT_SHA256 = "b767abf2c302810b807289562a0f2050399b5af8490a13ab3f69f9bc0d223e70"  # prompt_select_v0.2（v0.1 に「まとめる」の 2 行）
 SELECT_SHA256_V01 = "19e818fb98ac905b4e59803c39b6310df0e3c38997e0976206bb6382b8b2022b"  # prompt_select_v0.1（直さない）
-SELECT_FILES = {SELECT_SHA256: SELECT_FILE, SELECT_SHA256_V01: SELECT_FILE_V01}   # 版の設定の sha256 → ファイル（explain-v06 は v0.1）
+SELECT_FILE_V03 = os.path.join(_ROOT, "docs", "prompts", "explanation_select_v0.3.txt")   # 指示書83（explain-v07）
+SELECT_SHA256_V03 = "ea02fa7db399cebb032b890549d11d91d6ccb5ddce7f03539e655a3bc07abc15"  # prompt_select_v0.3（v0.1 ＋ 目的ごとに 1 文・中身の言葉・お手本）
+SELECT_FILES = {SELECT_SHA256: SELECT_FILE, SELECT_SHA256_V01: SELECT_FILE_V01,      # 版の設定の sha256 → ファイル（explain-v06 は v0.1）
+                SELECT_SHA256_V03: SELECT_FILE_V03}
 
 
 def select_file(sha):

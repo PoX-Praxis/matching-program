@@ -90,7 +90,9 @@ v3.1（意志/求めている/能力/フェーズ）から v4（意志 + 現状4
   - 版 explain-v07（`config/explain_v07.toml`）：v06 との違いは選ぶ段とラベルの語を消すスイッチ（入）。本番の既定は explain-v06 のまま
   - ラベルの語を消すスイッチ `EXPLAIN_STRIP_LABEL_WORDS`（設定 `[pipeline] strip_label_words`。切のときは版の鍵が前と同じ）
   - 順2（H200・1 回・約 $0.40）：ラベルの段は run_2026-11-26b の保存した出力。① は 2/3 目的で 1 文、分類の言葉 0。目的の欄が無い人の言い方は「関われる」でなく「補える」になった
-- [ ] 指示書84（explain-v07 を本番の既定にし、KAORU×PA の説明を本番で作る）は順1 の PR と環境変数の一覧を報告して止まった（`docs/reports/84.md`）。順2（マージ・環境変数）は KAORU。順3（drain 1 回）は KAORU の「入れた」の後。表示のフラグは入れない（順4 の 3 つがそろうまで）
+- [ ] 指示書84（explain-v07 を本番の既定にし、KAORU×PA の説明を本番で作る）は順3 まで終えて止まった（`docs/reports/84.md`・PR #235）。KAORU が画面写しを見る。表示のフラグは入れない（順4 の 3 つがそろうまで）
+  - 順3（2026-11-28）：drain 1 回・H200・待ち 45 秒・動いて約 7〜8 分・約 $0.6〜0.7。向き 2 つを本番に保存（鍵 explain-v07:331fa7d5…）。PA と KAORU p2 は ① 1 文、KAORU p1 は欠かせない要素が足りず not_covered。画面写し 8 枚は `local/kaoru_pa_screen/prod_2026-11-27_v07/` だけ
+  - 1 か月の上限は 1（KAORU の値）。日本の 11 月はもう起動しない
   - 既定の版は explain-v07（`POX_EXPLAIN_VERSION` が無いとき）。explain-v06・p81 は残す
   - 生成は許可リスト（`POX_EXPLANATION_ALLOWLIST`。表示のフラグと同じ）の組だけ。許可リストに無い組・入力の無い人がいる組ではジョブを起こさない
   - 費用の歯止め：`POX_EXPLAIN_JOBS_PERMITTED=1`・日本の暦で 1 日 1 回（コードに固定）・1 か月 `POX_EXPLAIN_JOBS_PER_MONTH` 回（無ければ 0＝起動しない）。起動の前に表 explanation_job_launches に書いて数える。v07 のジョブは割り当て待ち 2 時間で取り消し・動き出してから 55 分でジョブの中で止まる（1 回 約 $4.58 まで）

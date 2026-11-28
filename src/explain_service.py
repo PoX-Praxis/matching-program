@@ -10,9 +10,14 @@
 - 作れていない組は、画面に出さない（「準備中」とも出さない）。表示はいまの二人の読む欄（入力）と、いまの版のものだけ
 - 記録（予定の行・まとめて作る回・向きのレコードの meta）には、数と時刻と番号と版だけを残す。文は残さない
 - 再現性の合格（決定ログ 2026-11-24）：同じ入力・同じ版で作り直したとき、pair_digest と目的の状態が同じこと（verify）
-- 版（指示書81 追補3）：本番の既定は explain-v06（vLLM v0.33.0・条件 B・候補 A・B・C・選ぶ段 v0.1）。p81（llama.cpp）は
-  POX_EXPLAIN_VERSION=p81 で選ぶ。HF Jobs のジョブ（費用がかかる）は、POX_EXPLAIN_JOBS_PERMITTED=1 のときだけ起動する
-  （決定ログ 2026-11-24：KAORU が明示に許可したときだけ）。無ければ予定に残す
+- 版（指示書84）：本番の既定は explain-v07（vLLM v0.33.0・条件 B・候補 A・B・C・選ぶ段 v0.3・ラベルの語を消す）。
+  explain-v06（選ぶ段 v0.1）と p81（llama.cpp）は POX_EXPLAIN_VERSION で選ぶ。HF Jobs のジョブ（費用がかかる）は、
+  POX_EXPLAIN_JOBS_PERMITTED=1 のときだけ起動する（決定ログ 2026-11-24：KAORU が明示に許可したときだけ）。無ければ予定に残す
+- 費用の歯止め（指示書84 §1-3）：ジョブは日本の暦で 1 日 1 回まで・1 か月は POX_EXPLAIN_JOBS_PER_MONTH 回まで（無ければ 0＝起動しない）。
+  起動する前に起動の行を書いて数える。上限に当たったら起動せず、予定に残し、まとめて作る回の記録に理由を書く。
+  1 回のジョブは、動き出してから [hf_jobs] max_run_seconds（55 分）で、ジョブの中で止まる
+- 生成は許可リスト（POX_EXPLANATION_ALLOWLIST。表示のフラグと同じもの）の組だけ。許可リストに無い組は予定に積まず、
+  前に積んだ行が残っていても作らない（skipped・not_allowlisted。ジョブも起こさない）
 - 保存した出力を入れる（replay）：v06 の記録と、いまの二人の入力から描いたもの（入力・部品と候補・プロンプト）が同じときだけ、
   保存したラベル・選ぶ段の出力からカードを作り、版の鍵で入れる。違えば違う位置と種類だけを返し、入れない
 """
@@ -43,6 +48,8 @@ GPU_ENV = "POX_EXPLAIN_GPU"                                # PC の GPU の名�
 INTERVAL_ENV = "POX_EXPLAIN_INTERVAL_HOURS"                # hf_jobs の間隔（既定 24 時間）
 DRAIN_TOKEN_ENV, DRAIN_HEADER, TOKEN_MIN = "POX_EXPLAIN_DRAIN_TOKEN", "X-Explain-Drain-Token", 32
 JOBS_OK_ENV = "POX_EXPLAIN_JOBS_PERMITTED"               # HF Jobs のジョブを起動してよいか（KAORU の許可。"1" のときだけ）
+MONTHLY_ENV = "POX_EXPLAIN_JOBS_PER_MONTH"                # 1 か月（日本の暦）に起動するジョブの上限（KAORU が決める。無ければ 0）
+JOBS_PER_DAY = 1                                           # 1 日（日本の暦）に起動するジョブは 1 回まで（決定 2026-11-24）
 FLAVOR_GPU = {"h200": "NVIDIA H200", "h100": "NVIDIA H100 80GB", "a100-large": "NVIDIA A100 80GB", "l40sx1": "NVIDIA L40S"}
 PIPELINE_MARK = "p81"
 _LOCK = threading.Lock()
@@ -55,7 +62,7 @@ def backend():
 
 
 def runtime():
-    """選んだ版（POX_EXPLAIN_VERSION。既定 explain-v06）の設定。一度読んだら使い回す（版を変えたら読み直す）。"""
+    """選んだ版（POX_EXPLAIN_VERSION。既定 explain-v07）の設定。一度読んだら使い回す（版を変えたら読み直す）。"""
     global _CFG
     from explain_pipeline import runtime as RT
     if _CFG is None or RT.version_id(_CFG) != RT.version_of():
@@ -65,6 +72,37 @@ def runtime():
 
 def jobs_permitted():
     return (os.environ.get(JOBS_OK_ENV) or "").strip() == "1"
+
+
+def monthly_limit():
+    """1 か月に起動するジョブの上限（POX_EXPLAIN_JOBS_PER_MONTH）。無い・読めない・負なら 0（起動しない。閉じる側に倒す）。"""
+    try:
+        return max(0, int((os.environ.get(MONTHLY_ENV) or "").strip()))
+    except ValueError:
+        return 0
+
+
+def launch_gate(db_path="pox.db", now=None):
+    """いま HF Jobs のジョブを起動してよいか。よければ None、だめなら理由（jobs_not_permitted・monthly_limit_unset・
+    daily_limit・monthly_limit）。数えるのは起動の行（日本の暦の今日・今月）。"""
+    if not jobs_permitted():
+        return "jobs_not_permitted"
+    m = monthly_limit()
+    if m <= 0:
+        return "monthly_limit_unset"
+    n = Q.launches("hf_jobs", now=now, db_path=db_path)
+    if n["today"] >= JOBS_PER_DAY:
+        return "daily_limit"
+    if n["month"] >= m:
+        return "monthly_limit"
+    return None
+
+
+def jobs_status(db_path="pox.db", now=None):
+    """運営の口と起動のログに出す数（起動の数・上限・許可の有無）。"""
+    n = Q.launches("hf_jobs", now=now, db_path=db_path)
+    return {"permitted": jobs_permitted(), "today": n["today"], "per_day": JOBS_PER_DAY, "month": n["month"],
+            "per_month": monthly_limit(), "gate": launch_gate(db_path, now) or "ok"}
 
 
 def version_key(cfg=None):
@@ -93,6 +131,7 @@ def startup_check():
         raise SystemExit(f"[FATAL] {BACKEND_ENV}={b} ですが {', '.join(missing)} が未設定です（Render の環境変数）。")
     return {"backend": b, "version": version_key(cfg)[:20], "cells": cfg["pipeline"]["cells"],
             "jobs": "許可あり" if jobs_permitted() else "許可なし（起動しない）",
+            "jobs_per_day": JOBS_PER_DAY, "jobs_per_month": monthly_limit(),
             "drain_route": "開いている" if drain_token_ok(os.environ.get(DRAIN_TOKEN_ENV)) else "閉じている"}
 
 
@@ -247,15 +286,45 @@ def compare(res, ctx, cfg, db_path="pox.db"):
 
 
 # ── 予定を積む・まとめて作る ─────────────────────────────────────────────────────────
-def enqueue_for(subject, db_path="pox.db"):
-    """登録・更新のきっかけ：その人が入っている許可リストの組を積む。推論先が無ければ何もしない。積んだ組の数を返す。"""
+def allowed(a, b, db_path="pox.db"):
+    """生成してよい組か（許可リスト POX_EXPLANATION_ALLOWLIST の組だけ。表示のフラグと同じ許可リスト。指示書84 §1-2）。"""
+    return bool(a and b and a != b and frozenset((a, b)) in S.allowlist(db_path))
+
+
+def enqueue_pair(a, b, db_path="pox.db"):
+    """組を 1 つ積む。許可リストに無い組は積まない（None）。戻り値は Q.enqueue と同じ（queued・again・same）。"""
+    if not allowed(a, b, db_path):
+        return None
+    return Q.enqueue(*sorted((a, b)), db_path=db_path)
+
+
+def enqueue_allowlist(db_path="pox.db"):
+    """許可リストの組をぜんぶ積む（運営の口の enqueue）。積んだ組の数。"""
+    return sum(1 for pair in S.allowlist(db_path) if enqueue_pair(*sorted(pair), db_path=db_path))
+
+
+def needs_making(a, b, ctx, db_path="pox.db"):
+    """作る必要があるか：二人とも入力があり、いまの入力・いまの版のカードが二つの向きの両方には保存されていないとき True。
+    入力の無い人がいる組は False（作れない。ジョブを起こさない）。"""
+    if not ctx.inputs_of(a) or not ctx.inputs_of(b):
+        return False
+    cfg = runtime()
+    return not (stored_meta(a, b, ctx, cfg, db_path) and stored_meta(b, a, ctx, cfg, db_path))
+
+
+def enqueue_for(subject, db_path="pox.db", ctx=None):
+    """登録・更新のきっかけ：その人が入っている許可リストの組を積む。推論先が無ければ何もしない。積んだ組の数を返す。
+    同じ組は 1 行にまとめる（二人とも登録し直しても、作るのは 1 回。作っている途中なら、終わった後に 1 回だけ作り直す）。
+    ctx を渡せば、いまの入力・いまの版のカードがもうある組と、入力の無い人がいる組は積まない（指示書84 §1-5）。"""
     if not backend():
         return 0
     n = 0
     for pair in S.allowlist(db_path):
         if subject in pair:
             a, b = sorted(pair)
-            if Q.enqueue(a, b, db_path=db_path):
+            if ctx is not None and not needs_making(a, b, ctx, db_path):
+                continue
+            if enqueue_pair(a, b, db_path=db_path):
                 n += 1
     return n
 
@@ -266,8 +335,15 @@ def _version_record(cfg, b, gpu, extra=None):
 
 
 def _items(verify, db_path):
+    """作る組。予定の組のうち許可リストの組だけ（許可リストから外れた組の行は skipped・not_allowlisted にして作らない）。"""
     if not verify:
-        return Q.pending(db_path)
+        out = []
+        for it in Q.pending(db_path):
+            if allowed(it["a"], it["b"], db_path):
+                out.append(it)
+            else:
+                Q.skip(it["pair_key"], "not_allowlisted", db_path=db_path)
+        return out
     return [{"pair_key": Q.pair_key(*sorted(p)), "a": sorted(p)[0], "b": sorted(p)[1]} for p in sorted(S.allowlist(db_path), key=sorted)]
 
 
@@ -275,6 +351,8 @@ def _run_items(items, ctx, ep, cfg, b, gpu, extra, verify, db_path):
     made, results = 0, []
     for it in items:
         k = it["pair_key"]
+        if not allowed(it["a"], it["b"], db_path):                       # 念のため（借りた GPU に送るのは許可リストの組だけ）
+            continue
         if not verify and not Q.claim(k, db_path=db_path):
             continue
         try:
@@ -298,7 +376,8 @@ def _run_items(items, ctx, ep, cfg, b, gpu, extra, verify, db_path):
 
 def drain(ctx, db_path="pox.db", verify=False, backend_name=None, session_factory=None, endpoint=None, keepalive=None):
     """予定の組をまとめて作る（1 回の起動で、1 組ずつ）。verify=True は、許可リストの組を作り直して保存してあるものと比べるだけ
-    （保存しない。PC に移したときの確かめ。§4-1 の 7）。戻り値は数と番号だけ。同時に 2 つは動かさない。"""
+    （保存しない。PC に移したときの確かめ。§4-1 の 7）。戻り値は数と番号だけ。同時に 2 つは動かさない。
+    作るのは許可リストの組で、二人とも入力のある組だけ。hf_jobs は launch_gate（許可・1 日 1 回・1 か月の上限）を通ったときだけ起動する。"""
     if not _LOCK.acquire(blocking=False):
         return {"busy": True}
     try:
@@ -307,6 +386,13 @@ def drain(ctx, db_path="pox.db", verify=False, backend_name=None, session_factor
             return {"backend": "off"}
         Q.reset_stale(db_path=db_path)
         items = _items(verify, db_path)
+        keep = []                                       # 入力の無い人がいる組は作れない：ジョブを起こす前に外す
+        for it in items:
+            if ctx.inputs_of(it["a"]) and ctx.inputs_of(it["b"]):
+                keep.append(it)
+            elif not verify:
+                Q.skip(it["pair_key"], "inputs", db_path=db_path)
+        items = keep
         if not items:
             return {"backend": b, "pairs": 0, "made": 0}
         cfg = runtime()
@@ -327,14 +413,19 @@ def drain(ctx, db_path="pox.db", verify=False, backend_name=None, session_factor
                     return rec
                 made, results = _run_items(items, ctx, ep, cfg, b, os.environ.get(GPU_ENV) or None, None, verify, db_path)
             else:
-                if not jobs_permitted():                                    # 費用のかかるジョブは、KAORU の許可があるときだけ
-                    rec.update(made=0, reason="jobs_not_permitted")
+                gate = launch_gate(db_path)                                 # 費用のかかるジョブは、KAORU の許可と上限の中でだけ
+                if gate:
+                    rec.update(made=0, reason=gate, jobs=jobs_status(db_path))
                     return rec
+                lid = Q.record_launch(b, batch_id=bid, db_path=db_path)     # 起動する前に数える（途中で止まっても数える）
                 sess = (session_factory or _hf_session)(cfg)
-                with sess as ep:
-                    gpu = FLAVOR_GPU.get((cfg.get("hf_jobs") or {}).get("flavor"))
-                    made, results = _run_items(items, ctx, ep, cfg, b, gpu, {"job_id": sess.record.get("job_id")}, verify, db_path)
-                rec["job"] = {k: v for k, v in sess.record.items() if k in ("job_id", "flavor", "startup_seconds", "seconds", "cost_usd_est", "stage")}
+                try:
+                    with sess as ep:
+                        gpu = FLAVOR_GPU.get((cfg.get("hf_jobs") or {}).get("flavor"))
+                        made, results = _run_items(items, ctx, ep, cfg, b, gpu, {"job_id": sess.record.get("job_id")}, verify, db_path)
+                finally:
+                    rec["job"] = {k: v for k, v in sess.record.items() if k in JOB_RECORD}
+                    Q.set_launch(lid, job_id=sess.record.get("job_id"), record=rec["job"], db_path=db_path)
             rec.update(made=made, results=results)
             return rec
         except Exception as e:  # noqa: BLE001 — ジョブが起きない・止まった：予定に残す
@@ -351,6 +442,10 @@ def drain(ctx, db_path="pox.db", verify=False, backend_name=None, session_factor
                 Q.finish_batch(bid, rec["pairs"], rec.get("made", 0), {k: v for k, v in rec.items() if k != "results"}, db_path=db_path)
     finally:
         _LOCK.release()
+
+
+JOB_RECORD = ("job_id", "flavor", "stage", "t_running", "startup_seconds", "startup_after_running", "seconds", "cost_usd_est",
+              "stopped", "cancel_failed")
 
 
 def _hf_session(cfg):

@@ -1,5 +1,5 @@
 # 説明の生成の版 explain-v07（指示書83）。explain-v06 との違いは、選ぶ段のプロンプト（v0.3）と、ラベルの語を消すスイッチ（入）だけ。
-# 本番の既定ではない（既定は explain-v06）。POX_EXPLAIN_VERSION=explain-v07 で選ぶ。
+# 指示書84 で本番の既定（POX_EXPLAIN_VERSION が無いとき）。explain-v06・p81 は POX_EXPLAIN_VERSION で選ぶ。
 # 以下は explain-v06 の説明（指示書81 追補3）：
 # KAORU×PA の 5 回目（ラベル）・6 回目（選ぶ・まとめる）と同じ条件：vLLM v0.33.0・条件 B（接頭辞の使い回しなし・同時 1・
 # VLLM_BATCH_INVARIANT=1）・温度 0・seed 0・reasoning_effort medium・候補 A・B・C の両方向・ラベル v0.3・選ぶ段 v0.1。
@@ -43,7 +43,10 @@ bound_for_no_purpose = false
 strip_label_words = true      # ① からラベルの語を機械で消す（#233）。explain-v07 では入
 
 [hf_jobs]
-flavor = "h200"
-price_per_hour = 5.0
-timeout = "50m"
-ready_timeout_seconds = 2400
+# ここは版の鍵に入らない（ジョブの起こし方と費用の歯止めだけ。指示書84 §1-3）
+flavor = "h200"                    # H200 だけ（空かなければ取り消す。ほかの GPU には替えない）
+price_per_hour = 5.0               # 費用の見積もり（Jobs の料金表）
+timeout = "3h"                     # Jobs の上限（作った時から数えても、割り当て待ち 2 時間＋動く 55 分が入るように）
+schedule_timeout_seconds = 7200    # 割り当て待ち（RUNNING になるまで）の上限 2 時間。超えたら取り消して止める
+ready_timeout_seconds = 1500       # 動き出してから、口が返事をするまでの上限 25 分
+max_run_seconds = 3300             # 動き出してから 55 分で、ジョブの中で vLLM を止める（#232。本番の側が止まっても効く）

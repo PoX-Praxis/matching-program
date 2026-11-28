@@ -32,7 +32,20 @@ BATCH_DDL = """CREATE TABLE IF NOT EXISTS explanation_batches (
     made        INTEGER NOT NULL DEFAULT 0,
     record_json TEXT
 )"""
-DDL = (QUEUE_DDL, BATCH_DDL)
+# 費用のかかるジョブを起動した記録（指示書84 §1-3）。起動する前に 1 行書く（途中で止まっても数える。閉じる側に倒す）。
+# day・month は日本の暦（Asia/Tokyo）。1 日・1 か月の上限は、この行の数で数える。文は持たない
+LAUNCH_DDL = """CREATE TABLE IF NOT EXISTS explanation_job_launches (
+    id          TEXT PRIMARY KEY,
+    backend     TEXT NOT NULL,
+    launched_at TEXT NOT NULL,
+    day         TEXT NOT NULL,
+    month       TEXT NOT NULL,
+    batch_id    TEXT,
+    job_id      TEXT,
+    record_json TEXT
+)"""
+DDL = (QUEUE_DDL, BATCH_DDL, LAUNCH_DDL)
+JST = timezone(timedelta(hours=9))
 STATUSES = ("pending", "running", "done", "failed", "skipped")
 
 
@@ -113,6 +126,15 @@ def finish(k, status, reason=None, inputs_digest=None, record=None, db_path="pox
     return final
 
 
+def skip(k, reason, db_path="pox.db"):
+    """作らない組（許可リストから外れた組など）を skipped にする。作り直しの印（again）も消す。予定の行だったときだけ True。"""
+    with _connect(db_path) as con:
+        cur = con.execute("UPDATE explanation_queue SET status='skipped', finished_at=%s, again=0, reason=%s "
+                          "WHERE pair_key=%s AND status='pending'", (_now(), reason, k))
+        n = getattr(cur, "rowcount", None)
+    return bool(n and n > 0)
+
+
 def reset_stale(minutes=90, db_path="pox.db"):
     """作っている途中のまま止まった組（入れ物が止まった・再起動した）を、予定に戻す。戻した数を返す。"""
     cut = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat(timespec="seconds")
@@ -156,3 +178,37 @@ def last_batch_started(backend, db_path="pox.db"):
     with _connect(db_path) as con:
         r = con.execute("SELECT MAX(started_at) FROM explanation_batches WHERE backend=%s", (backend,)).fetchone()
     return r[0] if r else None
+
+
+# ── 費用のかかるジョブの起動の数（指示書84 §1-3）──────────────────────────────────────────────
+def jst_day_month(now=None):
+    """日本の暦の日（YYYY-MM-DD）と月（YYYY-MM）。"""
+    t = (now or datetime.now(timezone.utc)).astimezone(JST)
+    return t.strftime("%Y-%m-%d"), t.strftime("%Y-%m")
+
+
+def record_launch(backend, batch_id=None, now=None, db_path="pox.db"):
+    """ジョブを起動する前に 1 行書く。戻り値は行の id（ジョブの番号は後で set_launch で足す）。"""
+    lid = f"xl_{uuid.uuid4().hex[:16]}"
+    t = now or datetime.now(timezone.utc)
+    day, month = jst_day_month(t)
+    with _connect(db_path) as con:
+        con.execute("INSERT INTO explanation_job_launches (id, backend, launched_at, day, month, batch_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (lid, backend, t.isoformat(timespec="seconds"), day, month, batch_id))
+    return lid
+
+
+def set_launch(lid, job_id=None, record=None, db_path="pox.db"):
+    """起動の行に、ジョブの番号と数（待った秒・動いた秒・費用の見積もり・止まり方）を足す。"""
+    with _connect(db_path) as con:
+        con.execute("UPDATE explanation_job_launches SET job_id=%s, record_json=%s WHERE id=%s",
+                    (job_id, json.dumps(record, ensure_ascii=False, sort_keys=True) if record is not None else None, lid))
+
+
+def launches(backend, now=None, db_path="pox.db"):
+    """その推論先の起動の数：{"today": 日本の暦の今日, "month": 今月}。"""
+    day, month = jst_day_month(now)
+    with _connect(db_path) as con:
+        d = con.execute("SELECT COUNT(*) FROM explanation_job_launches WHERE backend=%s AND day=%s", (backend, day)).fetchone()[0]
+        m = con.execute("SELECT COUNT(*) FROM explanation_job_launches WHERE backend=%s AND month=%s", (backend, month)).fetchone()[0]
+    return {"today": int(d), "month": int(m)}

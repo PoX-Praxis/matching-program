@@ -67,7 +67,7 @@ def _shown(card, names):
 
 
 def test_t594_switch_off_and_on(monkeypatch):
-    cfg = RT.load()
+    cfg = RT.load(version="explain-v06")                                                       # v06（スイッチ切）で確かめる
     spec = SY.pairs()[0]
     kw = dict(cells=RT.cells(cfg), label_sha=cfg["prompts"]["label_sha256"], select_sha=cfg["prompts"]["select_sha256"])
     off, rec_off = RN.run_pair(spec, Rec(), **kw)                                              # 切（既定）：前と同じ
@@ -82,7 +82,7 @@ def test_t594_switch_off_and_on(monkeypatch):
     k_off = RT.version_key(cfg, X.SCHEMA_VERSION, X.RELATION_RULE_VERSION)
     assert k_off.startswith("explain-v06:38512d95") and not RT.strip_label_words(cfg)
     monkeypatch.setenv(RT.STRIP_ENV, "1")
-    on_cfg = RT.load()
+    on_cfg = RT.load(version="explain-v06")
     assert RT.strip_label_words(on_cfg) and RT.version_key(on_cfg, X.SCHEMA_VERSION, X.RELATION_RULE_VERSION) != k_off
     assert RT.version_record(on_cfg, "local_http")["strip_label_words"] is True
     p81 = RT.load(version="p81")

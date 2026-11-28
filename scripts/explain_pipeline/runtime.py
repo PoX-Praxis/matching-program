@@ -18,9 +18,9 @@ except ModuleNotFoundError:          # Python 3.10 以前（使わない想定�
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PATH = os.path.join(_ROOT, "config", "explain_runtime.toml")             # p81
 VERSION_ENV = "POX_EXPLAIN_VERSION"
-DEFAULT_VERSION = "explain-v06"                                          # 本番の既定（指示書81 追補3）
+DEFAULT_VERSION = "explain-v07"                                          # 本番の既定（指示書84。explain-v06・p81 は残す）
 VERSIONS = {"explain-v06": os.path.join(_ROOT, "config", "explain_v06.toml"), "p81": PATH,
-            "explain-v07": os.path.join(_ROOT, "config", "explain_v07.toml")}           # 指示書83（選ぶ段 v0.3。既定ではない）
+            "explain-v07": os.path.join(_ROOT, "config", "explain_v07.toml")}           # 指示書83（選ぶ段 v0.3）・指示書84 で既定
 PLACEMENT_ENV = {"n_gpu_layers": "POX_EXPLAIN_N_GPU_LAYERS", "n_cpu_moe": "POX_EXPLAIN_N_CPU_MOE"}
 CELLS_ENV = "EXPLAIN_CELLS"
 BOUND_ENV = "EXPLAIN_BOUND_FOR_NO_PURPOSE"      # 目的の欄が無い人の縛りの目的（指示書81 追補1 §3-3。既定は切る）
@@ -34,7 +34,7 @@ REQUIRED_VLLM = {"version": ("id",), "model": ("repo", "revision"),
 
 
 def version_of(env=None):
-    """選ぶ版（POX_EXPLAIN_VERSION。無ければ explain-v06）。知らない版なら ValueError。"""
+    """選ぶ版（POX_EXPLAIN_VERSION。無ければ explain-v07）。知らない版なら ValueError。"""
     env = os.environ if env is None else env
     v = (env.get(VERSION_ENV) or "").strip() or DEFAULT_VERSION
     if v not in VERSIONS:
@@ -52,7 +52,7 @@ def file_sha256(path=PATH):
 
 
 def load(path=None, env=None, version=None):
-    """設定を読む。path が無ければ版（version か POX_EXPLAIN_VERSION。既定 explain-v06）のファイル。
+    """設定を読む。path が無ければ版（version か POX_EXPLAIN_VERSION。既定 explain-v07）のファイル。
     p81 は置き場所だけ環境変数で上書きできる。足りない項目があれば ValueError。"""
     env = os.environ if env is None else env
     path = path or VERSIONS[version or version_of(env)]

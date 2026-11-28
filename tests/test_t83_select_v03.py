@@ -50,11 +50,13 @@ def test_t595_version():
     k6 = RT.version_key(v06, X.SCHEMA_VERSION, X.RELATION_RULE_VERSION)
     k7 = RT.version_key(v07, X.SCHEMA_VERSION, X.RELATION_RULE_VERSION)
     assert k6.startswith("explain-v06:38512d95") and k7.startswith("explain-v07:") and k6 != k7
-    assert RT.version_of() == "explain-v06"                                                 # 本番の既定は explain-v06 のまま
+    assert RT.version_of() == "explain-v07"                                                 # 指示書84 で本番の既定（指示書83 のときは v06）
     assert v07["prompts"]["select_sha256"] == PR.SELECT_SHA256_V03 and RT.strip_label_words(v07)
     assert not RT.strip_label_words(v06) and v06["prompts"]["select_sha256"] == PR.SELECT_SHA256_V01
-    for sec in ("model", "engine", "generation", "hf_jobs"):                                # 違いは選ぶ段とスイッチだけ
+    for sec in ("model", "engine", "generation"):                                           # 違いは選ぶ段とスイッチだけ
         assert v06[sec] == v07[sec], sec
+    for k in ("flavor", "price_per_hour"):                                                   # ジョブの起こし方は版の鍵に入らない。
+        assert v06["hf_jobs"][k] == v07["hf_jobs"][k], k                                     # v07 は指示書84 の費用の歯止めを足した
     assert v06["prompts"]["label_sha256"] == v07["prompts"]["label_sha256"] and RT.cells(v06) == RT.cells(v07)
     assert RT.version_record(v07, "hf_jobs")["prompts"]["select"] == PR.SELECT_SHA256_V03
 
